@@ -7,6 +7,7 @@ export function SignIn() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-ppme-bg-alt px-6 text-center">
+      <img src="/logo.png" alt="PPME Den Haag" className="h-16 w-auto" />
       <div>
         <h1 className="text-2xl font-bold text-ppme-primary">{t('app.name')}</h1>
         <p className="mt-1 text-ppme-text/70">{t('app.tagline')}</p>
