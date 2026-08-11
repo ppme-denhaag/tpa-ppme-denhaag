@@ -46,25 +46,40 @@ to the Frankfurt project. **Never point tests or local dev at data you wouldn't
 want in a shared dev database** — see test-plan.md's "no real student data in
 any test environment, ever" rule.
 
+## RLS automated test suite
+
+`supabase/tests/database/rls.test.sql` implements all 21 cases from
+test-plan.md §3 (RLS-01…RLS-21) as pgTAP assertions, using the standard
+fixture set from §2. It runs entirely inside a transaction that's rolled
+back at the end, so it never leaves data behind. CI runs it against a
+fresh local Postgres (Docker, via the Supabase CLI) built from
+`supabase/migrations` — see the `rls` job in `.github/workflows/test.yml`.
+
+To run it yourself against the live linked project (also transactionally
+rolled back, safe to repeat):
+
+```bash
+supabase db query --linked -f supabase/tests/database/rls.test.sql
+```
+
+**While building this suite, it surfaced a critical bug**: migrations
+002/003/005 defined RLS policies but never granted the underlying
+`anon`/`authenticated`/`service_role` table privileges those policies
+depend on — GRANT is a separate, prerequisite gate in front of RLS, so
+every single API request (including from `service_role`, i.e. Netlify
+Functions) was getting "permission denied" regardless of how correct the
+RLS policies were. Fixed in migration `007_grants.sql`. This means the
+app was non-functional at the database layer from when migrations 002/003
+were first applied until this fix — worth knowing if anything was tested
+against the live project in that window and appeared broken.
+
 ## Known gaps (foundation pass — not yet built)
 
-- **Google OAuth is not configured yet.** The client-side `signInWithOAuth('google')`
-  call works and correctly redirects to Supabase's `/auth/v1/authorize` endpoint,
-  but returns a 400 because no Google provider is enabled in Supabase Auth. To fix:
-  1. Google Cloud Console → create/select a project → **APIs & Services → Credentials**
-     → **Create Credentials → OAuth client ID** → type **Web application**.
-  2. Authorized redirect URI: `https://iaqmkityqbfliynaccpw.supabase.co/auth/v1/callback`.
-  3. Supabase dashboard → **Authentication → Providers → Google** → enable, paste the
-     Client ID/Secret from step 1, save.
-  4. Also add `http://localhost:5173` and the Netlify preview/prod URLs under
-     Supabase **Authentication → URL Configuration → Redirect URLs**.
-- **No real PPME logo asset.** `public/icons/*.png` and the top-nav mark are
-  brand-colored placeholders — swap for the real logo before real users see this.
-- **RLS automated test suite (test-plan.md §3, RLS-01…RLS-21) is not implemented
-  yet.** The policies themselves are live (46 policies, verified via
-  `supabase db query`), but the pgTAP/SQL fixture-based CI gate described in the
-  test plan still needs to be written — this is the single highest-risk item
-  before real student data enters the system.
+- **No real PPME logo asset for PWA icons.** The top nav now uses the real
+  logo (`public/logo.png`), but the source file is only 135×70px, so the
+  512px PWA icons (`public/icons/*.png`) are a soft ~3.7x upscale — fine as
+  a placeholder, replace with a proper square/high-res (512×512+) source
+  before real launch.
 - **Feature UI is not built.** Attendance, homework, Yanbu'a, Quran, Murajaah,
   and Reports are placeholder pages behind real auth/role/RLS. See the checklist's
   suggested build order for what's next.
