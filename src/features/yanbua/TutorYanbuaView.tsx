@@ -5,6 +5,7 @@ import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
 import type { Database } from '../../lib/database.types'
+import { getErrorMessage } from '../../lib/errors'
 import { isJilidComplete, nextJilid, type JilidRef } from '../../lib/yanbua'
 import { fetchYanbuaHistory, fetchYanbuaJilidRef, insertYanbuaProgress, type YanbuaProgress } from './api'
 import { CurrentLevelCard } from './CurrentLevelCard'
@@ -43,7 +44,7 @@ export function TutorYanbuaView() {
   useEffect(() => {
     fetchYanbuaJilidRef()
       .then(setJilidRefs)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
   }, [])
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function TutorYanbuaView() {
         if (active) setRoster(data)
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : String(err))
+        if (active) setError(getErrorMessage(err))
       })
       .finally(() => {
         if (active) setRosterLoading(false)
@@ -88,7 +89,7 @@ export function TutorYanbuaView() {
         setMastery('lancar')
         setNotes('')
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setHistoryLoading(false))
   }
 
@@ -119,7 +120,7 @@ export function TutorYanbuaView() {
       }
       setNotes('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSaving(false)
     }

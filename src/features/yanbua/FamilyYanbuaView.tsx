@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
 import { ChildPicker } from '../../components/ChildPicker'
 import type { JilidRef } from '../../lib/yanbua'
+import { getErrorMessage } from '../../lib/errors'
 import { fetchYanbuaHistory, fetchYanbuaJilidRef, type YanbuaProgress } from './api'
 import { CurrentLevelCard } from './CurrentLevelCard'
 import { YanbuaTimeline } from './YanbuaTimeline'
@@ -22,7 +23,7 @@ export function FamilyYanbuaView() {
   useEffect(() => {
     fetchYanbuaJilidRef()
       .then(setJilidRefs)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
   }, [])
 
   useEffect(() => {
@@ -39,7 +40,7 @@ export function FamilyYanbuaView() {
         if (active) setHistory(data)
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : String(err))
+        if (active) setError(getErrorMessage(err))
       })
       .finally(() => {
         if (active) setLoading(false)

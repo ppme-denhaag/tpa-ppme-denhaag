@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getErrorMessage } from '../lib/errors'
 import { FIXTURE_USERS, signInAsFixtureUser } from './devAuth'
 
 /**
@@ -18,7 +19,7 @@ export function DevAuthSwitcher() {
     try {
       await signInAsFixtureUser(userId)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
       setSigningInAs(null)
     }
   }

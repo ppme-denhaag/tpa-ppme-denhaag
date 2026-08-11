@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import type { Database, TablesInsert } from '../../lib/database.types'
+import { getErrorMessage } from '../../lib/errors'
 import {
   fetchAttendanceForSession,
   fetchClassRoster,
@@ -73,7 +74,7 @@ export function TutorAttendanceView() {
         setSessionId(session.id)
         setRows(initialRows)
       } catch (err) {
-        if (active) setError(err instanceof Error ? err.message : String(err))
+        if (active) setError(getErrorMessage(err))
       } finally {
         if (active) setLoading(false)
       }
@@ -122,7 +123,7 @@ export function TutorAttendanceView() {
       setSubmitted(true)
       setConfirming(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSubmitting(false)
     }

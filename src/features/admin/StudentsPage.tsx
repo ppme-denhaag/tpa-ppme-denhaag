@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getErrorMessage } from '../../lib/errors'
 import {
   createStudent,
   fetchAllClasses,
@@ -33,7 +34,7 @@ export function StudentsPage() {
         setParents(parentData)
         setUnlinked(unlinkedData)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false))
   }
 
@@ -53,7 +54,7 @@ export function StudentsPage() {
       setCreating(false)
       load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSaving(false)
     }
