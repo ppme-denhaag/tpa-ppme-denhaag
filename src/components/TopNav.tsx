@@ -10,12 +10,8 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-10 flex h-14 items-center justify-between bg-ppme-primary px-4 text-white shadow-sm">
       <Link to="/" className="flex items-center gap-2 font-bold">
-        <span
-          aria-hidden
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-bold text-ppme-primary"
-        >
-          {/* Placeholder mark — swap for the real PPME logo asset (see README). */}
-          P
+        <span className="flex h-9 items-center rounded-md bg-white px-1.5 py-1">
+          <img src="/logo.png" alt="PPME Den Haag" className="h-full w-auto" />
         </span>
         <span className="hidden sm:inline">{t('app.name')}</span>
       </Link>
