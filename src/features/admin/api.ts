@@ -25,6 +25,36 @@ export async function registerUser(params: {
   if (error) throw error
 }
 
+/**
+ * Invites a new user by email via the invite-user Netlify Function
+ * (service-role only — inviteUserByEmail and pre-creating the profile
+ * both require bypassing RLS, which the browser client can never do).
+ * Collapses the "they sign in once, then an admin notices and registers
+ * them" two-step flow into one action; falls back to the existing
+ * pending-registrations list if the invite email never arrives and they
+ * sign in directly instead.
+ */
+export async function inviteUser(params: { email: string; full_name: string; role: UserRole }): Promise<void> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session) throw new Error('Not signed in')
+
+  const res = await fetch('/.netlify/functions/invite-user', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(params),
+  })
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(body?.error ?? `Invite failed (${res.status})`)
+  }
+}
+
 export interface DirectoryUser {
   id: string
   full_name: string
