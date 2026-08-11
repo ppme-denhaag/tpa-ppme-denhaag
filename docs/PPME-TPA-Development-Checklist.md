@@ -2,6 +2,8 @@
 
 *Prepared 2 July 2026. Reflects all decisions confirmed to date in the PRD/TAD, plus the validated Figma Make prototype (15 screens, 3 roles: Ustadz, Orang Tua, Santri).*
 
+*Status checkboxes updated as of this writing: `[x]` done, `[ ]` not started, `[~]` partially done (not standard GFM checkbox syntax — reads as literal text rather than a rendered checkbox, used deliberately where "done"/"not done" would be misleading; the item's own text explains what's actually built vs. missing).*
+
 ---
 
 ## 0. Confirmed Decisions (quick reference)
@@ -53,35 +55,37 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 
 ## 3. Database Build-out
 
-- [ ] SQL migrations written for all 10 entities: User, Student, Class, Session, Attendance, Assignment, AssignmentStatus, YanbuaProgress, QuranProgress, MurajaahAssignment, MurajaahLog
-- [ ] `Student.user_id` (nullable) FK implemented for 16+ self-login students, separate from `Student.parent_id`
-- [ ] All enums implemented as Postgres enum types: `user_role`, `locale`, `attendance_status`, `assignment_status`, `yanbuah_mastery`, `quran_quality`, `murajaah_quality`, `murajaah_frequency`
-- [ ] **RLS policies written and tested per table** — highest-risk item; a misconfigured policy leaks children's data across families. At minimum: Parent (own children only), Tutor (own assigned classes only), Student 16+ (own data only, read-only), Admin (all)
-- [ ] Automated RLS tests: assert Parent A cannot query Parent B's child data, Student cannot query siblings' data, etc.
-- [ ] Seed data: 114 Surahs (name, Arabic, transliteration, ayah count) and 7 Jilid (page counts) — version-controlled seed file
-- [ ] Database webhooks configured (Supabase → Netlify Functions) for absence notifications and jilid-completion detection
+- [x] SQL migrations written for all 10 entities: User, Student, Class, Session, Attendance, Assignment, AssignmentStatus, YanbuaProgress, QuranProgress, MurajaahAssignment, MurajaahLog
+- [x] `Student.user_id` (nullable) FK implemented for 16+ self-login students, separate from `Student.parent_id`
+- [x] All enums implemented as Postgres enum types: `user_role`, `locale`, `attendance_status`, `assignment_status`, `yanbuah_mastery`, `quran_quality`, `murajaah_quality`, `murajaah_frequency`
+- [x] **RLS policies written and tested per table** — highest-risk item; a misconfigured policy leaks children's data across families. At minimum: Parent (own children only), Tutor (own assigned classes only), Student 16+ (own data only, read-only), Admin (all)
+- [x] Automated RLS tests: assert Parent A cannot query Parent B's child data, Student cannot query siblings' data, etc. — 38 pgTAP assertions (RLS-01..21), CI-gated
+- [x] Seed data: 114 Surahs (name, Arabic, transliteration, ayah count) and 7 Jilid (page counts) — version-controlled seed file (migration 004)
+- [ ] Database webhooks configured (Supabase → Netlify Functions) for absence notifications and jilid-completion detection — deferred; jilid-completion is currently detected **client-side** instead (see `src/lib/yanbua.ts`), since no webhook/notification infra exists yet
 - [ ] Backup/PITR policy confirmed for chosen Supabase tier
+- [x] Migration 008 added: `fn_pending_registrations()` — not in the original 10-entity scope, added to support admin enrollment (see §10)
 
 ## 4. API & Netlify Functions
 
-- [ ] Convention documented for when to call PostgREST directly vs. via a Netlify Function wrapper
-- [ ] 5 custom functions built: `notify-absence`, `notify-milestone`, `streak-status`, `push-subscribe`, `send-reminder`
+- [x] Convention documented for when to call PostgREST directly vs. via a Netlify Function wrapper — emerged in practice rather than being decided upfront: plain CRUD goes straight through PostgREST from the client; anything needing the service-role key (bypassing RLS) goes through a Function that independently re-verifies the caller's authorization in code (see `invite-user.mts`)
+- [ ] 5 custom functions built: `notify-absence`, `notify-milestone`, `streak-status`, `push-subscribe`, `send-reminder` — **none of these built yet**; all Phase 3/notifications work remains deferred
 - [ ] 4 scheduled functions built with correct cron — verify UTC vs. CET/CEST handling around DST changes
 - [ ] Notification deduplication-by-tag logic implemented and tested
 - [ ] Streak calculation logic — edge cases defined (assignment created mid-week, `daily` vs `3x_week` frequency, missed-day reset rules)
+- [x] `invite-user.mts` built — the project's **first real Function**, landed ahead of the 5 above and not part of the original spec (admin email-invite, see §10 and TAD's Netlify Functions table)
 
 ## 5. Frontend / PWA (build against the validated prototype)
 
-- [ ] `manifest.json` + icon set using the real PPME logo (already correctly reflected in prototype header — confirm exported at required PWA sizes: 192px, 512px, maskable)
-- [ ] Service worker via Workbox: app-shell precaching, runtime caching per route, background sync queue for offline attendance/murajaah submissions
+- [x] `manifest.json` + icon set using the real PPME logo — configured (192/512/maskable) in `vite.config.ts`; **icons are still a low-res upscale** from a 135×70px source, real high-res asset still needed before launch (see README "Known gaps")
+- [~] Service worker via Workbox: app-shell precaching done (`vite-plugin-pwa`, `generateSW`); runtime caching per route and **background sync queue for offline attendance/murajaah submissions not built** — attendance currently requires being online
 - [ ] IndexedDB offline queue tested for conflict resolution (e.g., tutor marks attendance offline on two devices before sync)
-- [ ] Role-based routing/dashboards for the 3 roles shown in the prototype: **Ustadz** (Hadir/Tugas/Yanbu'a/Al-Quran/Murajaah — class roster views), **Orang Tua** (same 5 tabs — single child's data), **Santri** (same 5 tabs — self view, 16+ only)
-  - [ ] Note: prototype's top "Pilih Peran" switcher is **prototype-only** — production derives role from authenticated user via Supabase Auth + RLS, not a manual toggle
-- [ ] Bottom tab nav built in confirmed order: Hadir | Tugas | Yanbu'a | Al-Quran | Murajaah
-- [ ] Top nav: logo left, language toggle (globe icon), notification bell with badge
-- [ ] Attendance check-in UI: 3-state per student (✓ present / clock late / ✕ absent), matching `attendance_status` enum
-- [ ] Streak/gold-accent treatment reserved specifically for achievement moments (Murajaah flame counter, "Sudah Hafal" badges) — not used elsewhere
-- [ ] Accessibility pass: 44px minimum tap targets, tested on real Android 8+/iOS 13+ devices
+- [~] Role-based routing/dashboards for the 3 roles shown in the prototype: **Ustadz** (Hadir/Tugas/Yanbu'a/Al-Quran/Murajaah — class roster views), **Orang Tua** (same 5 tabs — single child's data), **Santri** (same 5 tabs — self view, 16+ only) — built for **Hadir + Yanbu'a only**; Tugas/Al-Quran/Murajaah remain placeholder pages. A 4th role (**Admin**) was also built with its own separate nav (§10), not part of the original 3-role design
+  - [x] Note: prototype's top "Pilih Peran" switcher is **prototype-only** — production derives role from authenticated user via Supabase Auth + RLS, not a manual toggle — confirmed correct in the shipped `AuthContext`/RLS implementation
+- [x] Bottom tab nav built in confirmed order: Hadir | Tugas | Yanbu'a | Al-Quran | Murajaah — plus a separate admin-only tab set (Pendaftaran | Kelas | Santri), shown instead of (never alongside) the above for `role=admin`
+- [~] Top nav: logo left, language toggle (globe icon), notification bell with badge — logo + language toggle done; **notification bell not built** (no notifications feature exists yet)
+- [x] Attendance check-in UI: 3-state per student (✓ present / clock late / ✕ absent), matching `attendance_status` enum
+- [x] Streak/gold-accent treatment reserved specifically for achievement moments (Murajaah flame counter, "Sudah Hafal" badges) — not used elsewhere — followed for Yanbu'a's jilid-complete banner; Murajaah itself isn't built yet so that half is still N/A
+- [ ] Accessibility pass: 44px minimum tap targets, tested on real Android 8+/iOS 13+ devices — 44px enforced in CSS (`min-h-11` convention) but never verified on real hardware
 - [ ] **iOS Web Push tested specifically** — requires "Add to Home Screen" first on iOS 16.4+; not a given even though iOS technically supports it
 - [ ] Notification center/list screen — design not yet reviewed in prototype batch; confirm before building
 
@@ -109,7 +113,7 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 
 ## 9. Year-End Curriculum Reports (New Feature, Milestone 6)
 
-- [ ] Migration 005 applied (`year_end_reports` table, `report_status`/`report_grade` enums, RLS, `reports` Storage bucket)
+- [x] Migration 005 applied (`year_end_reports` table, `report_status`/`report_grade` enums, RLS, `reports` Storage bucket)
 - [ ] `pdfkit` added as a dependency for the `publish-report` Function (ADR-011); confirm package size stays comfortably within Netlify Functions' limits
 - [ ] PDF template designed: header (PPME logo + brand colors), attendance stats table, subject grades table, narrative section, footer (tutor name + publish date) — no existing prototype screen to reference, build against the app's established visual language
 - [ ] New "Reports" tab/screen added to Parent and Student (16+) dashboards; new "Generate/Review Drafts" screen added to Tutor and Admin views
@@ -120,8 +124,23 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 - [ ] Right-to-erasure procedure updated to explicitly delete the student's Storage PDF object, not just the DB row (cascade delete doesn't reach Storage)
 - [ ] Dry run: one real tutor publishes one real report before the actual year-end rollout, to catch UX/content issues early
 
+## 10. Admin Enrollment (New Feature — built ahead of schedule, not in the original numbered order)
+
+Not part of the original PRD/TAD feature list or this checklist's build order — built in response to a direct need (someone has to be able to get users into the system) rather than as a scheduled milestone. Scope deliberately narrowed to enrollment/setup only; see TAD ADR-012.
+
+- [x] `/admin/registrations`, `/admin/classes`, `/admin/students` built (`src/features/admin/`)
+- [x] Migration 008: `fn_pending_registrations()` — admin-only (enforced in the function itself), the only way to discover a Google sign-in with no `public.users` profile yet
+- [x] Email invite flow: `netlify/functions/invite-user.mts` — creates `auth.users` + `public.users` together in one admin action, via `auth.admin.inviteUserByEmail()` under the service-role key
+- [x] Admin nav is exclusive, not additive: `ADMIN_NAV_TABS` replaces the operational tabs for `role=admin`, and the operational routes/pages explicitly block admin (`AdminRestricted.tsx`, `RequireAdmin.tsx`) rather than relying on the nav being hidden as the only guard
+- [x] Dev-only fixture sign-in panel (`src/dev/DevAuthSwitcher.tsx`) + `supabase/dev-fixture.sql` — lets the whole admin flow (and Milestone 1) be exercised locally without real Google OAuth
+- [ ] No standalone "remove/deactivate a student" flow
+- [ ] No CSV export (would need its own ADR-012 exception if pursued — it's operational data)
+- [ ] Supabase Auth's Site URL / Redirect URLs allow-list needs to be correct on the live project for invite emails to land on the right domain — `invite-user.mts` passes an explicit `redirectTo` (Netlify's own `URL` env var) so this is no longer solely dependent on that dashboard setting, but the target must still be on the allow-list
+
 ---
 
 ## Suggested Build Order
 
 1. Repo + environments (§2) → 2. Database + RLS (§3) → 3. Auth flow (Google OAuth + role derivation) → 4. Ustadz attendance flow end-to-end (simplest, highest-value) → 5. Remaining Ustadz flows (Tugas, Yanbu'a, Al-Quran, Murajaah) → 6. Orang Tua views (read-mostly, reuses most backend work) → 7. Santri self-login (16+) → 8. Notifications/Functions (§4) → 9. PWA/offline polish (§5) → 10. Compliance docs finalized before any real student data is entered (§6)
+
+**Status as of this writing:** 1–3 done. 4 done (Hadir). 5 partially done (Yanbu'a done; Tugas/Al-Quran/Murajaah still placeholders). 6 done for the two built flows (Hadir + Yanbu'a), same pattern ready to reuse for the rest of 5 once built. 7 works structurally (RLS + the family views already handle `role=student`) but hasn't been exercised with a real 16+ self-login account. 8 barely started — `invite-user.mts` exists but none of the 5 originally-planned notification/streak Functions do. 9 not started. 10 not started. Admin enrollment (§10 above) landed out of order, ahead of 5–9, in response to the practical need to get real users into the system.
