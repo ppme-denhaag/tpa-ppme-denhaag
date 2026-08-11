@@ -32,7 +32,7 @@ npm run build         # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–007, applied in order). The
+Migrations live in `supabase/migrations/` (001–008, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -63,6 +63,44 @@ instead of Frankfurt. **Never point tests or local dev at data you wouldn't
 want in a shared dev database** — see test-plan.md's "no real student data in
 any test environment, ever" rule; this applies to the linked project, not the
 local Docker stack, which is disposable and per-machine.
+
+#### Dev fixture + fixture sign-in (no real Google OAuth needed)
+
+`supabase/dev-fixture.sql` seeds a small realistic dataset (tutor, admin,
+2 parents, 2 classes, 4 students, 1 pending/unregistered sign-in) into a
+local stack — load it after migrations are applied:
+
+```bash
+supabase migration up --local
+docker exec -i supabase_db_tpa-ppme-denhaag \
+  psql -U postgres -v ON_ERROR_STOP=1 < supabase/dev-fixture.sql
+```
+
+With `.env` pointed at the local stack, `npm run dev` then shows a
+"Dev only" sign-in panel (`src/dev/DevAuthSwitcher.tsx`, gated on
+`import.meta.env.DEV` and confirmed absent from production builds) on the
+sign-in screen — pick any fixture identity to get a real authenticated
+session against the local stack without configuring Google OAuth
+(`supabase/config.toml` has no `[auth.external.google]` section locally).
+
+**Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
+already does this correctly): PostgREST/RLS never look at `instance_id` or
+the `*_token`/`*_change` columns — they only validate the JWT signature and
+trust its claims. But `supabase.auth.setSession()` (what the fixture sign-in
+panel uses) calls GoTrue's own `/auth/v1/user` endpoint, which does a real
+row lookup and scan. A `NULL` `instance_id` makes that lookup silently match
+nothing (`"User from sub claim in JWT does not exist"`); a `NULL`
+`confirmation_token`/etc. makes it find the row but then fail to scan it
+(`"sql: Scan error ... converting NULL to string is unsupported"`). Set
+`instance_id = '00000000-0000-0000-0000-000000000000'` and all the token
+columns to `''`, not left unset — see `dev-fixture.sql`'s comment for the
+full column list. A real Google-OAuth-created row never hits this since
+GoTrue sets these itself; only a hand-written SQL fixture can.
+
+**Don't run the RLS suite (below) against a stack that already has
+dev-fixture.sql loaded** — `RLS-14` asserts admin sees exactly the suite's
+own 4 fixture students, and it'll see dev-fixture's students too. Use a
+plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
@@ -103,5 +141,15 @@ against the live project in that window and appeared broken.
   checklist's suggested build order for what's next — notifications/Netlify
   Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
   deferred from Milestone 1.
+- **Admin enrollment UI is built** (`/admin/registrations`, `/admin/classes`,
+  `/admin/students`) — turning a Google sign-in into a role-assigned profile,
+  class/tutor management, student enrollment. By design, admin cannot view
+  attendance/Yanbu'a/homework/Quran/Murajaah/Reports (those tabs are hidden
+  for admin, and the routes themselves redirect if visited directly) — see
+  `AdminRestricted.tsx`'s docstring for why this is an application-layer
+  restriction, not an RLS one (RLS still grants admin full table access,
+  matching the TAD's documented "Admin: ALL" policy). Still missing: no
+  "tutor management" view beyond assigning tutors on the class form, no way
+  to remove/deactivate an enrolled student, no CSV export.
 - Bundle isn't code-split yet (single ~500KB JS chunk) — fine at this size, revisit
   once feature modules grow.

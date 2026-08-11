@@ -1,16 +1,19 @@
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { NAV_TABS } from './tabs'
+import { useAuth } from '../context/AuthContext'
+import { ADMIN_NAV_TABS, NAV_TABS } from './tabs'
 
 export function BottomTabNav() {
   const { t } = useTranslation()
+  const { profile } = useAuth()
+  const tabs = profile?.role === 'admin' ? ADMIN_NAV_TABS : NAV_TABS
 
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-10 flex border-t border-black/5 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden"
       aria-label={t('app.name')}
     >
-      {NAV_TABS.map(({ to, key }) => (
+      {tabs.map(({ to, key }) => (
         <NavLink
           key={to}
           to={to}

@@ -701,6 +701,10 @@ export type Database = {
       fn_my_class_students: { Args: never; Returns: string[] }
       fn_my_classes: { Args: never; Returns: string[] }
       fn_my_student_id: { Args: never; Returns: string }
+      fn_pending_registrations: {
+        Args: never
+        Returns: { id: string; email: string; created_at: string }[]
+      }
     }
     Enums: {
       assignment_status_enum: "pending" | "completed" | "incomplete" | "partial"
