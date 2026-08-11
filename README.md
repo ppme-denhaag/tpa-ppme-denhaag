@@ -24,10 +24,11 @@ npm run dev
 ```
 
 ```bash
-npm run typecheck   # tsc -b --noEmit
-npm run test         # Vitest unit tests
-npm run test:e2e     # Playwright (starts its own dev server)
-npm run build         # production build
+npm run typecheck            # tsc -b --noEmit (src/)
+npm run typecheck:functions  # tsc -p netlify/functions (Netlify Functions, not covered by the above)
+npm run test                  # Vitest unit tests
+npm run test:e2e              # Playwright (starts its own dev server)
+npm run build                  # production build
 ```
 
 ## Database
@@ -129,6 +130,36 @@ app was non-functional at the database layer from when migrations 002/003
 were first applied until this fix — worth knowing if anything was tested
 against the live project in that window and appeared broken.
 
+## Netlify Functions
+
+`netlify/functions/` — `health.mts` (pipeline smoke test) and `invite-user.mts`
+(admin-only: invites a user by email and creates their profile in one step,
+see RegistrationsPage). Both use the Netlify Functions v2 API (default
+export, Web-standard `Request`/`Response`) and are typechecked separately
+from the main app (`npm run typecheck:functions`) since `netlify/functions/`
+isn't a project reference of the root `tsconfig.json`.
+
+To run Functions locally (not just the Vite app — `npm run dev` alone
+doesn't serve `/.netlify/functions/*`):
+
+```bash
+netlify dev   # serves the Vite app + Functions together, default http://localhost:8888
+```
+
+Point `.env` at the local Supabase stack as usual, and additionally set
+`SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` there too (server-side
+Functions read `process.env` directly, not Vite's `import.meta.env`) —
+use the local stack's own keys from `supabase start`'s output, not the
+production ones from `netlify env:list`.
+
+**Do not add a `config.path` export to a v2 Function that just restates its
+own default route** (`/.netlify/functions/<name>`) — confirmed on
+`netlify-cli` 27.1.1: declaring it, even matching the default exactly,
+makes local `netlify dev` refuse to match its own declared path and 404
+every request, while working fine on real deployed Netlify. Both existing
+functions omit it for this reason; only add `config.path` for an actually
+different custom path.
+
 ## Known gaps (foundation pass — not yet built)
 
 - **No real PPME logo asset for PWA icons.** The top nav now uses the real
@@ -142,8 +173,11 @@ against the live project in that window and appeared broken.
   Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
   deferred from Milestone 1.
 - **Admin enrollment UI is built** (`/admin/registrations`, `/admin/classes`,
-  `/admin/students`) — turning a Google sign-in into a role-assigned profile,
-  class/tutor management, student enrollment. By design, admin cannot view
+  `/admin/students`), with two ways to register a user: invite by email
+  (`invite-user.mts` — creates the account and profile together, no waiting
+  on them to sign in first) or wait for them to sign in with Google and
+  register them from the resulting pending-registrations list
+  (`fn_pending_registrations()`, migration 008). By design, admin cannot view
   attendance/Yanbu'a/homework/Quran/Murajaah/Reports (those tabs are hidden
   for admin, and the routes themselves redirect if visited directly) — see
   `AdminRestricted.tsx`'s docstring for why this is an application-layer

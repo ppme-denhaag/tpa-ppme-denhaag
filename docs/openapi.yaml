@@ -42,6 +42,8 @@ tags:
     description: Year-end curriculum reports
   - name: functions
     description: Custom Netlify Functions
+  - name: admin
+    description: Enrollment/setup only — never operational (attendance/progress) data, see TAD ADR-012
 
 paths:
   # ───────────────────────── PostgREST ─────────────────────────
@@ -353,6 +355,41 @@ paths:
         '204': { description: Updated }
         '403': { $ref: '#/components/responses/ForbiddenRLS' }
 
+  /rpc/fn_pending_registrations:
+    post:
+      tags: [admin]
+      summary: List Google sign-ins with no matching public.users profile yet (Admin only)
+      description: |
+        Added in migration 008. `security definer` — the only way to read
+        `auth.users` (id/email/created_at only, nothing else) from a client
+        role, since that schema isn't otherwise PostgREST-exposed. Gated to
+        admin-only *inside* the function (`and public.fn_is_admin()` folded
+        into its `WHERE` clause) rather than by a 403 — a non-admin caller
+        gets an empty array, matching this project's established convention
+        (see migration 007's grants) of an empty result over a raw
+        permission error. Powers the Registrations admin page's fallback
+        path for someone who signed in directly instead of being invited
+        via `/invite-user`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200':
+          description: Pending sign-ins (empty array for non-admin callers)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    email: { type: string, format: email }
+                    created_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /generate-year-end-drafts:
     post:
       tags: [functions, reports]
@@ -549,6 +586,53 @@ paths:
       security: []
       responses:
         '200': { description: Reminders dispatched (count in body) }
+
+  /invite-user:
+    post:
+      tags: [functions, admin]
+      summary: Invite a new user by email (Admin only)
+      description: |
+        Not part of the original 8-Function spec — added to support the
+        admin enrollment UI. Verifies the caller is an admin itself (via
+        their JWT + a `public.users` lookup under the service-role key)
+        rather than trusting the client, since this endpoint necessarily
+        runs under `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS entirely —
+        required for `auth.admin.inviteUserByEmail()` and to write
+        `public.users` ahead of the invitee's first sign-in). On success,
+        creates both the `auth.users` row (GoTrue emails a sign-in link,
+        with `redirectTo` set to the deploy's own canonical URL rather
+        than relying on the project's dashboard-configured Site URL) and
+        the matching `public.users` profile in one request. If the email
+        is already registered, `inviteUserByEmail` is idempotent (returns
+        the existing user rather than erroring) and the profile insert
+        then hits a unique-constraint violation — surfaced as 409, not
+        the generic 500.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, full_name, role]
+              properties:
+                email: { type: string, format: email }
+                full_name: { type: string }
+                role: { $ref: '#/components/schemas/UserRole' }
+      responses:
+        '201':
+          description: Invited — auth.users + public.users rows created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  email: { type: string, format: email }
+        '400': { description: Invalid email/role, or missing full_name }
+        '401': { description: Missing/invalid Authorization header or session }
+        '403': { description: Caller is authenticated but not an admin }
+        '409': { description: Email is already registered }
+        '500': { description: Server misconfigured, or invite succeeded but profile creation failed (still recoverable via the pending-registrations flow) }
 
 components:
   securitySchemes:

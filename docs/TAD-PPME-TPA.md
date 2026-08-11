@@ -184,6 +184,7 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | ADR-009 | **Web Push (VAPID) for notifications** | Free; no third-party service needed; browser-native; works on Android and desktop; iOS 16.4+ supports web push | FCM (Google dependency); OneSignal (extra service); WhatsApp only (not all parents use it) |
 | ADR-010 | **Netlify Scheduled Functions for reminders** | Cron-based daily Murajaah reminders; no separate scheduler infrastructure; runs in EU region; included in Netlify plan | Supabase pg_cron (limited); External cron service (extra dependency); AWS Lambda (overkill) |
 | ADR-011 | **pdfkit for year-end report PDF generation** | Pure-JS, no headless browser — fits comfortably within Netlify Functions' package-size and execution-time limits; sufficient for a structured single/two-page report (header, stats table, grades table, narrative) | Puppeteer/Playwright + Chromium (HTML→PDF gives more layout flexibility but the Chromium binary is heavy for serverless — tight fit on free tier, slower cold starts); @react-pdf/renderer (viable alternative, similar tradeoffs to pdfkit but React-based — reconsider if design needs grow past what pdfkit's imperative API comfortably supports) |
+| ADR-012 | **Admin role scoped to enrollment/setup only, not operational data** | Explicit product decision during the admin UI build: admin manages users/classes/students but cannot view attendance, Yanbu'a/Quran/Murajaah progress, homework, or reports — those nav tabs are hidden for admin and the routes redirect if visited directly (`AdminRestricted.tsx`). This is an **application-layer** restriction only — RLS still grants admin `ALL` at the DB layer per ADR-006/the RLS policy table below, kept for legitimate support/data-recovery needs. Narrows the "CS Tools → Admin Dashboard" scope below from the original spec (which included Attendance Reports and Progress Overview) | Full CS Tools scope as originally specced (rejected: puts student progress/attendance data in front of a role with no pedagogical relationship to the student, beyond what enrollment administration requires) |
 
 # Impact
 
@@ -196,7 +197,7 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | Flows | 5 primary flows: Attendance recording, Homework lifecycle, Yanbu'a entry, Quran entry, Murajaah assignment + daily confirmation |
 | Database | PostgreSQL on Supabase (Frankfurt EU); encrypted at rest (AES-256); TLS in transit; Row Level Security; automated daily backups |
 | Billing | Supabase Free Tier (500MB DB, 1GB storage, 50K monthly active users); Netlify Free/Pro ($0-$19/mo); Google OAuth (free); Total estimated: $0-$19/month |
-| CS Tools | Admin dashboard for TPA committee: enrollment management, aggregate attendance reports, class management |
+| CS Tools | Admin dashboard for TPA committee: enrollment management, class management, user registration/invite. Aggregate attendance reports and progress overview excluded per ADR-012 (admin scoped away from operational data) |
 | Scheduler | Netlify Scheduled Functions: daily Murajaah reminders (configurable per family, default 18:00 CET); streak reset calculation (midnight CET) |
 | Others | PWA manifest, Service Worker, i18n (Bahasa Indonesia + Dutch), PPME branding assets |
 
@@ -358,6 +359,15 @@ Supabase auto-generates RESTful endpoints from the PostgreSQL schema via PostgRE
 | POST | `/.netlify/functions/generate-year-end-drafts` | Admin-triggered. Computes stats and inserts one draft `year_end_reports` row per enrolled student for the given `academic_year` (optionally scoped to `class_id`) |
 | POST | `/.netlify/functions/publish-report` | Tutor-triggered. Flips a report `draft → published`, generates the PDF (pdfkit — see ADR-011), uploads to Storage, and triggers the report-ready notification. Also used to regenerate the PDF after a post-publish edit (FR-006) |
 | GET | `/.netlify/functions/report-pdf` | Returns a short-lived signed URL for a report's PDF, after verifying the caller is authorized to view that report (same rule as the RLS policy on `year_end_reports`) |
+| POST | `/.netlify/functions/invite-user` | **Admin-only** (verified in-function via the caller's JWT + `public.users.role`, not trusted from the client). Not part of the original 8-function spec — added to support inviting a user by email (§ ADR-012 area, admin enrollment). Calls `auth.admin.inviteUserByEmail()` under the service-role key and creates the matching `public.users` profile in the same request, collapsing the "sign in once, then get registered" two-step flow into one admin action. Requires `SUPABASE_SERVICE_ROLE_KEY` — the project's first Function to actually need it |
+
+### Custom Postgres Functions (RPC)
+
+Client-callable via PostgREST's `/rest/v1/rpc/{fn}`, distinct from the read-only internal helpers (`fn_is_admin()`, `fn_my_children()`, etc.) that only ever run inside RLS policy expressions:
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/rest/v1/rpc/fn_pending_registrations` | Admin-only, enforced inside the function (`and public.fn_is_admin()` folded into its `WHERE` clause — empty result for anyone else, not an error). `security definer` — the only way to read `auth.users` (id/email/created_at only) from a client role, since that schema isn't otherwise PostgREST-exposed. Added in migration 008 to power the Registrations admin page's fallback path (someone signed in directly, wasn't invited) |
 
 ### Supabase Storage
 
@@ -577,16 +587,22 @@ RLS policies enforce data isolation at the database level:
 
 ### Admin Dashboard (TPA Committee)
 
-Built into the PWA with `admin` role access:
+Built into the PWA with `admin` role access. **Scope narrowed from the
+original spec by ADR-012**: admin handles enrollment/setup only, never
+operational (attendance/progress) data — the two rows struck through below
+were in the original design but are deliberately not built, and the admin
+nav/routes actively block them (`AdminRestricted.tsx`), not just omit a
+link to them.
 
-| Feature | Description |
-|---|---|
-| Student Enrollment | Add/remove students; link to parent accounts; assign to classes |
-| Class Management | Create classes; assign tutors; set schedules |
-| Tutor Management | View active tutors; manage class assignments |
-| Attendance Reports | Aggregate attendance rates by class, student, date range |
-| Progress Overview | Summary of Yanbu'a/Quran/Murajaah progression across all students |
-| Export (CSV) | Export attendance and progress data for TPA committee reporting |
+| Feature | Description | Status |
+|---|---|---|
+| Student Enrollment | Add students; link to parent accounts; assign to classes (`/admin/students`) | Built — no remove/deactivate yet |
+| Class Management | Create classes; assign tutors; set schedules (`/admin/classes`) | Built |
+| Tutor Management | View active tutors; manage class assignments | Built, folded into Class Management (assigning tutors to a class doubles as "who's active") — no standalone tutor list/view |
+| User Registration | Invite a user by email, or register one who signed in directly (`/admin/registrations`) | Built — not in the original spec; see ADR-012 and `invite-user.mts` |
+| ~~Attendance Reports~~ | ~~Aggregate attendance rates by class, student, date range~~ | **Excluded by ADR-012** — operational data |
+| ~~Progress Overview~~ | ~~Summary of Yanbu'a/Quran/Murajaah progression across all students~~ | **Excluded by ADR-012** — operational data |
+| Export (CSV) | Export attendance and progress data for TPA committee reporting | Not built — would also need an ADR-012 exception if pursued (it's operational data), unresolved |
 
 ### Self-Service for Parents
 
