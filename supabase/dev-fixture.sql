@@ -21,17 +21,37 @@
 -- flows can be exercised from scratch.
 -- ============================================================
 
-insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at)
+-- instance_id and the *_token/*_change columns are set explicitly (not
+-- left NULL) — PostgREST/RLS never look at them (it only validates the
+-- JWT signature and trusts the claims), but GoTrue's own /user endpoint
+-- does a real row lookup + scan into a non-nullable-string Go struct, and
+-- both `supabase.auth.setSession()` (used by DevAuthSwitcher) and the
+-- Admin API go through that path. A NULL instance_id makes GoTrue's
+-- lookup silently match nothing ("User from sub claim in JWT does not
+-- exist"); a NULL *_token/*_change column makes it find the row but then
+-- fail with "sql: Scan error ... converting NULL to string is
+-- unsupported". A real Google-OAuth-created row never has this problem
+-- because GoTrue itself sets these — only a hand-written SQL fixture
+-- can hit it. Learned the hard way: earlier fixture inserts (omitting
+-- these columns) passed every RLS/PostgREST-level test in this repo
+-- without issue, since none of those go through GoTrue — only the
+-- browser sign-in flow surfaced it.
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change,
+  email_change_token_current, phone_change, phone_change_token, reauthentication_token
+)
 values
-  ('a1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'ustadz.ahmad@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
-  ('a2000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'ibu.siti@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
-  ('a2000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'bapak.rudi@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
-  ('a3000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'fatimah@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
-  ('b1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'new.tutor@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
-  ('c1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'admin.dev@dev.local', '', now(), '{}', '{}', false, false, now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'a1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'ustadz.ahmad@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'a2000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'ibu.siti@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'a2000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'bapak.rudi@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'a3000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'fatimah@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'new.tutor@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000000', 'c1000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', 'admin.dev@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', ''),
   -- Deliberately no matching public.users row — this is what the
   -- Registrations page (admin-only) is for.
-  ('b1000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'calon.ustadz@dev.local', '', now(), '{}', '{}', false, false, now(), now());
+  ('00000000-0000-0000-0000-000000000000', 'b1000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', 'calon.ustadz@dev.local', '', now(), '{}', '{}', false, false, now(), now(), '', '', '', '', '', '', '', '');
 
 insert into public.users (id, email, full_name, role, locale)
 values

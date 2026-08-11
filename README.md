@@ -83,6 +83,25 @@ sign-in screen — pick any fixture identity to get a real authenticated
 session against the local stack without configuring Google OAuth
 (`supabase/config.toml` has no `[auth.external.google]` section locally).
 
+**Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
+already does this correctly): PostgREST/RLS never look at `instance_id` or
+the `*_token`/`*_change` columns — they only validate the JWT signature and
+trust its claims. But `supabase.auth.setSession()` (what the fixture sign-in
+panel uses) calls GoTrue's own `/auth/v1/user` endpoint, which does a real
+row lookup and scan. A `NULL` `instance_id` makes that lookup silently match
+nothing (`"User from sub claim in JWT does not exist"`); a `NULL`
+`confirmation_token`/etc. makes it find the row but then fail to scan it
+(`"sql: Scan error ... converting NULL to string is unsupported"`). Set
+`instance_id = '00000000-0000-0000-0000-000000000000'` and all the token
+columns to `''`, not left unset — see `dev-fixture.sql`'s comment for the
+full column list. A real Google-OAuth-created row never hits this since
+GoTrue sets these itself; only a hand-written SQL fixture can.
+
+**Don't run the RLS suite (below) against a stack that already has
+dev-fixture.sql loaded** — `RLS-14` asserts admin sees exactly the suite's
+own 4 fixture students, and it'll see dev-fixture's students too. Use a
+plain `supabase db reset --local` (no fixture) before `supabase test db`.
+
 ## RLS automated test suite
 
 `supabase/tests/database/rls.test.sql` implements all 21 cases from
