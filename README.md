@@ -32,7 +32,7 @@ npm run build         # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–005, applied in order). The
+Migrations live in `supabase/migrations/` (001–007, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -40,11 +40,29 @@ a new migration:
 supabase db push
 ```
 
-There is no local Postgres for dev — Docker isn't available in this environment,
-so `supabase start` (local emulation) doesn't work here. Local dev talks directly
-to the Frankfurt project. **Never point tests or local dev at data you wouldn't
+### Local Postgres (requires Docker)
+
+`supabase start` runs a full local stack (Postgres, GoTrue, PostgREST, Storage)
+via Docker and applies `supabase/migrations/` automatically — this is how CI's
+`rls` job runs, and it's the safest way to develop/test against real RLS
+without touching the linked Frankfurt project:
+
+```bash
+supabase start   # first run pulls several images, can take a few minutes
+supabase stop    # tears the stack down; add --no-backup to also drop the volume
+```
+
+If `docker ps` fails with a permission error, your user likely isn't in the
+`docker` group yet: `sudo usermod -aG docker $USER`, then start a fresh login
+session (the group change doesn't apply to already-running shells — in a pinch,
+`sg docker -c "supabase start"` picks it up without a new login).
+
+Point `.env` at the local stack (`API_URL`/`ANON_KEY` from the `supabase start`
+output, both under `http://127.0.0.1:54321`) to run `npm run dev` against it
+instead of Frankfurt. **Never point tests or local dev at data you wouldn't
 want in a shared dev database** — see test-plan.md's "no real student data in
-any test environment, ever" rule.
+any test environment, ever" rule; this applies to the linked project, not the
+local Docker stack, which is disposable and per-machine.
 
 ## RLS automated test suite
 
@@ -80,8 +98,10 @@ against the live project in that window and appeared broken.
   512px PWA icons (`public/icons/*.png`) are a soft ~3.7x upscale — fine as
   a placeholder, replace with a proper square/high-res (512×512+) source
   before real launch.
-- **Feature UI is not built.** Attendance, homework, Yanbu'a, Quran, Murajaah,
-  and Reports are placeholder pages behind real auth/role/RLS. See the checklist's
-  suggested build order for what's next.
+- **Attendance and Yanbu'a (Milestone 1) are built**; homework, Quran, Murajaah,
+  and Reports are still placeholder pages behind real auth/role/RLS. See the
+  checklist's suggested build order for what's next — notifications/Netlify
+  Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
+  deferred from Milestone 1.
 - Bundle isn't code-split yet (single ~500KB JS chunk) — fine at this size, revisit
   once feature modules grow.

@@ -32,7 +32,16 @@
     "language": "Bahasa",
     "page": "Hal.",
     "ayah": "Ayat",
-    "of": "dari"
+    "of": "dari",
+    "selectClass": "Pilih Kelas",
+    "selectChild": "Pilih Anak",
+    "selectStudent": "Pilih Santri",
+    "empty": "Belum ada data",
+    "from": "Dari",
+    "to": "Sampai",
+    "back": "Kembali",
+    "noClassesAssigned": "Anda belum ditugaskan ke kelas manapun",
+    "noStudentsInClass": "Belum ada santri di kelas ini"
   },
   "attendance": {
     "title": "Kehadiran",
@@ -47,6 +56,8 @@
     "reason": "Alasan",
     "reasonSick": "Sakit",
     "reasonPermission": "Izin",
+    "reasonNoReason": "Tanpa keterangan",
+    "reasonOther": "Lainnya",
     "semesterRate": "Kehadiran semester ini",
     "attendanceRate": "Kehadiran",
     "submitted": "Kehadiran berhasil dikirim",
@@ -87,7 +98,11 @@
     "masteryUlang": "Ulang",
     "jilidComplete": "Selesai Jilid {{number}}! 🎉",
     "record": "Catat Progres",
-    "notes": "Catatan"
+    "notes": "Catatan",
+    "fieldJilid": "Jilid",
+    "fieldPage": "Halaman",
+    "fieldMastery": "Penguasaan",
+    "savedMessage": "Progres berhasil disimpan"
   },
   "quran": {
     "title": "Al-Quran",

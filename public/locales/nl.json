@@ -32,7 +32,16 @@
     "language": "Taal",
     "page": "Pag.",
     "ayah": "Ayah",
-    "of": "van"
+    "of": "van",
+    "selectClass": "Kies klas",
+    "selectChild": "Kies kind",
+    "selectStudent": "Kies leerling",
+    "empty": "Nog geen gegevens",
+    "from": "Van",
+    "to": "Tot",
+    "back": "Terug",
+    "noClassesAssigned": "U bent nog aan geen enkele klas toegewezen",
+    "noStudentsInClass": "Nog geen leerlingen in deze klas"
   },
   "attendance": {
     "title": "Aanwezigheid",
@@ -47,6 +56,8 @@
     "reason": "Reden",
     "reasonSick": "Ziek",
     "reasonPermission": "Met toestemming",
+    "reasonNoReason": "Geen reden opgegeven",
+    "reasonOther": "Anders",
     "semesterRate": "Aanwezigheid dit semester",
     "attendanceRate": "Aanwezigheid",
     "submitted": "Aanwezigheid succesvol verstuurd",
@@ -87,7 +98,11 @@
     "masteryUlang": "Ulang",
     "jilidComplete": "Jilid {{number}} voltooid! 🎉",
     "record": "Voortgang vastleggen",
-    "notes": "Notities"
+    "notes": "Notities",
+    "fieldJilid": "Jilid",
+    "fieldPage": "Pagina",
+    "fieldMastery": "Beheersing",
+    "savedMessage": "Voortgang succesvol opgeslagen"
   },
   "quran": {
     "title": "Al-Quran",

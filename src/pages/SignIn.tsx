@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
+import { DevAuthSwitcher } from '../dev/DevAuthSwitcher'
 
 export function SignIn() {
   const { t } = useTranslation()
@@ -19,6 +20,7 @@ export function SignIn() {
       >
         {t('auth.signIn')}
       </button>
+      {import.meta.env.DEV && <DevAuthSwitcher />}
     </div>
   )
 }
