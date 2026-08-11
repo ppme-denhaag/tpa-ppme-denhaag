@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { getErrorMessage } from '../../lib/errors'
 import { createClass, fetchAllClasses, fetchUsersByRole, updateClass, type AdminClass, type DirectoryUser } from './api'
 import { ClassForm } from './ClassForm'
 
@@ -21,7 +22,7 @@ export function ClassesPage() {
         setClasses(classData)
         setTutors(tutorData)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false))
   }
 
@@ -35,7 +36,7 @@ export function ClassesPage() {
       setClasses((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setCreating(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSaving(false)
     }
@@ -49,7 +50,7 @@ export function ClassesPage() {
       setClasses((prev) => prev.map((c) => (c.id === id ? updated : c)))
       setEditingId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSaving(false)
     }

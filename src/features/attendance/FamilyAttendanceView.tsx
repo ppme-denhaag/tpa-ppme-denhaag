@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useMyStudents } from '../../hooks/useMyStudents'
 import { ChildPicker } from '../../components/ChildPicker'
 import { computeAttendanceRate } from '../../lib/attendance'
+import { getErrorMessage } from '../../lib/errors'
 import { fetchAttendanceHistory, todayLocalDate, type AttendanceHistoryRow } from './api'
 
 function daysAgo(days: number): string {
@@ -45,7 +46,7 @@ export function FamilyAttendanceView() {
         if (active) setHistory(data)
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : String(err))
+        if (active) setError(getErrorMessage(err))
       })
       .finally(() => {
         if (active) setLoading(false)

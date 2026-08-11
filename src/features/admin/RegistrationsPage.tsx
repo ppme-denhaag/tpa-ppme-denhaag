@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Database } from '../../lib/database.types'
+import { getErrorMessage } from '../../lib/errors'
 import { fetchPendingRegistrations, registerUser, type PendingRegistration } from './api'
 
 type UserRole = Database['public']['Enums']['user_role']
@@ -31,7 +32,7 @@ export function RegistrationsPage() {
     setError(null)
     fetchPendingRegistrations()
       .then(setPending)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false))
   }
 
@@ -50,7 +51,7 @@ export function RegistrationsPage() {
       await registerUser({ id: user.id, email: user.email, full_name: draft.full_name.trim(), role: draft.role })
       setPending((prev) => prev.filter((p) => p.id !== user.id))
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(getErrorMessage(err))
     } finally {
       setSavingId(null)
     }
