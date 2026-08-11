@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_I18N_KEY } from '../lib/roleLabels'
+import { AdminRestricted } from '../components/AdminRestricted'
 
 /**
  * Foundation-scope placeholder. The nav shell, role derivation, and RLS
@@ -11,6 +12,8 @@ import { ROLE_I18N_KEY } from '../lib/roleLabels'
 export function FeaturePlaceholder({ titleKey }: { titleKey: string }) {
   const { t } = useTranslation()
   const { profile } = useAuth()
+
+  if (profile?.role === 'admin') return <AdminRestricted />
 
   return (
     <div className="rounded-lg bg-white p-6 shadow-sm">

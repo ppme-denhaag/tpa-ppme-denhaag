@@ -9,7 +9,10 @@
     "yanbua": "Yanbu'a",
     "alquran": "Al-Quran",
     "murajaah": "Murajaah",
-    "laporan": "Rapor"
+    "laporan": "Rapor",
+    "pendaftaran": "Pendaftaran",
+    "kelas": "Kelas",
+    "santri": "Santri"
   },
   "auth": {
     "signIn": "Masuk dengan Google",
@@ -213,5 +216,30 @@
     "network": "Koneksi bermasalah. Periksa jaringan Anda.",
     "alreadyConfirmed": "Murajaah hari ini sudah dikonfirmasi.",
     "notAuthorized": "Anda tidak memiliki akses untuk tindakan ini."
+  },
+  "admin": {
+    "restrictedTitle": "Tidak Tersedia untuk Admin",
+    "restrictedMessage": "Admin tidak memiliki akses ke data operasional santri, ustadz, atau orang tua di halaman ini.",
+    "registrationsTitle": "Pendaftaran Pengguna",
+    "registrationsEmpty": "Tidak ada pendaftaran yang menunggu.",
+    "registeredSince": "Masuk pertama kali {{date}}",
+    "assignRole": "Peran",
+    "fullName": "Nama Lengkap",
+    "register": "Daftarkan",
+    "classesTitle": "Manajemen Kelas",
+    "newClass": "Kelas Baru",
+    "className": "Nama Kelas",
+    "classSchedule": "Jadwal",
+    "assignTutors": "Ustadz Pengampu",
+    "noTutors": "Belum ada ustadz terdaftar",
+    "noClasses": "Belum ada kelas",
+    "studentsTitle": "Manajemen Santri",
+    "newStudent": "Santri Baru",
+    "studentClass": "Kelas",
+    "studentParent": "Orang Tua",
+    "studentDob": "Tanggal Lahir",
+    "linkSelfLogin": "Tautkan Akun Login Mandiri (16+)",
+    "linkSelfLoginNone": "Tidak ada",
+    "noParents": "Belum ada orang tua terdaftar"
   }
 }

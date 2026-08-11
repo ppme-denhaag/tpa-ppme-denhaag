@@ -19,13 +19,14 @@ export interface FixtureUser {
   label: string
 }
 
-// Matches supabase/migrations + the dev fixture seeded into the local
-// stack (see README "Local Postgres" / dev_fixture.sql in this PR).
+// Matches supabase/dev-fixture.sql — see README "Local Postgres" for how
+// to load it into a local `supabase start` stack.
 export const FIXTURE_USERS: FixtureUser[] = [
   { id: 'a1000000-0000-0000-0000-000000000001', label: 'Ustadz Ahmad (Tutor)' },
   { id: 'a2000000-0000-0000-0000-000000000001', label: 'Ibu Siti (Parent — 2 children)' },
   { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 1 child)' },
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
+  { id: 'c1000000-0000-0000-0000-000000000001', label: 'Admin Dev (Admin)' },
 ]
 
 function base64UrlFromBytes(bytes: ArrayBuffer): string {

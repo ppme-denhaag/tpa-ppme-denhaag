@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 
 export function TopNav() {
   const { t } = useTranslation()
-  const { signOut } = useAuth()
+  const { signOut, profile } = useAuth()
 
   return (
     <header className="sticky top-0 z-10 flex h-14 items-center justify-between bg-ppme-primary px-4 text-white shadow-sm">
@@ -17,12 +17,14 @@ export function TopNav() {
       </Link>
 
       <div className="flex items-center gap-3">
-        <Link
-          to="/reports"
-          className="hidden min-h-11 items-center rounded-md px-2 text-sm font-medium text-white/90 hover:text-white sm:flex"
-        >
-          {t('nav.laporan')}
-        </Link>
+        {profile?.role !== 'admin' && (
+          <Link
+            to="/reports"
+            className="hidden min-h-11 items-center rounded-md px-2 text-sm font-medium text-white/90 hover:text-white sm:flex"
+          >
+            {t('nav.laporan')}
+          </Link>
+        )}
         <LanguageToggle />
         <button
           type="button"

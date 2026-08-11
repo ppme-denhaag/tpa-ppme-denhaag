@@ -9,7 +9,10 @@
     "yanbua": "Yanbu'a",
     "alquran": "Al-Quran",
     "murajaah": "Murajaah",
-    "laporan": "Rapport"
+    "laporan": "Rapport",
+    "pendaftaran": "Registraties",
+    "kelas": "Klassen",
+    "santri": "Leerlingen"
   },
   "auth": {
     "signIn": "Inloggen met Google",
@@ -213,5 +216,30 @@
     "network": "Verbindingsprobleem. Controleer uw netwerk.",
     "alreadyConfirmed": "Murajaah is vandaag al bevestigd.",
     "notAuthorized": "U heeft geen toegang tot deze actie."
+  },
+  "admin": {
+    "restrictedTitle": "Niet beschikbaar voor beheerders",
+    "restrictedMessage": "Beheerders hebben op deze pagina geen toegang tot operationele gegevens van leerlingen, ustadz of ouders.",
+    "registrationsTitle": "Gebruikersregistraties",
+    "registrationsEmpty": "Geen registraties in afwachting.",
+    "registeredSince": "Eerst ingelogd op {{date}}",
+    "assignRole": "Rol",
+    "fullName": "Volledige naam",
+    "register": "Registreren",
+    "classesTitle": "Klassenbeheer",
+    "newClass": "Nieuwe klas",
+    "className": "Klasnaam",
+    "classSchedule": "Rooster",
+    "assignTutors": "Toegewezen ustadz",
+    "noTutors": "Nog geen ustadz geregistreerd",
+    "noClasses": "Nog geen klassen",
+    "studentsTitle": "Leerlingenbeheer",
+    "newStudent": "Nieuwe leerling",
+    "studentClass": "Klas",
+    "studentParent": "Ouder",
+    "studentDob": "Geboortedatum",
+    "linkSelfLogin": "Koppel zelfstandig account (16+)",
+    "linkSelfLoginNone": "Geen",
+    "noParents": "Nog geen ouders geregistreerd"
   }
 }

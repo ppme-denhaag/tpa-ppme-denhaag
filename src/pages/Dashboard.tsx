@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_I18N_KEY } from '../lib/roleLabels'
-import { NAV_TABS } from '../components/tabs'
+import { ADMIN_NAV_TABS, NAV_TABS } from '../components/tabs'
 
 export function Dashboard() {
   const { t } = useTranslation()
   const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <div className="space-y-4">
@@ -20,21 +21,35 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {NAV_TABS.map(({ to, key }) => (
-          <Link
-            key={to}
-            to={to}
-            className="min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt"
-          >
-            {t(key)}
-          </Link>
-        ))}
-        <Link
-          to="/reports"
-          className="min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt"
-        >
-          {t('nav.laporan')}
-        </Link>
+        {isAdmin ? (
+          ADMIN_NAV_TABS.map(({ to, key }) => (
+            <Link
+              key={to}
+              to={to}
+              className="min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt"
+            >
+              {t(key)}
+            </Link>
+          ))
+        ) : (
+          <>
+            {NAV_TABS.map(({ to, key }) => (
+              <Link
+                key={to}
+                to={to}
+                className="min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt"
+              >
+                {t(key)}
+              </Link>
+            ))}
+            <Link
+              to="/reports"
+              className="min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt"
+            >
+              {t('nav.laporan')}
+            </Link>
+          </>
+        )}
       </div>
     </div>
   )

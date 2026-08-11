@@ -7,6 +7,10 @@ import { FeaturePlaceholder } from './pages/FeaturePlaceholder'
 import { AppLayout } from './routes/AppLayout'
 import { AttendancePage } from './features/attendance/AttendancePage'
 import { YanbuaPage } from './features/yanbua/YanbuaPage'
+import { RegistrationsPage } from './features/admin/RegistrationsPage'
+import { ClassesPage } from './features/admin/ClassesPage'
+import { StudentsPage } from './features/admin/StudentsPage'
+import { RequireAdmin } from './components/RequireAdmin'
 
 function Gate() {
   const { session, profile, loading, unregistered } = useAuth()
@@ -32,6 +36,30 @@ function Gate() {
         <Route path="/quran" element={<FeaturePlaceholder titleKey="quran.title" />} />
         <Route path="/murajaah" element={<FeaturePlaceholder titleKey="murajaah.title" />} />
         <Route path="/reports" element={<FeaturePlaceholder titleKey="reports.title" />} />
+        <Route
+          path="/admin/registrations"
+          element={
+            <RequireAdmin>
+              <RegistrationsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/classes"
+          element={
+            <RequireAdmin>
+              <ClassesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/students"
+          element={
+            <RequireAdmin>
+              <StudentsPage />
+            </RequireAdmin>
+          }
+        />
       </Route>
     </Routes>
   )
