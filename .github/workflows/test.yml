@@ -32,3 +32,17 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+
+  # RLS automated suite (test-plan.md §3, RLS-01..21) — merge gate for any
+  # migration change per the test plan. Runs against a fresh local Postgres
+  # (Docker, via the Supabase CLI's own stack) built from supabase/migrations,
+  # never against the live/linked project — no secrets required.
+  rls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - run: supabase test db --local supabase/tests/database
