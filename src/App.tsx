@@ -5,6 +5,8 @@ import { Unauthorized } from './pages/Unauthorized'
 import { Dashboard } from './pages/Dashboard'
 import { FeaturePlaceholder } from './pages/FeaturePlaceholder'
 import { AppLayout } from './routes/AppLayout'
+import { AttendancePage } from './features/attendance/AttendancePage'
+import { YanbuaPage } from './features/yanbua/YanbuaPage'
 
 function Gate() {
   const { session, profile, loading, unregistered } = useAuth()
@@ -24,9 +26,9 @@ function Gate() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/attendance" element={<FeaturePlaceholder titleKey="attendance.title" />} />
+        <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/assignments" element={<FeaturePlaceholder titleKey="assignments.title" />} />
-        <Route path="/yanbua" element={<FeaturePlaceholder titleKey="yanbua.title" />} />
+        <Route path="/yanbua" element={<YanbuaPage />} />
         <Route path="/quran" element={<FeaturePlaceholder titleKey="quran.title" />} />
         <Route path="/murajaah" element={<FeaturePlaceholder titleKey="murajaah.title" />} />
         <Route path="/reports" element={<FeaturePlaceholder titleKey="reports.title" />} />
