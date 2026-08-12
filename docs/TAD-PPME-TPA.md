@@ -314,7 +314,7 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | user_role | `admin`, `tutor`, `parent`, `student` |
 | locale | `id` (Indonesia), `nl` (Dutch) |
 | attendance_status | `present`, `absent`, `late` |
-| assignment_status | `pending`, `completed`, `incomplete`, `partial` |
+| assignment_status | `pending`, `completed`, `incomplete`, `partial` — PRD FR-003's "Overdue" is not a 5th value here; it's derived client-side (`pending` past the assignment's `due_date`) since the underlying verdict a tutor records is always one of these 4 |
 | yanbuah_mastery | `lancar`, `kurang_lancar`, `ulang` |
 | quran_quality | `mumtaz`, `jayyid_jiddan`, `jayyid`, `maqbul`, `perlu_perbaikan` |
 | murajaah_quality | `hafal_lancar`, `hafal_kurang_lancar`, `belum_hafal` |
