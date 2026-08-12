@@ -322,6 +322,34 @@ paths:
       responses:
         '201': { description: Created }
         '403': { $ref: '#/components/responses/ForbiddenRLS' }
+    patch:
+      tags: [murajaah]
+      summary: Mark a target memorized, or assign/reassign a tutor (Tutor only)
+      description: |
+        PRD FR-005/FR-007's "Tutor tests memorization, if Hafal Lancar mark
+        as Memorized" resolves entirely through this endpoint: flipping
+        `active` to `false` is the tutor's only lever, since there is no
+        RLS write path from a tutor into `murajaah_log` (parent-only insert)
+        and this table has no quality/assessment column. The tutor's live
+        TPA assessment result is applied as an action here, not persisted
+        as a separate record.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema: { type: string }
+          description: 'e.g. `eq.{uuid}`'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean }
+      responses:
+        '200': { description: Updated }
+        '403': { $ref: '#/components/responses/ForbiddenRLS' }
 
   /murajaah_log:
     get:
