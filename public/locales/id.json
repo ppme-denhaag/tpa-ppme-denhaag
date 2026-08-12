@@ -127,7 +127,11 @@
     "qualityMaqbul": "Maqbul",
     "qualityPerluPerbaikan": "Perlu Perbaikan",
     "tajweedNotes": "Catatan tajweed",
-    "record": "Catat Tilawah"
+    "record": "Catat Tilawah",
+    "fieldSurah": "Surah",
+    "fieldQuality": "Kualitas",
+    "searchSurah": "Cari surah…",
+    "savedMessage": "Progres berhasil disimpan"
   },
   "murajaah": {
     "title": "Murajaah",

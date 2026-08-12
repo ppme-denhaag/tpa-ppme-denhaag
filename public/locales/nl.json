@@ -127,7 +127,11 @@
     "qualityMaqbul": "Maqbul",
     "qualityPerluPerbaikan": "Verbetering nodig",
     "tajweedNotes": "Tajweed-notities",
-    "record": "Tilawah vastleggen"
+    "record": "Tilawah vastleggen",
+    "fieldSurah": "Surah",
+    "fieldQuality": "Kwaliteit",
+    "searchSurah": "Zoek surah…",
+    "savedMessage": "Voortgang succesvol opgeslagen"
   },
   "murajaah": {
     "title": "Murajaah",

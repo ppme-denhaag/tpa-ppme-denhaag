@@ -305,6 +305,11 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
   report_grade enum (same 5-level scale as quran_quality,
   kept separate so report grading isn't coupled to Quran-
   specific semantics)
+** Student.quran_pos (current_surah/current_ayah) is a
+   denormalized cache, never written by the Quran feature —
+   current position is derived client-side from the latest
+   quran_progress row instead (mirrors Yanbu'a's jilid-
+   completion detection; see src/lib/quran.ts's docstring)
 ```
 
 **Enums:**
