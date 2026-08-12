@@ -310,6 +310,18 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
    current position is derived client-side from the latest
    quran_progress row instead (mirrors Yanbu'a's jilid-
    completion detection; see src/lib/quran.ts's docstring)
+*** Murajaah.streak_count (set by the fn_set_streak_count
+    trigger) has no scheduled job to zero it out when a day
+    is missed, since Netlify Scheduled Functions don't exist
+    yet — the UI shows the latest log's streak_count together
+    with its date rather than asserting a live "current streak"
+    the system can't verify (see src/lib/murajaah.ts's docstring)
+**** FR-005/FR-007's tutor "mark as Memorized" assessment has
+     no RLS write path into murajaah_log (parent-insert only)
+     and murajaah_assignments has no quality column — resolved
+     by flipping murajaah_assignments.active to false instead,
+     the tutor's only lever on this table (see
+     src/features/murajaah/api.ts's docstring)
 ```
 
 **Enums:**

@@ -158,7 +158,16 @@
     "qualityHafalLancar": "Hafal Lancar",
     "qualityHafalKurangLancar": "Hafal Kurang Lancar",
     "qualityBelumHafal": "Belum Hafal",
-    "reminder": "Waktunya murajaah {{surah}} bersama {{name}}"
+    "reminder": "Waktunya murajaah {{surah}} bersama {{name}}",
+    "fieldQuality": "Kualitas",
+    "assignNew": "Tetapkan Target Baru",
+    "targetAssigned": "Target Murajaah berhasil ditetapkan",
+    "markMemorized": "Tandai Sudah Hafal",
+    "portfolio": "Hafalan Selesai",
+    "noActiveTarget": "Belum ada target murajaah aktif",
+    "tabAssign": "Tetapkan Target",
+    "tabOverview": "Ringkasan Kelas",
+    "history": "Riwayat Konfirmasi"
   },
   "notifications": {
     "title": "Notifikasi",

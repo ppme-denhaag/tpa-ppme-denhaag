@@ -158,7 +158,16 @@
     "qualityHafalLancar": "Vloeiend gememoriseerd",
     "qualityHafalKurangLancar": "Gememoriseerd, nog niet vloeiend",
     "qualityBelumHafal": "Nog niet gememoriseerd",
-    "reminder": "Tijd voor murajaah van {{surah}} met {{name}}"
+    "reminder": "Tijd voor murajaah van {{surah}} met {{name}}",
+    "fieldQuality": "Kwaliteit",
+    "assignNew": "Nieuw doel toewijzen",
+    "targetAssigned": "Murajaah-doel succesvol toegewezen",
+    "markMemorized": "Markeer als gememoriseerd",
+    "portfolio": "Voltooide memorisatie",
+    "noActiveTarget": "Nog geen actief murajaah-doel",
+    "tabAssign": "Doel toewijzen",
+    "tabOverview": "Klasoverzicht",
+    "history": "Bevestigingsgeschiedenis"
   },
   "notifications": {
     "title": "Meldingen",
