@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard'
 import { FeaturePlaceholder } from './pages/FeaturePlaceholder'
 import { AppLayout } from './routes/AppLayout'
 import { AttendancePage } from './features/attendance/AttendancePage'
+import { AssignmentsPage } from './features/assignments/AssignmentsPage'
 import { YanbuaPage } from './features/yanbua/YanbuaPage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
@@ -31,7 +32,7 @@ function Gate() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/attendance" element={<AttendancePage />} />
-        <Route path="/assignments" element={<FeaturePlaceholder titleKey="assignments.title" />} />
+        <Route path="/assignments" element={<AssignmentsPage />} />
         <Route path="/yanbua" element={<YanbuaPage />} />
         <Route path="/quran" element={<FeaturePlaceholder titleKey="quran.title" />} />
         <Route path="/murajaah" element={<FeaturePlaceholder titleKey="murajaah.title" />} />

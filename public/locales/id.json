@@ -80,6 +80,8 @@
     "statusCompleted": "Selesai",
     "statusIncomplete": "Terlambat",
     "statusPartial": "Sebagian",
+    "statusOverdue": "Lewat Tenggat",
+    "notes": "Catatan",
     "dueTomorrow": "Pengingat: Tugas {{title}} deadline besok",
     "created": "Tugas baru: {{title}} — deadline {{date}}"
   },

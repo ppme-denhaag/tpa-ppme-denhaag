@@ -80,6 +80,8 @@
     "statusCompleted": "Voltooid",
     "statusIncomplete": "Te laat",
     "statusPartial": "Gedeeltelijk",
+    "statusOverdue": "Termijn Verlopen",
+    "notes": "Notities",
     "dueTomorrow": "Herinnering: Opdracht {{title}} deadline morgen",
     "created": "Nieuwe opdracht: {{title}} — deadline {{date}}"
   },

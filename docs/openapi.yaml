@@ -149,6 +149,52 @@ paths:
         '403': { $ref: '#/components/responses/ForbiddenRLS' }
 
   /assignment_status:
+    get:
+      tags: [assignments]
+      summary: Get per-student homework status
+      description: |
+        RLS: Tutor — students in own classes; Parent — own children; Student
+        16+ — self. Not filterable by class_id directly (assignment_status
+        has no class_id column) — callers join client-side against
+        `/assignments` by `assignment_id`, the same pattern as
+        `/attendance` joining `/sessions` by date.
+      parameters:
+        - $ref: '#/components/parameters/select'
+        - name: assignment_id
+          in: query
+          schema: { type: string }
+        - name: student_id
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Status rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AssignmentStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [assignments]
+      summary: Create per-student status rows for a new assignment (Tutor only)
+      description: |
+        One row per assigned student (whole class or a selected subset),
+        `status` defaulting to `pending` if omitted. Called once per
+        recipient right after the `POST /assignments` that creates the
+        parent row.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/AssignmentStatusInsert'
+                - type: array
+                  items: { $ref: '#/components/schemas/AssignmentStatusInsert' }
+      responses:
+        '201': { description: Created }
+        '403': { $ref: '#/components/responses/ForbiddenRLS' }
     patch:
       tags: [assignments]
       summary: Update homework status (Tutor only)
@@ -747,6 +793,26 @@ components:
         title: { type: string, maxLength: 200 }
         description: { type: string }
         due_date: { type: string, format: date }
+    AssignmentStatus:
+      type: object
+      description: |
+        No 'overdue' value exists on `AssignmentStatusEnum` — it's a
+        read-side derived state (status still 'pending' past the parent
+        assignment's due_date), computed client-side, not stored.
+      properties:
+        id: { type: string, format: uuid }
+        assignment_id: { type: string, format: uuid }
+        student_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/AssignmentStatusEnum' }
+        notes: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
+    AssignmentStatusInsert:
+      type: object
+      required: [assignment_id, student_id]
+      properties:
+        assignment_id: { type: string, format: uuid }
+        student_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/AssignmentStatusEnum' }
 
     YanbuaProgress:
       type: object
