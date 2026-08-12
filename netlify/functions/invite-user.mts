@@ -81,7 +81,18 @@ export default async (req: Request) => {
     return jsonError(`role must be one of: ${VALID_ROLES.join(', ')}`, 400)
   }
 
-  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email)
+  // Without an explicit redirectTo, GoTrue falls back to the Supabase
+  // project's dashboard-configured "Site URL" — which defaults to
+  // http://localhost:3000 and is easy to forget to update after project
+  // creation (confirmed: that's exactly what was happening in
+  // production). `URL` is a Netlify build-in env var set automatically
+  // to this deploy's canonical URL (production or a given deploy
+  // preview) — more reliable than depending on a dashboard setting
+  // someone has to remember to keep in sync, and correct in every
+  // context without extra config.
+  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+    redirectTo: process.env.URL,
+  })
   if (inviteError || !invited.user) {
     return jsonError(inviteError?.message ?? 'Failed to send invite', 400)
   }
