@@ -260,6 +260,11 @@ paths:
     get:
       tags: [quran]
       summary: Get Quran tilawah history
+      description: |
+        `students.current_surah`/`current_ayah` are never written by this
+        feature — a client derives current position from the newest row
+        here instead (`order=recorded_at.desc&limit=1`), the same pattern
+        `/yanbua_progress` uses for jilid/page.
       parameters:
         - $ref: '#/components/parameters/select'
         - name: student_id

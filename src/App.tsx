@@ -8,6 +8,7 @@ import { AppLayout } from './routes/AppLayout'
 import { AttendancePage } from './features/attendance/AttendancePage'
 import { AssignmentsPage } from './features/assignments/AssignmentsPage'
 import { YanbuaPage } from './features/yanbua/YanbuaPage'
+import { QuranPage } from './features/quran/QuranPage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
 import { StudentsPage } from './features/admin/StudentsPage'
@@ -34,7 +35,7 @@ function Gate() {
         <Route path="/attendance" element={<AttendancePage />} />
         <Route path="/assignments" element={<AssignmentsPage />} />
         <Route path="/yanbua" element={<YanbuaPage />} />
-        <Route path="/quran" element={<FeaturePlaceholder titleKey="quran.title" />} />
+        <Route path="/quran" element={<QuranPage />} />
         <Route path="/murajaah" element={<FeaturePlaceholder titleKey="murajaah.title" />} />
         <Route path="/reports" element={<FeaturePlaceholder titleKey="reports.title" />} />
         <Route

@@ -167,14 +167,15 @@ different custom path.
   512px PWA icons (`public/icons/*.png`) are a soft ~3.7x upscale — fine as
   a placeholder, replace with a proper square/high-res (512×512+) source
   before real launch.
-- **Attendance, Yanbu'a (Milestone 1), and Homework/Tugas (Milestone 2) are
-  built**; Quran and Murajaah, and Reports are still placeholder pages behind
-  real auth/role/RLS. See the checklist's suggested build order for what's
-  next — notifications/Netlify Functions (§4) and offline/PWA sync polish
-  (§5) are next up, deliberately deferred from Milestone 1. Homework's own
-  FR-005 (due-date reminders) is deferred for the same reason — it needs
-  Netlify Scheduled Functions, which don't exist yet for anything in this
-  project.
+- **Attendance, Yanbu'a (Milestone 1), Homework/Tugas (Milestone 2), and
+  Quran/Al-Quran recitation tracking (Milestone 3) are built**; Murajaah and
+  Reports are still placeholder pages behind real auth/role/RLS. See the
+  checklist's suggested build order for what's next — notifications/Netlify
+  Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
+  deferred from Milestone 1. Homework's own FR-005 (due-date reminders) and
+  the Quran feature's jilid/juz milestone-celebration notification are
+  deferred for the same reason — both need Netlify Scheduled Functions/
+  webhook infra, which don't exist yet for anything in this project.
 - **Admin enrollment UI is built** (`/admin/registrations`, `/admin/classes`,
   `/admin/students`), with two ways to register a user: invite by email
   (`invite-user.mts` — creates the account and profile together, no waiting
