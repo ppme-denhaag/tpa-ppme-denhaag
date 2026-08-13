@@ -88,6 +88,8 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 - `publish-report` on an already-published report (post-edit regeneration case) overwrites the existing `pdf_path` rather than creating a second object
 - PDF content smoke test: generated PDF contains the student's name, academic year, attendance rate, and all three subject grades (basic text-extraction check, not visual regression)
 
+*Implemented in `tests/unit/reports.test.ts`. Two notes for anyone extending these: the publish ordering is tested through `publishReportFlow`'s injected dependencies (a `renderPdf`/`uploadPdf` that throws must leave `markPublished` uncalled), which is why that ordering lives in its own module rather than inline in the Function; and the smoke test renders with `compress: false` and decodes pdfkit's hex `TJ` runs, since a plain substring search over a normal (FlateDecode) PDF finds only the `/Info` metadata.*
+
 ## 5. E2E flows (Playwright)
 
 Run against Preview deploys with fixture data; auth mocked via Supabase test JWTs (bypasses live Google OAuth — OAuth itself covered once in a manual smoke test).
@@ -128,7 +130,7 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 ## 8. Compliance verification (pre-launch gate)
 
 - [ ] Right-to-erasure: deleting a fixture student cascades to all 9 related tables (incl. `year_end_reports`) — verified by row counts before/after
-- [ ] Right-to-erasure also removes the student's PDF object(s) from the `reports` Storage bucket, not just the DB row
+- [ ] Right-to-erasure also removes the student's PDF object(s) from the `reports` Storage bucket, not just the DB row. **Procedure (README → "Right to erasure"): delete the Storage object *first*, while `year_end_reports.pdf_path` can still be read, then delete the student** — `on delete cascade` reaches every table but never Storage, so doing it in the other order orphans the PDF with nothing left pointing at it. Verify with `select count(*) from storage.objects where bucket_id='reports' and name like '<student-uuid>/%'` → 0
 - [ ] CSV export contains all and only the requesting parent's children's data
 - [ ] Privacy policy link blocks first login until accepted
 - [ ] Retention job dry-run: correctly identifies (does not yet delete) records past cutoff

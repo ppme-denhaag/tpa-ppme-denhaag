@@ -474,10 +474,24 @@ paths:
       tags: [functions, reports]
       summary: Admin-triggered bulk creation of draft reports
       description: |
-        Computes attendance/progress stats for the given academic year and
-        inserts one draft `year_end_reports` row per enrolled student
-        (skips students who already have a report for that year — unique
-        constraint on `(student_id, academic_year)`).
+        **Admin only**, verified inside the Function against the caller's
+        JWT + `public.users.role` — never trusted from the client.
+
+        Computes the attendance stats snapshot for the given academic year
+        (1 Aug – 31 Jul window; `late` counts as attended, matching the
+        rate shown on the attendance screens) and inserts one draft
+        `year_end_reports` row per enrolled student, authored by the first
+        tutor of that student's class.
+
+        Idempotent: students who already have a report for that year are
+        skipped (unique constraint on `(student_id, academic_year)`), so
+        re-running is a safe no-op. Students with no class, or whose class
+        has no tutor assigned, cannot be given a report at all
+        (`tutor_id` is NOT NULL) and come back as `skipped_no_tutor`.
+
+        The response is counts only — never the drafts or their content.
+        See TAD ADR-013 for why the trigger is admin's but everything
+        about a report's content stays with the tutor.
       requestBody:
         required: true
         content:
@@ -500,7 +514,15 @@ paths:
                 type: object
                 properties:
                   created_count: { type: integer }
-                  skipped_existing: { type: integer }
+                  skipped_existing:
+                    type: integer
+                    description: Already had a report for this academic year
+                  skipped_no_tutor:
+                    type: integer
+                    description: >-
+                      No class, or a class with no tutor assigned — blocked on
+                      enrollment work rather than already done
+        '400': { description: Missing or malformed academic_year (must be two consecutive years) }
         '403': { description: Caller is not an admin }
 
   /publish-report:
@@ -508,12 +530,33 @@ paths:
       tags: [functions, reports]
       summary: Publish a draft, or regenerate PDF for a published report after edits
       description: |
-        Verifies the caller is the authoring tutor (or admin) for this report,
-        flips `status: draft → published` (no-op if already published), renders
-        the PDF via pdfkit (ADR-011), uploads it to the private `reports`
-        Storage bucket, sets `pdf_path` and `published_at`, then triggers the
-        report-ready push notification. The status flip only commits once PDF
-        generation succeeds (FR: reliability — no stuck intermediate state).
+        Verifies the caller is the **authoring tutor** for this report —
+        not admin, and not a co-tutor on the same class. This mirrors
+        `yer_tutor_rw`'s WITH CHECK (`tutor_id = auth.uid()`): someone who
+        cannot edit a report through PostgREST cannot publish it either.
+        See TAD ADR-013.
+
+        Renders the PDF via pdfkit (ADR-011), uploads it to the private
+        `reports` Storage bucket, and only then flips
+        `status: draft → published` and sets `pdf_path`/`published_at`.
+        The status flip is deliberately last: a failed render or upload
+        leaves the row exactly as it was, so there is no stuck
+        intermediate state and a retry needs no cleanup.
+
+        Requires a non-empty `narrative` (PRD 6.8 AC-003 — the narrative is
+        always tutor-authored); subject grades stay optional, since a
+        student who has not started memorizing yet should not need a
+        fabricated Murajaah grade to get a report.
+
+        Also the FR-006 path: re-publishing an already-published report
+        after an edit overwrites the same Storage object (the path is
+        deterministic per student + academic year) and preserves the
+        original `published_at` — that is when the family first received
+        the report; `updated_at` tracks the corrections.
+
+        **No notification is sent.** FR-007's report-ready push is deferred
+        with the rest of the notification pipeline, which does not exist
+        yet for any feature in this project.
       requestBody:
         required: true
         content:
@@ -534,8 +577,10 @@ paths:
                   report_id: { type: string, format: uuid }
                   pdf_path: { type: string }
                   published_at: { type: string, format: date-time }
-        '403': { description: Caller is not the authoring tutor or an admin }
-        '500': { description: PDF generation failed — status not changed, safe to retry }
+        '400': { description: report_id missing, or the report has no narrative yet }
+        '403': { description: Caller is not the authoring tutor }
+        '404': { description: No such report }
+        '500': { description: PDF generation or upload failed — status not changed, safe to retry }
 
   /report-pdf:
     get:
@@ -545,7 +590,16 @@ paths:
         Checks the caller's authorization against the same rule as the
         `year_end_reports` RLS policy (tutor: own students any status;
         parent/student: own child/self, published only) before minting a
-        signed URL — this check is load-bearing since signed URLs bypass RLS.
+        signed URL — this check is load-bearing since signed URLs bypass
+        RLS and the `reports` bucket has no client-facing read policy at
+        all, making this Function the only gate in front of the file.
+
+        Admin is denied, even though RLS grants admin ALL at the DB layer:
+        a report PDF is pedagogical content, which ADR-012/ADR-013 keep
+        admin out of. Same application-layer stance as `AdminRestricted`.
+
+        A caller who is not authorized and a report that does not exist
+        are deliberately indistinguishable from the outside.
       parameters:
         - name: report_id
           in: query
@@ -560,9 +614,10 @@ paths:
                 type: object
                 properties:
                   url: { type: string, format: uri }
-                  expires_in: { type: integer, description: Seconds, e.g. 300 }
+                  expires_in: { type: integer, description: 'Seconds — 300' }
+        '400': { description: report_id missing }
         '403': { description: Caller not authorized to view this report }
-        '404': { description: No PDF generated yet (report still in draft) }
+        '404': { description: No such report, or no PDF generated yet (report still in draft) }
 
   # ───────────────────── Netlify Functions ─────────────────────
   /notify-absence:

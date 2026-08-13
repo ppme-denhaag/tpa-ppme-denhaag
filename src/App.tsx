@@ -3,16 +3,17 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { SignIn } from './pages/SignIn'
 import { Unauthorized } from './pages/Unauthorized'
 import { Dashboard } from './pages/Dashboard'
-import { FeaturePlaceholder } from './pages/FeaturePlaceholder'
 import { AppLayout } from './routes/AppLayout'
 import { AttendancePage } from './features/attendance/AttendancePage'
 import { AssignmentsPage } from './features/assignments/AssignmentsPage'
 import { YanbuaPage } from './features/yanbua/YanbuaPage'
 import { QuranPage } from './features/quran/QuranPage'
 import { MurajaahPage } from './features/murajaah/MurajaahPage'
+import { ReportsPage } from './features/reports/ReportsPage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
 import { StudentsPage } from './features/admin/StudentsPage'
+import { ReportsAdminPage } from './features/admin/ReportsAdminPage'
 import { RequireAdmin } from './components/RequireAdmin'
 
 function Gate() {
@@ -38,7 +39,7 @@ function Gate() {
         <Route path="/yanbua" element={<YanbuaPage />} />
         <Route path="/quran" element={<QuranPage />} />
         <Route path="/murajaah" element={<MurajaahPage />} />
-        <Route path="/reports" element={<FeaturePlaceholder titleKey="reports.title" />} />
+        <Route path="/reports" element={<ReportsPage />} />
         <Route
           path="/admin/registrations"
           element={
@@ -60,6 +61,14 @@ function Gate() {
           element={
             <RequireAdmin>
               <StudentsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/reports"
+          element={
+            <RequireAdmin>
+              <ReportsAdminPage />
             </RequireAdmin>
           }
         />
