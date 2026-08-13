@@ -67,9 +67,9 @@ local Docker stack, which is disposable and per-machine.
 
 #### Dev fixture + fixture sign-in (no real Google OAuth needed)
 
-`supabase/dev-fixture.sql` seeds a small realistic dataset (tutor, admin,
-2 parents, 2 classes, 4 students, 1 pending/unregistered sign-in) into a
-local stack — load it after migrations are applied:
+`supabase/dev-fixture.sql` seeds a small realistic dataset (2 tutors — one
+assigned to both classes, one to Kelas B only — plus admin, 2 parents,
+2 classes, 4 students, 1 pending/unregistered sign-in) into a local stack — load it after migrations are applied:
 
 ```bash
 supabase migration up --local
@@ -105,9 +105,12 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
-`supabase/tests/database/rls.test.sql` implements all 21 cases from
-test-plan.md §3 (RLS-01…RLS-21) as pgTAP assertions, using the standard
-fixture set from §2. It runs entirely inside a transaction that's rolled
+`supabase/tests/database/rls.test.sql` implements all 27 cases from
+test-plan.md §3 (RLS-01…RLS-27) as 64 pgTAP assertions, using the standard
+fixture set from §2. RLS-22…RLS-27 cover the super-admin change (TAD
+ADR-014): that an admin INSERT/UPDATE lands on every operational table, and
+— the half that matters more — that those rows widen nobody else's
+visibility. It runs entirely inside a transaction that's rolled
 back at the end, so it never leaves data behind. CI runs it against a
 fresh local Postgres (Docker, via the Supabase CLI) built from
 `supabase/migrations` — see the `rls` job in `.github/workflows/test.yml`.
@@ -138,9 +141,9 @@ against the live project in that window and appeared broken.
 |---|---|
 | `health.mts` | Pipeline smoke test |
 | `invite-user.mts` | Admin-only: invites a user by email and creates their profile in one step (see RegistrationsPage) |
-| `generate-year-end-drafts.mts` | Admin-only: bulk-creates draft year-end reports for an academic year, optionally scoped to a class |
-| `publish-report.mts` | Authoring tutor only: renders the report PDF (pdfkit), uploads it to the private `reports` bucket, then flips `draft → published` |
-| `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization |
+| `generate-year-end-drafts.mts` | Admin-only: bulk-creates draft year-end reports for an academic year, optionally scoped to a class. Triggered from the panel at the top of the admin's own Reports screen |
+| `publish-report.mts` | Authoring tutor only — **not admin**, deliberately (TAD ADR-014 left this boundary where ADR-013 put it): renders the report PDF (pdfkit), uploads it to the private `reports` bucket, then flips `draft → published` |
+| `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization (admin: any report; tutor: own class; parent/student 16+: own child/self, published only) |
 
 All use the Netlify Functions v2 API (default export, Web-standard
 `Request`/`Response`) and are typechecked separately from the main app
@@ -184,6 +187,54 @@ every request, while working fine on real deployed Netlify. Both existing
 functions omit it for this reason; only add `config.path` for an actually
 different custom path.
 
+## Roles
+
+| Role | What it can do |
+|---|---|
+| `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
+| `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
+| `student` (16+) | Their own record only, strictly read-only |
+| `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
+
+Admin's access has always been granted at the database layer — every table
+has an `*_admin_all` policy keyed on `fn_is_admin()` (migrations 003/005).
+Until ADR-014 the *application* blocked it anyway; removing that fence needed
+no migration and no policy change, which is why an unchanged-green
+`supabase test db` run is itself the evidence RLS was untouched.
+
+An admin write stores the admin's own id in `tutor_id` ("who recorded this
+row"), so that column no longer implies membership of `classes.tutor_ids` —
+don't write code that assumes it does.
+
+## Brand assets
+
+The vendor-supplied logo masters (3564×1844, aspect 1.933:1) live in
+`assets/brand/` in three colourways and are never served directly. Everything
+derived from them is generated:
+
+```bash
+pip install Pillow                          # not a project dependency
+python3 scripts/generate-brand-assets.py
+```
+
+That writes `public/logo.png` (full colour — light backgrounds, e.g. the
+sign-in screen), `public/logo-white.png` (reversed — the brand-blue top bar),
+the PWA icon set and favicons under `public/icons/`, and
+`netlify/functions/lib/logoAsset.ts`, which inlines the reversed wordmark as
+base64 for the year-end report PDF header.
+
+Two things not to undo:
+
+- **The square icons carry the globe mark alone**, cropped out of the
+  artwork — letterboxing a 1.93:1 wordmark into a square is what made the
+  previous icon set unreadable at 48px. Never stretch the wordmark square.
+- **The PDF header logo is inlined as base64, not shipped as a file.** A
+  bundled Netlify Function resolves runtime file paths differently under
+  `netlify dev` than on deployed Netlify, and that difference would only ever
+  surface at publish time in production. `reportPdf.ts` also keeps the old
+  typographic header as a fallback if the asset fails to decode, so a publish
+  can never fail over branding (unit-tested both ways).
+
 ## Right to erasure (GDPR art. 17)
 
 Deleting a student cascades to all their DB rows (`on delete cascade` on
@@ -217,14 +268,6 @@ this is a manual runbook, not a feature.
 
 ## Known gaps (foundation pass — not yet built)
 
-- **No real PPME logo asset for PWA icons.** The top nav now uses the real
-  logo (`public/logo.png`), but the source file is only 135×70px, so the
-  512px PWA icons (`public/icons/*.png`) are a soft ~3.7x upscale — fine as
-  a placeholder, replace with a proper square/high-res (512×512+) source
-  before real launch. For the same reason the year-end report PDF header is
-  a typographic wordmark in the brand colours rather than the bitmap logo
-  (`netlify/functions/lib/reportPdf.ts`) — swap in `doc.image()` once a
-  high-res square asset exists.
 - **Attendance, Yanbu'a (Milestone 1), Homework/Tugas (Milestone 2),
   Quran/Al-Quran recitation tracking (Milestone 3), Murajaah/memorization
   tracking (Milestone 4), and Year-End Curriculum Reports (Milestone 6) are
@@ -244,13 +287,10 @@ this is a manual runbook, not a feature.
   (`invite-user.mts` — creates the account and profile together, no waiting
   on them to sign in first) or wait for them to sign in with Google and
   register them from the resulting pending-registrations list
-  (`fn_pending_registrations()`, migration 008). By design, admin cannot view
-  attendance/Yanbu'a/homework/Quran/Murajaah/Reports (those tabs are hidden
-  for admin, and the routes themselves redirect if visited directly) — see
-  `AdminRestricted.tsx`'s docstring for why this is an application-layer
-  restriction, not an RLS one (RLS still grants admin full table access,
-  matching the TAD's documented "Admin: ALL" policy). Still missing: no
-  "tutor management" view beyond assigning tutors on the class form, no way
-  to remove/deactivate an enrolled student, no CSV export.
+  (`fn_pending_registrations()`, migration 008). These screens sit behind the
+  single "Kelola" entry point (dashboard tile + a sixth desktop tab) and are
+  still admin-only (`RequireAdmin.tsx`). Still missing: no "tutor management"
+  view beyond assigning tutors on the class form, no way to remove/deactivate
+  an enrolled student, no CSV export.
 - Bundle isn't code-split yet (single ~500KB JS chunk) — fine at this size, revisit
   once feature modules grow.

@@ -1,35 +1,51 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
 import { getErrorMessage } from '../../lib/errors'
-import { fetchReportsForStudents, type YearEndReport } from './api'
+import { fetchReportsForStudents, fetchTutorNames, type YearEndReport } from './api'
+import { GenerateDraftsPanel } from './GenerateDraftsPanel'
 import { ReportEditor } from './ReportEditor'
 import { STATUS_BADGE_CLASS, STATUS_LABEL_KEY } from './grade'
 
 /**
- * FR-002 — the tutor's review queue: every report belonging to a student
- * in the selected class, drafts included (drafts are visible to the
- * authoring tutor and admin only, `yer_tutor_rw` / RLS-15).
+ * FR-002 — the staff review queue: every report belonging to a student
+ * in the selected class, drafts included.
  *
- * Reports are never created here. Generation is a bulk, enrollment-wide
- * operation triggered by admin from `/admin/reports` (ADR-013), so an
- * empty list means "ask admin to generate this year's drafts", not "make
- * one yourself" — which is what the empty state says.
+ * Used by tutors (own classes, `yer_tutor_rw` / RLS-15) and, since
+ * ADR-014, by admin (every class, `yer_admin_all`). The two differ in
+ * exactly two places, both derived below rather than duplicated into a
+ * second screen:
+ *
+ *   - admin can edit any report in any class, where a tutor can only
+ *     edit the ones they authored (`yer_tutor_rw`'s WITH CHECK pins
+ *     `tutor_id = auth.uid()`, so a co-tutor is read-only);
+ *   - admin can never publish. Publishing is what makes a report visible
+ *     to a family — an authoring act, kept with the authoring tutor, and
+ *     `publish-report` still 403s anyone else. That combination is why
+ *     admin edits carry a warning about the stored PDF; see ReportEditor.
+ *
+ * Reports are never created by hand here. Generation stays a bulk,
+ * enrollment-wide operation, which only admin can trigger — from the
+ * panel above the list rather than the separate `/admin/reports` screen
+ * it lived on before ADR-014.
  */
 export function TutorReportsView() {
   const { t } = useTranslation()
   const { profile } = useAuth()
   const { classes, loading: classesLoading } = useMyClasses()
+  const isAdmin = profile?.role === 'admin'
 
   const [classId, setClassId] = useState<string | null>(null)
   const [roster, setRoster] = useState<RosterStudent[]>([])
   const [reports, setReports] = useState<YearEndReport[]>([])
+  const [tutorNames, setTutorNames] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     if (!classId && classes.length > 0) setClassId(classes[0].id)
@@ -44,9 +60,14 @@ export function TutorReportsView() {
     fetchClassRoster(classId)
       .then(async (students) => {
         const data = await fetchReportsForStudents(students.map((s) => s.id))
+        // Only admin can resolve another user's name (`users_self_read`
+        // is self-or-admin), and only admin needs to: it's the role that
+        // has to be told whose re-publish a stale PDF is waiting on.
+        const names = isAdmin ? await fetchTutorNames(data.map((r) => r.tutor_id)) : new Map<string, string>()
         if (!active) return
         setRoster(students)
         setReports(data)
+        setTutorNames(names)
       })
       .catch((err) => {
         if (active) setError(getErrorMessage(err))
@@ -57,7 +78,9 @@ export function TutorReportsView() {
     return () => {
       active = false
     }
-  }, [classId])
+  }, [classId, isAdmin, reloadToken])
+
+  const handleGenerated = useCallback(() => setReloadToken((n) => n + 1), [])
 
   const nameById = new Map(roster.map((s) => [s.id, s.full_name]))
   const selected = reports.find((r) => r.id === selectedId) ?? null
@@ -70,6 +93,7 @@ export function TutorReportsView() {
   if (classes.length === 0) return <p className="text-ppme-text/60">{t('common.noClassesAssigned')}</p>
 
   if (selected) {
+    const isAuthoringTutor = selected.tutor_id === profile?.id
     return (
       <div className="space-y-4">
         <button
@@ -82,7 +106,9 @@ export function TutorReportsView() {
         <ReportEditor
           report={selected}
           studentName={nameById.get(selected.student_id) ?? '—'}
-          canEdit={selected.tutor_id === profile?.id}
+          canEdit={isAdmin || isAuthoringTutor}
+          canPublish={isAuthoringTutor}
+          authoringTutorName={tutorNames.get(selected.tutor_id) ?? null}
           onSaved={handleSaved}
         />
       </div>
@@ -97,6 +123,8 @@ export function TutorReportsView() {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-ppme-primary">{t('reports.title')}</h1>
+
+      {isAdmin && <GenerateDraftsPanel classes={classes} onGenerated={handleGenerated} />}
 
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />

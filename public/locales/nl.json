@@ -12,7 +12,8 @@
     "laporan": "Rapport",
     "pendaftaran": "Registraties",
     "kelas": "Klassen",
-    "santri": "Leerlingen"
+    "santri": "Leerlingen",
+    "kelola": "Beheer"
   },
   "auth": {
     "signIn": "Inloggen met Google",
@@ -231,7 +232,6 @@
     "allClasses": "Alle klassen",
     "skippedExisting": "{{count}} overgeslagen (heeft al een rapport)",
     "skippedNoTutor": "{{count}} overgeslagen (klas zonder ustadz)",
-    "adminScopeNote": "De beheerder start alleen het aanmaken van conceptrapporten. De inhoud — opmerkingen en cijfers — is alleen zichtbaar en te bewerken voor de eigen ustadz.",
     "subjectYanbua": "Yanbu'a",
     "subjectQuran": "Al-Quran",
     "subjectMurajaah": "Murajaah",
@@ -243,7 +243,10 @@
     "republish": "Opnieuw publiceren & PDF bijwerken",
     "progressContext": "Voortgangsoverzicht",
     "murajaahTargets": "{{active}} actief doel · {{total}} totaal",
-    "saved": "Wijzigingen opgeslagen"
+    "saved": "Wijzigingen opgeslagen",
+    "adminCannotPublish": "U kunt dit rapport bewerken, maar alleen {{name}} kan het publiceren.",
+    "adminEditPdfStale": "Wijzigingen zijn direct zichtbaar in de app, maar de PDF wordt pas bijgewerkt nadat {{name}} dit rapport opnieuw publiceert.",
+    "authoringTutor": "de ustadz die het rapport schreef"
   },
   "errors": {
     "generic": "Er is iets misgegaan. Probeer het opnieuw.",
@@ -252,8 +255,6 @@
     "notAuthorized": "U heeft geen toegang tot deze actie."
   },
   "admin": {
-    "restrictedTitle": "Niet beschikbaar voor beheerders",
-    "restrictedMessage": "Beheerders hebben op deze pagina geen toegang tot operationele gegevens van leerlingen, ustadz of ouders.",
     "registrationsTitle": "Gebruikersregistraties",
     "inviteSectionTitle": "Nieuwe gebruiker uitnodigen",
     "inviteEmail": "E-mailadres",
@@ -279,6 +280,7 @@
     "studentDob": "Geboortedatum",
     "linkSelfLogin": "Koppel zelfstandig account (16+)",
     "linkSelfLoginNone": "Geen",
-    "noParents": "Nog geen ouders geregistreerd"
+    "noParents": "Nog geen ouders geregistreerd",
+    "hubSubtitle": "Gebruikersregistraties, klassen en leerlinggegevens"
   }
 }

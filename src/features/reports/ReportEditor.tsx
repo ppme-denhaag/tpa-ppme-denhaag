@@ -17,13 +17,41 @@ interface ReportEditorProps {
    * report but any edit would be rejected by RLS. The form renders
    * read-only rather than letting them type into fields that would 403 on
    * save (one authoring tutor per report — PRD 6.5 non-goal #2).
+   *
+   * True for admin on every report (`yer_admin_all`, ADR-014).
    */
   canEdit: boolean
+  /**
+   * The authoring tutor only. Deliberately narrower than `canEdit`:
+   * `publish-report` accepts nobody else, admin included, because
+   * publishing is what makes a report visible to a family rather than an
+   * administrative act (ADR-013's boundary, kept by ADR-014).
+   *
+   * `canEdit && !canPublish` is therefore the admin case, and it has a
+   * sharp edge worth naming: editing a report does not regenerate its
+   * PDF — the client calls `publish-report` afterwards to do that, and
+   * that call 403s for admin. So an admin edit to a *published* report
+   * leaves the stored PDF disagreeing with what the app shows until the
+   * authoring tutor re-publishes. Rather than silently producing that
+   * mismatch (or blocking an edit RLS explicitly permits), the edit goes
+   * through and the notice below says plainly whose re-publish it is
+   * waiting on.
+   */
+  canPublish: boolean
+  /** Resolved for admin only — see `fetchTutorNames`. */
+  authoringTutorName?: string | null
   onSaved: (report: YearEndReport) => void
 }
 
 /** FR-002 review/edit + FR-003 publish + FR-006 re-publish after an edit. */
-export function ReportEditor({ report, studentName, canEdit, onSaved }: ReportEditorProps) {
+export function ReportEditor({
+  report,
+  studentName,
+  canEdit,
+  canPublish,
+  authoringTutorName,
+  onSaved,
+}: ReportEditorProps) {
   const { t } = useTranslation()
 
   const [form, setForm] = useState<ReportEdit>({
@@ -121,6 +149,15 @@ export function ReportEditor({ report, studentName, canEdit, onSaved }: ReportEd
           {t('reports.readOnlyOtherTutor')}
         </p>
       )}
+      {/* Informational, not an achievement — the gold accent stays
+          reserved for milestone moments (checklist §5). */}
+      {canEdit && !canPublish && (
+        <p className="rounded-lg border border-ppme-primary/20 bg-ppme-primary/5 p-3 text-sm text-ppme-text/80">
+          {t(isPublished ? 'reports.adminEditPdfStale' : 'reports.adminCannotPublish', {
+            name: authoringTutorName || t('reports.authoringTutor'),
+          })}
+        </p>
+      )}
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}
       {message && (
         <p className="rounded-lg bg-ppme-success/10 p-3 text-sm font-medium text-ppme-success">
@@ -193,23 +230,33 @@ export function ReportEditor({ report, studentName, canEdit, onSaved }: ReportEd
           >
             {saving ? t('common.loading') : t('common.save')}
           </button>
-          <button
-            type="button"
-            onClick={() => void handlePublish()}
-            disabled={busy || !hasNarrative}
-            className="min-h-11 w-full rounded-lg bg-ppme-primary px-4 font-semibold text-white shadow-sm hover:bg-ppme-primary-dark disabled:opacity-60"
-          >
-            {publishing
-              ? t('reports.generatingPdf')
-              : isPublished
-                ? t('reports.republish')
-                : t('reports.publish')}
-          </button>
-          {!hasNarrative && <p className="text-xs text-ppme-text/60">{t('reports.narrativeRequired')}</p>}
+          {/* Hidden rather than disabled for a non-publisher: the call
+              would 403 in the Function, so offering the button at all
+              would be an invitation to a failure. */}
+          {canPublish && (
+            <button
+              type="button"
+              onClick={() => void handlePublish()}
+              disabled={busy || !hasNarrative}
+              className="min-h-11 w-full rounded-lg bg-ppme-primary px-4 font-semibold text-white shadow-sm hover:bg-ppme-primary-dark disabled:opacity-60"
+            >
+              {publishing
+                ? t('reports.generatingPdf')
+                : isPublished
+                  ? t('reports.republish')
+                  : t('reports.publish')}
+            </button>
+          )}
+          {canPublish && !hasNarrative && (
+            <p className="text-xs text-ppme-text/60">{t('reports.narrativeRequired')}</p>
+          )}
         </div>
       )}
 
-      {isPublished && report.pdf_path && <DownloadPdfButton reportId={report.id} />}
+      {/* Keyed on the stored object, not the status: a PDF exists or it
+          doesn't, and `report-pdf` is the only thing that decides who may
+          fetch it. */}
+      {report.pdf_path && <DownloadPdfButton reportId={report.id} />}
     </div>
   )
 }

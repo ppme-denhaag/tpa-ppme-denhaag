@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
-import { AdminRestricted } from '../../components/AdminRestricted'
 import { TutorAttendanceView } from './TutorAttendanceView'
 import { FamilyAttendanceView } from './FamilyAttendanceView'
 
@@ -8,14 +7,18 @@ export function AttendancePage() {
   const { t } = useTranslation()
   const { profile } = useAuth()
 
-  // Admin is deliberately routed to neither view: TutorAttendanceView
-  // shows operational data (attendance records) admin shouldn't browse,
-  // and FamilyAttendanceView's "my children" query would actually return
-  // *every* student for admin (students_admin_all has no parent_id
-  // predicate) — worse, not better. See AdminRestricted's docstring.
-  if (profile?.role === 'admin') return <AdminRestricted />
-
-  const isManager = profile?.role === 'tutor'
+  // Admin takes the *tutor* view, not the family one (ADR-014). Both
+  // halves of that matter:
+  //
+  //   - tutor shape: class picker → roster → record. `useMyClasses`
+  //     already returns every class for admin (`classes_read` has an
+  //     `fn_is_admin()` branch), so this needs no admin-specific query.
+  //   - never the family shape: `FamilyAttendanceView`'s "my children"
+  //     query would return *every* student for admin, since
+  //     `students_admin_all` has no `parent_id` predicate — a ChildPicker
+  //     listing ~200 students as though they were the admin's own
+  //     children.
+  const isManager = profile?.role === 'tutor' || profile?.role === 'admin'
 
   return (
     <div className="space-y-4">

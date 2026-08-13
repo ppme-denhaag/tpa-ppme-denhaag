@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit'
 import type { ReportGrade } from '../../../src/lib/reports'
+import { getHeaderLogoPng, HEADER_LOGO_ASPECT } from './logoAsset'
 
 export interface ReportPdfInput {
   student_name: string
@@ -55,6 +56,14 @@ interface RenderOptions {
    * assert on the literal strings; production always leaves it on.
    */
   compress?: boolean
+  /**
+   * Header logo override. Defaults to the inlined white wordmark
+   * (`logoAsset.ts`). Pass `null` to force the typographic fallback, or a
+   * deliberately broken Buffer, to exercise the "a publish must never
+   * fail over branding" path — which is the only reason this is a
+   * parameter rather than a plain import inside `drawHeader`.
+   */
+  logo?: Buffer | null
 }
 
 export function renderReportPdf(input: ReportPdfInput, options: RenderOptions = {}): Promise<Buffer> {
@@ -75,7 +84,7 @@ export function renderReportPdf(input: ReportPdfInput, options: RenderOptions = 
     doc.on('error', reject)
 
     try {
-      draw(doc, input)
+      draw(doc, input, options.logo === undefined ? getHeaderLogoPng() : options.logo)
       doc.end()
     } catch (err) {
       reject(err instanceof Error ? err : new Error(String(err)))
@@ -83,29 +92,11 @@ export function renderReportPdf(input: ReportPdfInput, options: RenderOptions = 
   })
 }
 
-function draw(doc: PDFKit.PDFDocument, input: ReportPdfInput): void {
+function draw(doc: PDFKit.PDFDocument, input: ReportPdfInput, logo: Buffer | null): void {
   const left = PAGE_MARGIN
   const width = doc.page.width - PAGE_MARGIN * 2
 
-  // ---- header band -------------------------------------------------
-  // Typographic wordmark rather than the bitmap logo: the only PPME logo
-  // asset in the repo is 135x70px (README "Known gaps"), which either
-  // prints visibly blurry or has to be bundled into the Function via
-  // `included_files` — an extra runtime file-resolution path that
-  // behaves differently under `netlify dev` and on deployed Netlify.
-  // Swap in `doc.image()` here once a high-res square asset exists.
-  doc.rect(0, 0, doc.page.width, 84).fill(BRAND.primary)
-  doc.rect(0, 84, doc.page.width, 4).fill(BRAND.accent)
-  doc
-    .fillColor('#FFFFFF')
-    .font('Helvetica-Bold')
-    .fontSize(20)
-    .text('PPME Den Haag', left, 26)
-  doc
-    .font('Helvetica')
-    .fontSize(10)
-    .text("TPA — Taman Pendidikan Al-Quran", left, 52)
-
+  drawHeader(doc, left, logo)
   doc.y = 118
 
   // ---- title + student block ---------------------------------------
@@ -167,6 +158,49 @@ function draw(doc: PDFKit.PDFDocument, input: ReportPdfInput): void {
     width: width / 2,
     align: 'right',
   })
+}
+
+/**
+ * Brand header band: the reversed PPME wordmark on brand blue, with the
+ * gold rule under it.
+ *
+ * The logo is the real bitmap now that a high-resolution master exists —
+ * it used to be typeset because the only asset in the repo was 135x70px
+ * (README "Known gaps"). The typographic version is still here as a
+ * fallback: a report that publishes with a plainer header is a cosmetic
+ * problem, a publish that fails because a logo would not decode is a
+ * real one, so `doc.image()` is allowed to fail and fall through.
+ */
+function drawHeader(doc: PDFKit.PDFDocument, left: number, logo: Buffer | null): void {
+  const BAND_HEIGHT = 84
+  doc.rect(0, 0, doc.page.width, BAND_HEIGHT).fill(BRAND.primary)
+  doc.rect(0, BAND_HEIGHT, doc.page.width, 4).fill(BRAND.accent)
+
+  const LOGO_HEIGHT = 48
+  let drewLogo = false
+  if (logo) {
+    try {
+      doc.image(logo, left, (BAND_HEIGHT - LOGO_HEIGHT) / 2, { height: LOGO_HEIGHT })
+      drewLogo = true
+    } catch {
+      drewLogo = false
+    }
+  }
+
+  if (drewLogo) {
+    const textLeft = left + LOGO_HEIGHT * HEADER_LOGO_ASPECT + 16
+    doc
+      .fillColor('#FFFFFF')
+      .font('Helvetica')
+      .fontSize(11)
+      .text('TPA — Taman Pendidikan Al-Quran', textLeft, 36, {
+        width: doc.page.width - textLeft - PAGE_MARGIN,
+      })
+    return
+  }
+
+  doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(20).text('PPME Den Haag', left, 26)
+  doc.font('Helvetica').fontSize(10).text('TPA — Taman Pendidikan Al-Quran', left, 52)
 }
 
 function formatRate(rate: number): string {

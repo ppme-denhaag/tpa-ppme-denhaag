@@ -1,17 +1,20 @@
 import { useAuth } from '../../context/AuthContext'
-import { AdminRestricted } from '../../components/AdminRestricted'
 import { TutorReportsView } from './TutorReportsView'
 import { FamilyReportsView } from './FamilyReportsView'
 
 /**
  * Same shape as QuranPage/MurajaahPage/YanbuaPage/AssignmentsPage: admin
- * gets neither view. Admin's only involvement with year-end reports is
- * triggering bulk draft generation from `/admin/reports`, which shows
- * counts and nothing else — never report content (ADR-012/ADR-013).
+ * takes the staff (class-shaped) view, not the family one.
+ *
+ * Since ADR-014, admin sees every class's reports including drafts (RLS
+ * already returned them — `yer_admin_all`), edits narratives and grades
+ * like any other operational data, and downloads the PDFs. Publishing
+ * stays with the authoring tutor; `TutorReportsView`/`ReportEditor`
+ * carry that distinction. Bulk draft generation, previously a screen of
+ * its own at `/admin/reports`, is now a panel inside this view.
  */
 export function ReportsPage() {
   const { profile } = useAuth()
-  if (profile?.role === 'admin') return <AdminRestricted />
-
-  return profile?.role === 'tutor' ? <TutorReportsView /> : <FamilyReportsView />
+  const isManager = profile?.role === 'tutor' || profile?.role === 'admin'
+  return isManager ? <TutorReportsView /> : <FamilyReportsView />
 }

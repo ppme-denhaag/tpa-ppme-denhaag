@@ -9,11 +9,20 @@ import { renderReportPdf } from './lib/reportPdf'
  * Authorization: the report's **authoring tutor only**. This is narrower
  * than the RLS policy behind `year_end_reports` (which also grants admin
  * ALL) on purpose — publishing is what makes a report visible to a
- * family, a pedagogical act that ADR-012/ADR-013 keep with the tutor. It
- * also matches what the tutor can actually do through PostgREST: the
- * `yer_tutor_rw` policy's WITH CHECK requires `tutor_id = auth.uid()`,
- * so a co-tutor on the same class can read a colleague's report but
- * cannot edit it — and therefore should not be able to publish it either.
+ * family, an authoring act rather than an administrative one. ADR-014
+ * turned admin into a full super admin over every other operational
+ * table *and* over this one's content, and deliberately left this single
+ * check exactly where ADR-013 put it. It also matches what the tutor can
+ * actually do through PostgREST: the `yer_tutor_rw` policy's WITH CHECK
+ * requires `tutor_id = auth.uid()`, so a co-tutor on the same class can
+ * read a colleague's report but cannot edit it — and therefore should
+ * not be able to publish it either.
+ *
+ * Consequence, handled in the UI rather than here: an admin can edit a
+ * published report but cannot regenerate its PDF, so the stored object
+ * goes stale until the authoring tutor re-publishes. `ReportEditor`
+ * hides the publish button for admin and says whose re-publish the PDF
+ * is waiting on.
  *
  * The status flip is the last step and only runs if the PDF rendered and
  * uploaded — see `publishFlow.ts` for the ordering and why it lives in

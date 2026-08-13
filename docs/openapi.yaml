@@ -489,9 +489,11 @@ paths:
         has no tutor assigned, cannot be given a report at all
         (`tutor_id` is NOT NULL) and come back as `skipped_no_tutor`.
 
-        The response is counts only — never the drafts or their content.
-        See TAD ADR-013 for why the trigger is admin's but everything
-        about a report's content stays with the tutor.
+        The response is three counts. Under ADR-013 that was a privacy
+        boundary — admin could trigger generation but never see what the
+        reports said. TAD ADR-014 supersedes that half: admin now reads
+        and edits every report, and this trigger lives on the admin's own
+        Reports screen rather than a separate counts-only page.
       requestBody:
         required: true
         content:
@@ -532,9 +534,18 @@ paths:
       description: |
         Verifies the caller is the **authoring tutor** for this report —
         not admin, and not a co-tutor on the same class. This mirrors
-        `yer_tutor_rw`'s WITH CHECK (`tutor_id = auth.uid()`): someone who
-        cannot edit a report through PostgREST cannot publish it either.
-        See TAD ADR-013.
+        `yer_tutor_rw`'s WITH CHECK (`tutor_id = auth.uid()`): a co-tutor
+        who cannot edit a report through PostgREST cannot publish it
+        either. See TAD ADR-013.
+
+        This is the one report boundary TAD ADR-014 deliberately did not
+        move: admin became a super admin over every other operational
+        surface, including editing this report's narrative and grades,
+        and still gets a 403 here. Publishing is what makes a report
+        visible to a family. The consequence — an admin edit to an
+        already-published report leaves the stored PDF stale until the
+        authoring tutor calls this again — is surfaced to the admin in
+        the report editor rather than hidden.
 
         Renders the PDF via pdfkit (ADR-011), uploads it to the private
         `reports` Storage bucket, and only then flips
@@ -588,15 +599,17 @@ paths:
       summary: Get a short-lived signed URL for a report's PDF
       description: |
         Checks the caller's authorization against the same rule as the
-        `year_end_reports` RLS policy (tutor: own students any status;
-        parent/student: own child/self, published only) before minting a
-        signed URL — this check is load-bearing since signed URLs bypass
-        RLS and the `reports` bucket has no client-facing read policy at
-        all, making this Function the only gate in front of the file.
+        `year_end_reports` RLS policy (admin: any report, any status;
+        tutor: own students, any status; parent/student: own child/self,
+        published only) before minting a signed URL — this check is
+        load-bearing since signed URLs bypass RLS and the `reports`
+        bucket has no client-facing read policy at all, making this
+        Function the only gate in front of the file.
 
-        Admin is denied, even though RLS grants admin ALL at the DB layer:
-        a report PDF is pedagogical content, which ADR-012/ADR-013 keep
-        admin out of. Same application-layer stance as `AdminRestricted`.
+        Admin was denied outright under ADR-012/ADR-013 even though RLS
+        granted it ALL. TAD ADR-014 supersedes that: admin reads and
+        edits report content in the app, so withholding the PDF of a
+        report it can already read in full protected nothing.
 
         A caller who is not authorized and a report that does not exist
         are deliberately indistinguishable from the outside.

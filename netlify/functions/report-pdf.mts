@@ -13,15 +13,18 @@ const SIGNED_URL_TTL_SECONDS = 300
  * and the PDF. It therefore restates the `year_end_reports` RLS rules in
  * code rather than leaning on them:
  *
+ *   - admin  → any report, any status (drafts too)
  *   - tutor  → students in their own classes, any status (drafts too)
  *   - parent → own children, published only
  *   - student (16+ self-login) → own record, published only
- *   - admin  → denied (see below)
  *
- * Admin is denied even though RLS grants admin ALL at the DB layer: a
- * report PDF is operational/pedagogical content, which ADR-012 keeps
- * admin out of, and ADR-013 confirms for this feature specifically. Same
- * application-layer stance as `AdminRestricted.tsx`.
+ * Admin used to be denied here on application-layer grounds even though
+ * RLS granted it ALL at the DB layer (ADR-012/ADR-013). ADR-014
+ * supersedes both: admin is a super admin that reads and edits every
+ * report, so refusing it the PDF of a report it can read in full in the
+ * app was protecting nothing. What did *not* move is `publish-report`,
+ * which still accepts the authoring tutor and nobody else — reading a
+ * report and deciding a family may see it are different acts.
  */
 export default async (req: Request) => {
   if (req.method !== 'GET') return jsonError('Method not allowed', 405)
@@ -86,6 +89,10 @@ async function isAuthorized(
   const published = report.status === 'published'
 
   switch (caller.role) {
+    // Mirrors `yer_admin_all`: every report, drafts included. Kept above
+    // the tutor branch because it needs no class lookup at all.
+    case 'admin':
+      return true
     case 'tutor': {
       if (!report.class_id) return false
       const { data } = await admin

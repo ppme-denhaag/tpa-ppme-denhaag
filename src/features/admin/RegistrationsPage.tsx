@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AdminSectionNav } from '../../components/AdminSectionNav'
 import type { Database } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
 import { fetchPendingRegistrations, inviteUser, registerUser, type PendingRegistration } from './api'
@@ -84,6 +85,7 @@ export function RegistrationsPage() {
 
   return (
     <div className="space-y-4">
+      <AdminSectionNav />
       <h1 className="text-lg font-bold text-ppme-primary">{t('admin.registrationsTitle')}</h1>
 
       <div className="space-y-3 rounded-lg bg-white p-4 shadow-sm">
