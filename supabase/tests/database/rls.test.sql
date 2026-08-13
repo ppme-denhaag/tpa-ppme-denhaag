@@ -784,6 +784,161 @@ insert into _tap_log(line) select ok(
   'WH-06: the absence reason does not appear anywhere in the webhook body'
 );
 
+-- ============================================================
+-- WH-07…WH-12: the four event triggers added in migration 010
+-- ============================================================
+
+-- WH-07: the jilid trigger is deliberately *not* selective — it fires
+-- for every Yanbu'a entry and lets the Function apply
+-- `isJilidComplete`, so that rule has exactly one implementation. Both
+-- a mid-jilid entry and a completing one must queue a request.
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+values ('d0000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', 1, 5, 'kurang_lancar');
+insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+values ('d0000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', 1, 44, 'lancar');
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  2::bigint,
+  'WH-07: every yanbua_progress entry queues a milestone check, completing or not'
+);
+insert into _tap_log(line) select is(
+  (select count(distinct url) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-07: …all of them to the same notify-milestone endpoint'
+);
+insert into _tap_log(line) select is(
+  (select url from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'https://webhook.test.local/.netlify/functions/notify-milestone',
+  'WH-07: the jilid webhook targets notify-milestone'
+);
+insert into _tap_log(line) select is(
+  (select convert_from(body, 'utf8')::jsonb ->> 'table' from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'yanbua_progress',
+  'WH-07: …and names the table, so one Function can serve both milestone kinds'
+);
+
+-- WH-08: "surah memorized" is a state transition, not a curriculum rule
+-- — active true -> false, and nothing else.
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+update public.murajaah_assignments set active = false
+where id = 'f0000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-08: marking a murajaah target memorized queues one request'
+);
+insert into _tap_log(line) select is(
+  (select convert_from(body, 'utf8')::jsonb ->> 'table' from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'murajaah_assignments',
+  'WH-08: …identified as the murajaah_assignments milestone'
+);
+update public.murajaah_assignments set active = true
+where id = 'f0000000-0000-0000-0000-000000000001';
+update public.murajaah_assignments set ayah_to = 5
+where id = 'f0000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-08: re-activating a target, or editing it, queues nothing'
+);
+
+-- WH-09: new homework.
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+insert into public.assignments (id, class_id, tutor_id, title, due_date)
+values ('b0000000-0000-0000-0000-0000000000e1', 'c0000000-0000-0000-0000-00000000000a',
+        '70000000-0000-0000-0000-000000000001', 'Hafalan Surah An-Nas', current_date + 2);
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-09: creating an assignment queues one request'
+);
+insert into _tap_log(line) select is(
+  (select url from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'https://webhook.test.local/.netlify/functions/notify-assignment',
+  'WH-09: …to notify-assignment'
+);
+-- The assignment title is not lock-screen content (DPIA R6) and, as with
+-- the absence reason, never leaves the database in the webhook at all.
+insert into _tap_log(line) select ok(
+  (select convert_from(body, 'utf8') from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1)
+    not like '%An-Nas%',
+  'WH-09: the assignment title does not appear in the webhook body'
+);
+insert into _tap_log(line) select ok(
+  (select (convert_from(body, 'utf8')::jsonb -> 'record') - 'id'
+   from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1) = '{}'::jsonb,
+  'WH-09: the body carries the row id and nothing else'
+);
+
+-- WH-10: a report notifies on the transition into published, once.
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+update public.year_end_reports set status = 'published'
+where student_id = 'd0000000-0000-0000-0000-000000000001' and academic_year = '2025/2026';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-10: publishing a draft report queues one request'
+);
+insert into _tap_log(line) select is(
+  (select url from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'https://webhook.test.local/.netlify/functions/notify-report-ready',
+  'WH-10: …to notify-report-ready'
+);
+-- Re-publishing after a correction (FR-006) leaves status at published,
+-- so there is no second publish event to announce — and an admin edit to
+-- a published report does not regenerate the PDF (ADR-014(e)), which is
+-- exactly when a second "your report is ready" would be untrue.
+update public.year_end_reports set status = 'published'
+where student_id = 'd0000000-0000-0000-0000-000000000001' and academic_year = '2025/2026';
+update public.year_end_reports set narrative = 'corrected text'
+where student_id = 'd0000000-0000-0000-0000-000000000001' and academic_year = '2025/2026';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-10: re-publishing or editing an already-published report queues nothing'
+);
+
+-- WH-11: every trigger in migration 010, like 009's, is silent in an
+-- unconfigured environment. This is what keeps CI and a fresh local
+-- stack from making outbound requests.
+delete from vault.secrets where name in ('notify_webhook_base_url', 'notify_webhook_secret');
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+values ('d0000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000001', 2, 44, 'lancar');
+insert into public.assignments (class_id, tutor_id, title, due_date)
+values ('c0000000-0000-0000-0000-00000000000a', '70000000-0000-0000-0000-000000000001', 'Unconfigured', current_date + 1);
+update public.murajaah_assignments set active = false
+where id = 'f0000000-0000-0000-0000-000000000002';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  0::bigint,
+  'WH-11: with no Vault configuration, none of the migration 010 triggers queue anything'
+);
+
+-- WH-12: a trigger must never be able to fail the write it observes.
+-- `fn_post_webhook` is dropped out from under them; the writes must
+-- still succeed.
+alter function public.fn_post_webhook(text, text, text, uuid) rename to fn_post_webhook_moved;
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.assignments (class_id, tutor_id, title, due_date)
+     values ('c0000000-0000-0000-0000-00000000000a', '70000000-0000-0000-0000-000000000001',
+             'Broken webhook', current_date + 1) $$,
+  'WH-12: a broken webhook path does not fail the assignment write'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ update public.attendance set status = 'absent'
+     where session_id = 'e0000000-0000-0000-0000-00000000000b'
+       and student_id = 'd0000000-0000-0000-0000-000000000004' $$,
+  'WH-12: …nor the attendance write'
+);
+alter function public.fn_post_webhook_moved(text, text, text, uuid) rename to fn_post_webhook;
+
 -- The shared secret must not be reachable from a client role.
 set local role authenticated;
 set local request.jwt.claim.role to 'authenticated';

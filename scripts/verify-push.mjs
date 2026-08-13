@@ -48,8 +48,12 @@ const SITI = { id: 'a2000000-0000-0000-0000-000000000001', email: 'ibu.siti@dev.
 const RUDI = { id: 'a2000000-0000-0000-0000-000000000002', email: 'bapak.rudi@dev.local' }
 const AHMAD = { id: 'a1000000-0000-0000-0000-000000000001', email: 'ustadz.ahmad@dev.local' }
 const ADMIN = { id: 'c1000000-0000-0000-0000-000000000001', email: 'admin.dev@dev.local' }
+const FATIMAH_USER = { id: 'a3000000-0000-0000-0000-000000000001', email: 'fatimah@dev.local' }
 const ALI = 'a5000000-0000-0000-0000-000000000001' // Ibu Siti's child, Kelas A
-const FATIMAH = 'a5000000-0000-0000-0000-000000000003' // Bapak Rudi's child, Kelas A
+const ZAINAB = 'a5000000-0000-0000-0000-000000000002' // Ibu Siti's second child, Kelas A
+const FATIMAH = 'a5000000-0000-0000-0000-000000000003' // Bapak Rudi's child, Kelas A, 16+ self-login
+const KELAS_A = 'a4000000-0000-0000-0000-000000000001'
+const MURAJAAH_TARGET = 'a7000000-0000-0000-0000-0000000000e1'
 
 const sql = (query) =>
   execFileSync('docker', ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'postgres', '-tAc', query], {
@@ -193,6 +197,30 @@ function markPresent(studentId) {
   sql(`update public.attendance set status='present' where student_id='${studentId}'`)
 }
 
+function recordYanbua(studentId, jilid, page, mastery) {
+  sql(`
+    insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+    values ('${studentId}', '${AHMAD.id}', ${jilid}, ${page}, '${mastery}');
+  `)
+}
+
+function assignMurajaah(studentId) {
+  sql(`
+    insert into public.murajaah_assignments (id, student_id, tutor_id, surah_num, ayah_from, ayah_to, active)
+    values ('${MURAJAAH_TARGET}', '${studentId}', '${AHMAD.id}', 114, 1, 6, true)
+    on conflict (id) do update set active = true, student_id = excluded.student_id;
+  `)
+}
+
+function draftReport(studentId, year = '2025/2026') {
+  sql(`
+    insert into public.year_end_reports (student_id, academic_year, tutor_id, status, narrative)
+    values ('${studentId}', '${year}', '${AHMAD.id}', 'draft', 'Alhamdulillah, progres baik.')
+    on conflict (student_id, academic_year) do update set status = 'draft';
+  `)
+  return sql(`select id from public.year_end_reports where student_id='${studentId}' and academic_year='${year}'`)
+}
+
 const today = sql("select to_char(current_date, 'YYYY-MM-DD')")
 
 // ── preconditions ────────────────────────────────────────────────
@@ -201,16 +229,26 @@ if (configured !== 't') {
   console.error('Webhook is not configured in Vault — see the header comment in this file.')
   process.exit(2)
 }
-sql(`update public.users set push_sub = null, locale = 'id' where id in ('${SITI.id}', '${RUDI.id}')`)
+sql(`update public.users set push_sub = null, locale = 'id' where id in ('${SITI.id}', '${RUDI.id}', '${FATIMAH_USER.id}')`)
 sql(`delete from public.attendance where student_id in ('${ALI}', '${FATIMAH}') and session_id in (select id from public.sessions where date = current_date)`)
+sql(`delete from public.yanbua_progress where student_id in ('${ALI}', '${FATIMAH}')`)
+sql(`delete from public.murajaah_assignments where id = '${MURAJAAH_TARGET}'`)
+sql(`delete from public.assignments where class_id = '${KELAS_A}'`)
+sql(`delete from public.year_end_reports where student_id in ('${ALI}', '${FATIMAH}')`)
 
 const siti = await openAs(SITI)
 const rudi = await openAs(RUDI)
+// The 16+ self-login student — the only fixture identity that exercises
+// the 'family' audience, where a notification reaches both a parent and
+// the student themselves.
+const fatimah = await openAs(FATIMAH_USER)
 
 try {
   console.log('\n1. subscribe → store')
   await enable(siti.page, 'Ibu Siti')
   await enable(rudi.page, 'Bapak Rudi')
+  await enable(fatimah.page, 'Fatimah (16+ student)')
+  check('a 16+ student can subscribe', sql(`select push_sub is not null from public.users where id='${FATIMAH_USER.id}'`) === 't')
   check('subscription stored for Ibu Siti', sql(`select push_sub is not null from public.users where id='${SITI.id}'`) === 't')
   check('subscription stored for Bapak Rudi', sql(`select push_sub is not null from public.users where id='${RUDI.id}'`) === 't')
   check(
@@ -253,6 +291,98 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 12000))
   check('the same event twice shows one notification, not two', (await shown(rudi.page)).length === 1)
 
+  // Back to Indonesian so the remaining assertions read in one language.
+  sql(`update public.users set locale='id' where id='${RUDI.id}'`)
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
+  console.log('\n4b. jilid completed (PRD Feature 3 FR-006)')
+  // A mid-jilid entry fires the webhook — the trigger is deliberately
+  // unselective so the completion rule has one implementation — but must
+  // produce no notification.
+  recordYanbua(ALI, 1, 20, 'lancar')
+  await new Promise((resolve) => setTimeout(resolve, 8000))
+  check('a mid-jilid entry notifies nobody', (await shown(siti.page)).length === 0)
+
+  // Last page of jilid 1 (page_count 44, migration 004) with mastery lancar.
+  recordYanbua(ALI, 1, 44, 'lancar')
+  const jilid = await waitForNotification(siti.page)
+  check('completing a jilid notifies the parent', jilid.length === 1 && jilid[0].body === 'Alhamdulillah! Ali menyelesaikan satu jilid', JSON.stringify(jilid))
+  check('DPIA R6: the jilid number is not on the lock screen', !/Jilid 1|jilid 1/.test(JSON.stringify(jilid)))
+  check('the other family hears nothing about it', (await shown(rudi.page)).length === 0)
+
+  // Same page, but needing repetition — the rule in src/lib/yanbua.ts
+  // says that is not a completion.
+  await clearTray(siti.page)
+  recordYanbua(ALI, 2, 44, 'kurang_lancar')
+  await new Promise((resolve) => setTimeout(resolve, 8000))
+  check('a last page that still needs repeating is not a completion', (await shown(siti.page)).length === 0)
+
+  console.log('\n4c. surah memorized (PRD Feature 5 FR-005)')
+  await clearTray(siti.page)
+  assignMurajaah(ALI)
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+  check('assigning a murajaah target notifies nobody', (await shown(siti.page)).length === 0)
+
+  sql(`update public.murajaah_assignments set active = false where id = '${MURAJAAH_TARGET}'`)
+  const memorized = await waitForNotification(siti.page)
+  check('marking a target memorized notifies the parent', memorized.length === 1 && memorized[0].body === 'Alhamdulillah! Ali hafal satu surah baru', JSON.stringify(memorized))
+  check('DPIA R6: the surah name is not on the lock screen', !/An-Nas|Al-Fatihah|surah 114/i.test(memorized[0]?.body ?? ''))
+
+  await clearTray(siti.page)
+  sql(`update public.murajaah_assignments set active = true where id = '${MURAJAAH_TARGET}'`)
+  await new Promise((resolve) => setTimeout(resolve, 8000))
+  check('re-activating a target notifies nobody', (await shown(siti.page)).length === 0)
+
+  console.log('\n4d. new homework — fan-out across a class')
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+  sql(`
+    insert into public.assignments (class_id, tutor_id, title, due_date)
+    values ('${KELAS_A}', '${AHMAD.id}', 'Hafalan Surah An-Nas ayat 1-6', current_date + 2);
+  `)
+  const sitiHomework = await waitForNotification(siti.page)
+  const rudiHomework = await waitForNotification(rudi.page)
+  const fatimahHomework = await waitForNotification(fatimah.page)
+
+  check('the parent of two children in the class is notified', sitiHomework.length === 1, JSON.stringify(sitiHomework))
+  check('…naming one of her own children', /Ada tugas baru untuk (Ali|Zainab)/.test(sitiHomework[0]?.body ?? ''), sitiHomework[0]?.body)
+  check('the other family in the same class is notified about their own child', rudiHomework.length === 1 && rudiHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(rudiHomework))
+  check('CROSS-FAMILY: that parent is told nothing about the other family’s children', !/Ali|Zainab/.test(JSON.stringify(rudiHomework)))
+  check('FAMILY AUDIENCE: the 16+ student is notified too', fatimahHomework.length === 1 && fatimahHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(fatimahHomework))
+  check('DPIA R6: the assignment title is not on the lock screen', !/An-Nas|ayat/i.test(JSON.stringify([...sitiHomework, ...rudiHomework, ...fatimahHomework])))
+
+  console.log('\n4e. year-end report published (PRD Feature 6 FR-007)')
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+  const aliReport = draftReport(ALI)
+  const fatimahReport = draftReport(FATIMAH)
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+  check('creating a draft report notifies nobody', (await shown(siti.page)).length === 0)
+
+  sql(`update public.year_end_reports set status='published', published_at=now() where id='${fatimahReport}'`)
+  const rudiReport = await waitForNotification(rudi.page)
+  const fatimahOwnReport = await waitForNotification(fatimah.page)
+  check('publishing notifies the parent', rudiReport.length === 1 && rudiReport[0].body === 'Rapor akhir tahun Fatimah sudah siap', JSON.stringify(rudiReport))
+  check('FAMILY AUDIENCE: …and the 16+ student, who can open it themselves', fatimahOwnReport.length === 1 && fatimahOwnReport[0].body === 'Rapor akhir tahun Fatimah sudah siap', JSON.stringify(fatimahOwnReport))
+  check('CROSS-FAMILY: the other parent hears nothing', (await shown(siti.page)).length === 0)
+
+  const beforeRepublish = sql('select coalesce(max(id),0) from net.http_request_queue')
+  sql(`update public.year_end_reports set status='published' where id='${fatimahReport}'`)
+  sql(`update public.year_end_reports set narrative='corrected' where id='${fatimahReport}'`)
+  check('re-publishing or editing a published report queues nothing', Number(sql(`select count(*) from net.http_request_queue where id > ${beforeRepublish}`)) === 0)
+
+  sql(`update public.year_end_reports set status='published', published_at=now() where id='${aliReport}'`)
+  const sitiReport = await waitForNotification(siti.page)
+  check('a second family’s report reaches only them', sitiReport.length === 1 && sitiReport[0].body === 'Rapor akhir tahun Ali sudah siap', JSON.stringify(sitiReport))
+
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
   console.log('\n5. unsubscribe → silence')
   const disable = rudi.page.getByRole('button', { name: /Meldingen uitschakelen|Matikan notifikasi/ })
   await disable.waitFor({ timeout: 15000 })
@@ -269,11 +399,14 @@ try {
   console.log('\n6. browser health')
   check('no console errors (Ibu Siti)', siti.consoleErrors.length === 0, siti.consoleErrors.join(' | '))
   check('no console errors (Bapak Rudi)', rudi.consoleErrors.length === 0, rudi.consoleErrors.join(' | '))
+  check('no console errors (Fatimah, 16+ student)', fatimah.consoleErrors.length === 0, fatimah.consoleErrors.join(' | '))
   check('no failed requests (Ibu Siti)', siti.failedRequests.length === 0, siti.failedRequests.join(' | '))
   check('no failed requests (Bapak Rudi)', rudi.failedRequests.length === 0, rudi.failedRequests.join(' | '))
+  check('no failed requests (Fatimah, 16+ student)', fatimah.failedRequests.length === 0, fatimah.failedRequests.join(' | '))
 } finally {
   await siti.context.close()
   await rudi.context.close()
+  await fatimah.context.close()
   sql(`update public.users set locale='id' where id='${RUDI.id}'`)
 }
 

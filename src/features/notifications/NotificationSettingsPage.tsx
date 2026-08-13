@@ -163,8 +163,14 @@ export function NotificationSettingsPage() {
       {isRecipient && (
         <div className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="font-medium text-ppme-text">{t('notifications.settings.whatYouGet')}</h2>
+          {/* One line per notification the system can actually send. A
+              family should be able to see what enabling this signs them
+              up for without having to find out by receiving it. */}
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ppme-text/70">
             <li>{t('notifications.settings.itemAbsence')}</li>
+            <li>{t('notifications.settings.itemAssignment')}</li>
+            <li>{t('notifications.settings.itemMilestone')}</li>
+            <li>{t('notifications.settings.itemReport')}</li>
           </ul>
         </div>
       )}
