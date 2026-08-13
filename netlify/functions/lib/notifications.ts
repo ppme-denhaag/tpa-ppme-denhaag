@@ -5,28 +5,9 @@ import type { Database } from '../../../src/lib/database.types'
 export type Locale = Database['public']['Enums']['locale']
 export type UserRole = Database['public']['Enums']['user_role']
 
-/**
- * Who this system sends notifications to — and, because a push
- * subscription is itself personal data, who it will store one for.
- *
- * Every row in the TAD's Notification Spec is addressed to a parent or
- * to a 16+ student: notifications are family-facing by design. A tutor
- * finds out about an absence by recording it, and admin is not exempt
- * from that just because ADR-014 made it a super admin — that decision
- * granted read/write access to the *screens*, which is not the same
- * thing as subscribing one account to two hundred children's lock
- * screens, and would be hard to defend under data minimization.
- *
- * `push-subscribe` therefore refuses to store a subscription for a role
- * that would never be sent one, rather than collecting dead personal
- * data, and the settings screen explains that instead of offering a
- * toggle that does nothing. TAD ADR-015.
- */
-export const RECIPIENT_ROLES: readonly UserRole[] = ['parent', 'student']
-
-export function canReceiveNotifications(role: UserRole): boolean {
-  return RECIPIENT_ROLES.includes(role)
-}
+// Shared with the settings screen rather than restated — see the module
+// for why the two must not drift.
+export { RECIPIENT_ROLES, canReceiveNotifications } from '../../../src/lib/notificationRoles'
 
 /**
  * Every push a family can receive. The names match the keys under

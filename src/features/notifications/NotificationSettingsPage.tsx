@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { getErrorMessage } from '../../lib/errors'
+import { canReceiveNotifications } from '../../lib/notificationRoles'
 import { ROLE_I18N_KEY } from '../../lib/roleLabels'
 import {
   permissionState,
@@ -12,8 +13,6 @@ import {
   type PushCapability,
   type SubscriptionState,
 } from '../../lib/push'
-
-const RECIPIENT_ROLES = ['parent', 'student'] as const
 
 /**
  * Notification settings — the only place a family turns push on or off.
@@ -45,7 +44,7 @@ export function NotificationSettingsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isRecipient = profile ? (RECIPIENT_ROLES as readonly string[]).includes(profile.role) : false
+  const isRecipient = profile ? canReceiveNotifications(profile.role) : false
   const subscribedHere = state === 'on-this-device'
 
   useEffect(() => {
