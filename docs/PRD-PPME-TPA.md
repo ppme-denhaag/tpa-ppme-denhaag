@@ -1076,6 +1076,7 @@ Generates a formal, per-student year-end report combining auto-computed statisti
 **FR-007: Publish Notification**
 - Priority: Medium
 - When a report is published (or re-published after edit), the parent and any linked 16+ student receive a push notification.
+- *Implementation status (Milestone 6): **not built**. No push/webhook/scheduled-function infrastructure exists in the project yet, so this is deferred with every other notification in this PRD (attendance absence alerts, homework FR-005 due-date reminders, the Quran milestone celebration, Murajaah FR-006 daily reminders). `publish-report` completes the publish without notifying anyone — families see a new report the next time they open the Reports screen. The localized message copy is already drafted (`reports.notification` in both locale files) and left unused until the pipeline exists.*
 
 #### 6.4. Non-Functional Requirements
 *   **Performance:** PDF generation must complete within the Netlify Function execution limit (target <10s per report); bulk draft generation for a full class (~15-20 students) must complete without timeout, batched if needed.
@@ -1118,6 +1119,7 @@ Generates a formal, per-student year-end report combining auto-computed statisti
 - **Given:** A tutor has completed narrative + grades for a draft report
 - **When:** The tutor publishes it
 - **Then:** Status becomes published, a PDF is generated and stored, and the parent (and 16+ student, if applicable) receives a push notification within 5 minutes
+- *Implementation status (Milestone 6): the status/PDF half is built and verified; the push half is deferred — see FR-007 above.*
 
 **AC-004:** Parent can view and download
 - **Given:** A published report exists for a parent's child

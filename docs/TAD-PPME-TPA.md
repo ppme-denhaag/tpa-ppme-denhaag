@@ -185,12 +185,13 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | ADR-010 | **Netlify Scheduled Functions for reminders** | Cron-based daily Murajaah reminders; no separate scheduler infrastructure; runs in EU region; included in Netlify plan | Supabase pg_cron (limited); External cron service (extra dependency); AWS Lambda (overkill) |
 | ADR-011 | **pdfkit for year-end report PDF generation** | Pure-JS, no headless browser — fits comfortably within Netlify Functions' package-size and execution-time limits; sufficient for a structured single/two-page report (header, stats table, grades table, narrative) | Puppeteer/Playwright + Chromium (HTML→PDF gives more layout flexibility but the Chromium binary is heavy for serverless — tight fit on free tier, slower cold starts); @react-pdf/renderer (viable alternative, similar tradeoffs to pdfkit but React-based — reconsider if design needs grow past what pdfkit's imperative API comfortably supports) |
 | ADR-012 | **Admin role scoped to enrollment/setup only, not operational data** | Explicit product decision during the admin UI build: admin manages users/classes/students but cannot view attendance, Yanbu'a/Quran/Murajaah progress, homework, or reports — those nav tabs are hidden for admin and the routes redirect if visited directly (`AdminRestricted.tsx`). This is an **application-layer** restriction only — RLS still grants admin `ALL` at the DB layer per ADR-006/the RLS policy table below, kept for legitimate support/data-recovery needs. Narrows the "CS Tools → Admin Dashboard" scope below from the original spec (which included Attendance Reports and Progress Overview) | Full CS Tools scope as originally specced (rejected: puts student progress/attendance data in front of a role with no pedagogical relationship to the student, beyond what enrollment administration requires) |
+| ADR-013 | **Year-end draft generation is admin-triggered; everything about a report's content stays with the tutor** | Resolves the one apparent conflict between the Netlify Functions table below (which describes `generate-year-end-drafts` as "Admin-triggered") and ADR-012 (admin stays out of operational/pedagogical data). Bulk-creating one draft per enrolled student for a whole academic year genuinely needs an enrollment-wide view, which only admin has — so the *trigger* is admin's, exposed at `/admin/reports` as a form with two inputs (academic year, optional class) whose only output is `created_count` / `skipped_existing` / `skipped_no_tutor`. That screen never lists the drafts, never shows a narrative or grade, and offers no route to one; `/reports` itself still blocks admin via `AdminRestricted`, and `report-pdf` refuses admin outright even though RLS grants admin ALL at the DB layer. Publishing is narrowed the same way: `publish-report` accepts **only the authoring tutor**, not admin, matching what `yer_tutor_rw`'s WITH CHECK (`tutor_id = auth.uid()`) already allows through PostgREST | Admin able to browse/review report content (rejected: that is exactly the pedagogical data ADR-012 keeps admin out of, and a report is more sensitive than the attendance rows already excluded); tutor-triggered generation (rejected: a tutor sees only their own classes, so nobody could generate for the whole TPA in one action, and per-class triggers would silently miss students whose class has no tutor assigned); admin allowed to publish as a break-glass (rejected: publishing is what makes a report visible to a family — a pedagogical judgement, not an enrollment operation) |
 
 # Impact
 
 | Component | Details |
 |---|---|
-| Domain Model | 10 core entities: User, Student, Class, Session, Attendance, Assignment, YanbuaProgress, QuranProgress, MurajaahAssignment, MurajaahLog |
+| Domain Model | 11 core entities: User, Student, Class, Session, Attendance, Assignment, YanbuaProgress, QuranProgress, MurajaahAssignment, MurajaahLog, YearEndReport |
 | API Spec | RESTful API via Supabase auto-generated endpoints + Netlify Functions for custom logic (notifications, streak calculation) |
 | Batch Files Spec | N/A — no batch file processing required |
 | Notification Spec | Web Push (VAPID) for absence alerts, homework reminders, milestone celebrations; optional WhatsApp via Business API (Phase 3) |
@@ -322,6 +323,18 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
      by flipping murajaah_assignments.active to false instead,
      the tutor's only lever on this table (see
      src/features/murajaah/api.ts's docstring)
+***** YearEndReport.academic_year ('YYYY/YYYY') maps to a
+      1 Aug – 31 Jul window for the attendance snapshot
+      (src/lib/reports.ts#academicYearWindow) — deliberately
+      wider than the teaching period so no session can fall
+      between two years. The snapshot reuses the app's own
+      computeAttendanceRate ('late' counts as attended), so a
+      report can never disagree with the attendance screens.
+      tutor_id is the first entry of the class's tutor_ids;
+      a student with no class, or a class with no tutor, is
+      reported back as skipped_no_tutor rather than given a
+      report nobody can author. Bulk generation is admin-
+      triggered but content-blind — see ADR-013
 ```
 
 **Enums:**
@@ -373,9 +386,9 @@ Supabase auto-generates RESTful endpoints from the PostgreSQL schema via PostgRE
 | GET | `/.netlify/functions/streak-status` | Calculates current streak for a student's Murajaah assignment |
 | POST | `/.netlify/functions/push-subscribe` | Stores Web Push subscription for a user |
 | POST | `/.netlify/functions/send-reminder` | (Scheduled) Daily Murajaah reminder trigger |
-| POST | `/.netlify/functions/generate-year-end-drafts` | Admin-triggered. Computes stats and inserts one draft `year_end_reports` row per enrolled student for the given `academic_year` (optionally scoped to `class_id`) |
-| POST | `/.netlify/functions/publish-report` | Tutor-triggered. Flips a report `draft → published`, generates the PDF (pdfkit — see ADR-011), uploads to Storage, and triggers the report-ready notification. Also used to regenerate the PDF after a post-publish edit (FR-006) |
-| GET | `/.netlify/functions/report-pdf` | Returns a short-lived signed URL for a report's PDF, after verifying the caller is authorized to view that report (same rule as the RLS policy on `year_end_reports`) |
+| POST | `/.netlify/functions/generate-year-end-drafts` | **Admin-only** (verified in-function via the caller's JWT + `public.users.role`, same as `invite-user`). Computes the attendance stats snapshot and inserts one draft `year_end_reports` row per enrolled student for the given `academic_year` (optionally scoped to `class_id`). Idempotent: students who already have a report for that year are skipped (unique constraint on `(student_id, academic_year)`), and the response is three counts — `created_count`, `skipped_existing`, `skipped_no_tutor` — and nothing else, per ADR-013 |
+| POST | `/.netlify/functions/publish-report` | **Authoring tutor only** (narrowed from "tutor or admin" by ADR-013 — it matches `yer_tutor_rw`'s WITH CHECK, so a co-tutor who cannot edit a report cannot publish it either). Renders the PDF (pdfkit — ADR-011), uploads it to Storage, and only then flips `draft → published` and sets `pdf_path`/`published_at`; a failed render or upload leaves the row untouched (PRD 6.4 reliability). Requires a non-empty `narrative` (PRD 6.8 AC-003; grades stay optional). Also the FR-006 path — re-publishing after a post-publish edit overwrites the same object and preserves the original `published_at`. **The report-ready notification is not sent**: no push infrastructure exists yet (see Notification Spec) |
+| GET | `/.netlify/functions/report-pdf` | Returns a short-lived signed URL (300s) for a report's PDF after verifying the caller is authorized — tutor: own class, any status; parent: own children, published only; student 16+: self, published only; **admin: denied** (ADR-012/ADR-013, application-layer, even though RLS grants admin ALL). This check is load-bearing: a signed URL bypasses RLS and the bucket has no client read policy, so it is the only gate in front of the file |
 | POST | `/.netlify/functions/invite-user` | **Admin-only** (verified in-function via the caller's JWT + `public.users.role`, not trusted from the client). Not part of the original 8-function spec — added to support inviting a user by email (§ ADR-012 area, admin enrollment). Calls `auth.admin.inviteUserByEmail()` under the service-role key and creates the matching `public.users` profile in the same request, collapsing the "sign in once, then get registered" two-step flow into one admin action. Requires `SUPABASE_SERVICE_ROLE_KEY` — the project's first Function to actually need it |
 
 ### Custom Postgres Functions (RPC)
@@ -391,7 +404,7 @@ Client-callable via PostgREST's `/rest/v1/rpc/{fn}`, distinct from the read-only
 A new infrastructure element for this feature — the `reports` bucket:
 
 * **Bucket:** `reports`, **private** (not publicly readable)
-* **Path convention:** `reports/{student_id}/{academic_year}.pdf`
+* **Path convention:** `reports/{student_id}/{academic_year}.pdf`, with the academic year's slash replaced by a hyphen — `reports/{student_id}/2025-2026.pdf`. Storage reads `/` as a path separator, so the literal `2025/2026` would nest every report a directory deeper. The path is deterministic per (student, year), which is what makes FR-006's re-publish overwrite in place instead of accumulating versions (`src/lib/reports.ts#reportPdfPath`)
 * **Access:** never served directly; always via `/.netlify/functions/report-pdf`, which checks the caller's authorization (mirroring the `year_end_reports` RLS rule) before minting a signed URL (recommended TTL: 5 minutes)
 * **Storage policies:** service-role only for `INSERT`/`UPDATE` (PDF writes happen server-side in `publish-report`, not from the client); no direct client `SELECT`/read policy — signed URLs bypass RLS by design, which is why the function-level auth check is load-bearing here
 
@@ -430,6 +443,14 @@ Not applicable. The PPME - TPA does not process batch files. All data entry is r
 | Surah memorized | Parent | "[Nama] hafal Surah [Nama Surah]!" | "[Naam] heeft Surah [Naam Surah] gememoriseerd!" | High |
 | Daily Murajaah reminder | Parent | "Waktunya Murajaah! [Nama]: [Surah] ayat [X-Y]" | "Tijd voor Murajaah! [Naam]: [Surah] ayat [X-Y]" | Medium |
 | Year-end report published | Parent + Student (16+) | "Rapor akhir tahun [Nama] sudah siap" | "Jaarrapport van [Naam] is klaar" | Medium |
+
+**None of the above are implemented.** No push/webhook/scheduled-function
+infrastructure exists in the project yet, so every notification row in this
+table — including PRD Feature 6's FR-007 — is deferred. `publish-report`
+completes the publish without notifying anyone; families see a new report
+the next time they open the Reports screen. The localized copy for the
+report-ready message is already drafted (`reports.notification` in both
+locale files) and is deliberately left unused until the pipeline exists.
 
 ### Technical Implementation
 
@@ -617,6 +638,7 @@ link to them.
 | Class Management | Create classes; assign tutors; set schedules (`/admin/classes`) | Built |
 | Tutor Management | View active tutors; manage class assignments | Built, folded into Class Management (assigning tutors to a class doubles as "who's active") — no standalone tutor list/view |
 | User Registration | Invite a user by email, or register one who signed in directly (`/admin/registrations`) | Built — not in the original spec; see ADR-012 and `invite-user.mts` |
+| Year-End Draft Generation | Trigger bulk draft-report creation for an academic year, optionally one class (`/admin/reports`) | Built — the single deliberate exception to the row above it, and content-blind: shows created/skipped counts only, never a report's narrative or grades. See ADR-013 |
 | ~~Attendance Reports~~ | ~~Aggregate attendance rates by class, student, date range~~ | **Excluded by ADR-012** — operational data |
 | ~~Progress Overview~~ | ~~Summary of Yanbu'a/Quran/Murajaah progression across all students~~ | **Excluded by ADR-012** — operational data |
 | Export (CSV) | Export attendance and progress data for TPA committee reporting | Not built — would also need an ADR-012 exception if pursued (it's operational data), unresolved |
@@ -660,7 +682,7 @@ Each scheduled function follows the same pattern:
   - Privacy Policy (NL + ID)
   - Data Processing Agreement (if using Supabase managed)
   - DPIA (Data Protection Impact Assessment) for children's data
-  - Right to erasure implementation (delete student + all related records)
+  - Right to erasure implementation (delete student + all related records, **plus the year-end report PDF object in Storage**, which `on delete cascade` does not reach — manual runbook in README until an automated flow exists)
   - Data export (GDPR Article 20 portability — CSV export)
 * **CI/CD Pipeline**: Git push → Netlify auto-build → Preview deploy (PR) → Production deploy (main branch)
 * **Monitoring**: Netlify Analytics (built-in) + Supabase Dashboard (query performance, active connections)

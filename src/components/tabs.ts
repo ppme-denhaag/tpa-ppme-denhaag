@@ -12,8 +12,15 @@ export const NAV_TABS = [
 // Admin's nav is enrollment/setup only — never the operational tabs above
 // (see AdminRestricted.tsx for why). Shown instead of NAV_TABS when
 // profile.role === 'admin', never alongside it.
+//
+// `/admin/reports` is the one apparent exception and isn't really one:
+// it triggers bulk draft generation across an academic year (an
+// enrollment-wide operation) and shows only counts — never a report's
+// narrative, grades, or even a list of which students got one. See
+// ADR-013 in the TAD.
 export const ADMIN_NAV_TABS = [
   { to: '/admin/registrations', key: 'nav.pendaftaran' },
   { to: '/admin/classes', key: 'nav.kelas' },
   { to: '/admin/students', key: 'nav.santri' },
+  { to: '/admin/reports', key: 'nav.laporan' },
 ] as const

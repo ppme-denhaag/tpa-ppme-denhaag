@@ -132,12 +132,36 @@ against the live project in that window and appeared broken.
 
 ## Netlify Functions
 
-`netlify/functions/` — `health.mts` (pipeline smoke test) and `invite-user.mts`
-(admin-only: invites a user by email and creates their profile in one step,
-see RegistrationsPage). Both use the Netlify Functions v2 API (default
-export, Web-standard `Request`/`Response`) and are typechecked separately
-from the main app (`npm run typecheck:functions`) since `netlify/functions/`
-isn't a project reference of the root `tsconfig.json`.
+`netlify/functions/`:
+
+| Function | Purpose |
+|---|---|
+| `health.mts` | Pipeline smoke test |
+| `invite-user.mts` | Admin-only: invites a user by email and creates their profile in one step (see RegistrationsPage) |
+| `generate-year-end-drafts.mts` | Admin-only: bulk-creates draft year-end reports for an academic year, optionally scoped to a class |
+| `publish-report.mts` | Authoring tutor only: renders the report PDF (pdfkit), uploads it to the private `reports` bucket, then flips `draft → published` |
+| `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization |
+
+All use the Netlify Functions v2 API (default export, Web-standard
+`Request`/`Response`) and are typechecked separately from the main app
+(`npm run typecheck:functions`) since `netlify/functions/` isn't a project
+reference of the root `tsconfig.json`.
+
+The four that hold `SUPABASE_SERVICE_ROLE_KEY` share one authorization
+shape, extracted into `netlify/functions/lib/callerAuth.ts`: validate the
+caller's JWT with a plain anon-key client, then look their role up
+*independently* with the service-role client. The service-role key
+bypasses RLS entirely, so each of these owns its own authorization check
+in code — the report Functions deliberately restate the `year_end_reports`
+RLS rules rather than inheriting them. This matters most in
+`report-pdf.mts`: a Supabase signed URL bypasses RLS once minted and the
+`reports` bucket has no client-facing read policy at all, so that check is
+the only gate in front of the PDF.
+
+Pure, testable pieces live under `netlify/functions/lib/` (attendance
+stats, the draft skip rules, the publish ordering, PDF rendering) and are
+unit-tested in `tests/unit/reports.test.ts` — including the assertion that
+a failed PDF render never reaches the status flip.
 
 To run Functions locally (not just the Vite app — `npm run dev` alone
 doesn't serve `/.netlify/functions/*`):
@@ -160,24 +184,61 @@ every request, while working fine on real deployed Netlify. Both existing
 functions omit it for this reason; only add `config.path` for an actually
 different custom path.
 
+## Right to erasure (GDPR art. 17)
+
+Deleting a student cascades to all their DB rows (`on delete cascade` on
+every student-scoped table, `year_end_reports` included) — but **cascade
+does not reach Supabase Storage**, so a deleted student's year-end report
+PDF would survive the deletion of every row that pointed at it. Delete the
+Storage object *first*, while `pdf_path` is still readable:
+
+```sql
+-- 1. find the objects to remove (run as service role / in the SQL editor)
+select id, academic_year, pdf_path
+from public.year_end_reports
+where student_id = '<student-uuid>' and pdf_path is not null;
+```
+
+```bash
+# 2. delete each pdf_path from the private `reports` bucket
+curl -X DELETE "$SUPABASE_URL/storage/v1/object/reports/<pdf_path>" \
+  -H "authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
+```
+
+```sql
+-- 3. only then delete the student; the DB rows cascade from here
+delete from public.students where id = '<student-uuid>';
+```
+
+Verify with `select count(*) from storage.objects where bucket_id='reports'
+and name like '<student-uuid>/%';` → 0. See test-plan.md §8 and
+dpia-draft.md's Article 17 row; there is no automated erasure flow yet, so
+this is a manual runbook, not a feature.
+
 ## Known gaps (foundation pass — not yet built)
 
 - **No real PPME logo asset for PWA icons.** The top nav now uses the real
   logo (`public/logo.png`), but the source file is only 135×70px, so the
   512px PWA icons (`public/icons/*.png`) are a soft ~3.7x upscale — fine as
   a placeholder, replace with a proper square/high-res (512×512+) source
-  before real launch.
+  before real launch. For the same reason the year-end report PDF header is
+  a typographic wordmark in the brand colours rather than the bitmap logo
+  (`netlify/functions/lib/reportPdf.ts`) — swap in `doc.image()` once a
+  high-res square asset exists.
 - **Attendance, Yanbu'a (Milestone 1), Homework/Tugas (Milestone 2),
-  Quran/Al-Quran recitation tracking (Milestone 3), and Murajaah/memorization
-  tracking (Milestone 4) are built**; Reports is still a placeholder page
-  behind real auth/role/RLS. See the checklist's suggested build order for
-  what's next — notifications/Netlify Functions (§4) and offline/PWA sync
-  polish (§5) are next up, deliberately deferred from Milestone 1. Homework's
-  own FR-005 (due-date reminders), the Quran feature's jilid/juz
-  milestone-celebration notification, and Murajaah's daily practice reminder
-  (FR-006) are all deferred for the same reason — each needs Netlify
-  Scheduled Functions/webhook infra, which don't exist yet for anything in
-  this project.
+  Quran/Al-Quran recitation tracking (Milestone 3), Murajaah/memorization
+  tracking (Milestone 4), and Year-End Curriculum Reports (Milestone 6) are
+  built.** Every route in `src/App.tsx` now points at a real feature — the
+  `FeaturePlaceholder` page was deleted with the last one. See the
+  checklist's suggested build order for what's next — notifications/Netlify
+  Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
+  deferred from Milestone 1. Homework's own FR-005 (due-date reminders), the
+  Quran feature's jilid/juz milestone-celebration notification, Murajaah's
+  daily practice reminder (FR-006), and the year-end report's FR-007
+  ("report ready" push) are all deferred for the same reason — each needs
+  Netlify Scheduled Functions/webhook infra, which don't exist yet for
+  anything in this project. **Publishing a report notifies nobody**;
+  families see it the next time they open the Reports screen.
 - **Admin enrollment UI is built** (`/admin/registrations`, `/admin/classes`,
   `/admin/students`), with two ways to register a user: invite by email
   (`invite-user.mts` — creates the account and profile together, no waiting
