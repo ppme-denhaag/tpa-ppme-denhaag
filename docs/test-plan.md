@@ -81,7 +81,19 @@ secret, carries the row id and **never** the absence `reason` (DPIA
 R4/R6), and that no client role can execute `fn_webhook_config()` to read
 the secret. pg_net queues inside the calling transaction, so a
 rolled-back test can assert on what would have been sent without a
-network, a listener, or anything left behind. Total: 76 assertions.*
+network, a listener, or anything left behind.*
+
+*WH-07…WH-12 cover migration 010's four event triggers (ADR-015 part
+2a): that the Yanbu'a trigger fires for **every** progress entry rather
+than only completions — deliberately, so the completion rule has one
+implementation in `src/lib/yanbua.ts` instead of a second copy in SQL —
+and that the other three fire on exactly their own transition and no
+other edit (re-activating a memorized murajaah target, re-publishing or
+editing an already-published report). Also that the assignment title
+never leaves the database in a webhook body, and that a broken webhook
+path cannot fail the write it observes: `fn_post_webhook` is renamed out
+from under the triggers and the writes must still succeed. Total: 93
+assertions.*
 
 ## 4. Unit tests (Vitest)
 
@@ -93,9 +105,17 @@ network, a listener, or anything left behind. Total: 76 assertions.*
 - **3x_week / weekly frequency:** define expected behavior first (open design point flagged in migration 002), then test scheduled-period counting
 
 ### 4.2 Milestone detection
-- Yanbu'a entry at page == jilid page_count with mastery `lancar` → jilid-complete event fires
-- Same page with mastery `kurang_lancar`/`ulang` → no event
-- Jilid 7 completion → program-complete variant
+- [x] Yanbu'a entry at page == jilid page_count with mastery `lancar` → jilid-complete event fires
+- [x] Same page with mastery `kurang_lancar`/`ulang` → no event
+- [x] Jilid 7 completion → program-complete variant (`nextJilid` returns null)
+
+*Implemented in `tests/unit/yanbua.test.ts`. Since ADR-015 part 2a these
+same assertions cover the **notification** path too, because
+`notify-milestone` imports `isJilidComplete` rather than reimplementing
+it — there is one rule with two callers (the Yanbu'a screen and the
+Function), not two rules to keep in step. Both branches are also
+exercised live: a completing entry produces a push, and a last page at
+`kurang_lancar` produces none (§6).*
 
 ### 4.3 Notification payload builder
 
@@ -112,6 +132,7 @@ Also tested alongside it:
 - `tests/unit/push.test.ts` (10) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter
 - `tests/unit/pushServiceWorker.test.ts` (8) — `public/push-sw.js` loaded into a VM and driven with the browser's own event shapes: it renders the payload, never re-alerts on a replaced notification, still shows *something* when the payload is missing or unparseable (otherwise Android substitutes its own "site updated in the background" notice), and routes a click to an already-open tab rather than opening a second one
 - `tests/unit/pushCapability.test.ts` (13) — platform detection, including the iOS branch this project cannot verify on hardware (see §6)
+- `tests/unit/notifyStudent.test.ts` (13) — **who receives what**, the highest-risk logic in the feature. A two-family class roster must resolve each child to their own parent and no one else; the 16+ student is added only for a "family" audience; tutor and admin are never recipients; an account with no usable subscription is skipped without dropping the rest of the roster. Plus the fan-out dispatch: one payload per recipient in that recipient's own locale, a dead subscription cleared without costing anyone else their notification, a failed send not mistaken for an expired one, and delivery bounded to a fixed concurrency — none of which can be produced on demand against a real push service, which is why they are injected here rather than left to the live run
 
 ### 4.4 Year-end report generation
 - `generate-year-end-drafts` computes `attendance_present/absent/late` and `attendance_rate` that exactly match a hand-computed value from fixture attendance rows for the academic year window
@@ -150,8 +171,10 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 |---|---|---|---|
 | Permission prompt & subscribe | ☐ | ☐ | ☑ |
 | Absence push received | ☐ | ☐ | ☑ |
-| Milestone push received | ☐ | ☐ | n/a — not built (ADR-015 part 2) |
-| Scheduled reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | n/a — not built (ADR-015 part 2) |
+| Milestone push received | ☐ | ☐ | ☑ |
+| New-homework push received (class fan-out) | ☐ | ☐ | ☑ |
+| Report-ready push received (parent + 16+ student) | ☐ | ☐ | ☑ |
+| Scheduled reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | n/a — not built (ADR-015 part 2b) |
 | Dedup: same event twice → one notification | ☐ | ☐ | ☑ |
 | iOS not-installed state → graceful explanation, no broken prompt | — | ☐ | — |
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
@@ -169,17 +192,21 @@ Safari tab and shows the install explanation rather than a broken prompt
 the platform being tested.
 
 **Desktop Chrome is genuinely run**, not inspected: `scripts/verify-push.mjs`
-drives a real Chromium against a real push service and asserts on what the
-browser displayed. 39 checks, currently all passing. Beyond the ticked rows
-above it also covers:
+drives three real Chromium profiles (a parent with two children in one class,
+a second family in the same class, and a 16+ student with their own account)
+against a real push service, and asserts on what each browser displayed. 63
+checks, currently all passing. Beyond the ticked rows above it also covers:
 
 - the subscription is stored, with exactly the three fields we use
-- **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property)
+- **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property). Checked on every event type, and hardest on the class fan-out: one assignment notifies both families in the class, each naming only their own child
+- **the "family" audience**: a published report reaches the parent *and* the 16+ student, as two separate deliveries with their own tags
+- the milestone rules behave the same server-side as on screen: a completing entry notifies, a mid-jilid entry and a last page still needing repetition do not, and re-activating a memorized murajaah target notifies nobody
+- a draft report notifies nobody; publishing notifies once; re-publishing or editing a published report notifies nobody again
 - the body renders in the *recipient's* locale (verified in both `id` and `nl`)
-- DPIA R6 live: an absence carrying a reason (`demam tinggi` / `griep`) produces a payload with no trace of it
+- DPIA R6 live: an absence carrying a reason (`demam tinggi` / `griep`) produces a payload with no trace of it, and neither the jilid number, the surah name nor the assignment title reaches a lock screen
 - re-saving an already-absent roster notifies nobody a second time
 - unsubscribe clears `users.push_sub`, and a later absence then produces nothing at all
-- zero console errors and zero failed requests, for parent, tutor and admin
+- zero console errors and zero failed requests, for both parents, the 16+ student, tutor and admin
 - non-recipient roles (tutor, admin) are told plainly that they receive nothing, and are offered no toggle
 - endpoint authorization: `push-subscribe` 403s a tutor and an admin, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
 

@@ -1,7 +1,6 @@
 import { jsonError, jsonOk } from './lib/callerAuth'
-import { buildPayload, canReceiveNotifications } from './lib/notifications'
+import { notifyStudent } from './lib/notifyStudent'
 import { serviceClient, verifyWebhookSecret } from './lib/webhookAuth'
-import { isValidSubscription, sendPush } from './lib/webPush'
 
 /**
  * PRD Feature 1 FR-005 / AC-002 — notify a parent when their child is
@@ -29,7 +28,8 @@ import { isValidSubscription, sendPush } from './lib/webPush'
  *     student, never supplied. This is the single property that keeps a
  *     parent from being told about another family's child (test-plan §1:
  *     "a failure here is a GDPR incident, not a bug"), so it is
- *     computed from the database in exactly one place, here.
+ *     computed from the database in exactly one place — `notifyStudent`,
+ *     shared by every event-driven sender rather than restated here.
  *
  * ── Content ────────────────────────────────────────────────────────
  * The payload is built by `buildPayload`, which structurally cannot
@@ -66,7 +66,7 @@ export default async (req: Request) => {
   const { data: row, error: rowError } = await client
     .from('attendance')
     // One string literal so supabase-js can infer the row type from it.
-    .select('id, status, student:students(full_name, parent_id), session:sessions(date)')
+    .select('id, status, student_id, session:sessions(date)')
     .eq('id', attendanceId)
     .maybeSingle()
   if (rowError) return jsonError(rowError.message, 500)
@@ -75,51 +75,20 @@ export default async (req: Request) => {
   // a re-saved roster fires for rows that are no longer absent.
   if (!row) return jsonOk({ sent: 0, skipped: 'no such attendance row' })
   if (row.status !== 'absent') return jsonOk({ sent: 0, skipped: 'not absent' })
-  if (!row.student || !row.session) return jsonOk({ sent: 0, skipped: 'incomplete row' })
+  if (!row.session) return jsonOk({ sent: 0, skipped: 'incomplete row' })
 
-  const { data: parent, error: parentError } = await client
-    .from('users')
-    .select('id, role, locale, push_sub')
-    .eq('id', row.student.parent_id)
-    .maybeSingle()
-  if (parentError) return jsonError(parentError.message, 500)
-  if (!parent) return jsonOk({ sent: 0, skipped: 'no parent account' })
-
-  // Belt and braces with `push-subscribe`'s own check: a role that never
-  // receives notifications should not be sent one even if a subscription
-  // somehow reached its row.
-  if (!canReceiveNotifications(parent.role)) {
-    return jsonOk({ sent: 0, skipped: 'recipient role does not receive notifications' })
-  }
-  if (!isValidSubscription(parent.push_sub)) {
-    return jsonOk({ sent: 0, skipped: 'no push subscription' })
-  }
-
-  const payload = buildPayload({
+  const result = await notifyStudent(client, {
+    studentId: row.student_id,
     event: 'absence',
-    locale: parent.locale,
-    childFullName: row.student.full_name,
-    recipientUserId: parent.id,
+    // The Notification Spec addresses this one to the parent. A 16+
+    // student does not need a push to tell them they were not there.
+    audience: 'parent',
     // The session's own date, not "today": a correction entered the next
     // morning is still an absence for the day it happened, and the dedup
     // tag keys on that same date.
     date: row.session.date,
   })
 
-  const result = await sendPush(parent.push_sub, payload)
-
-  if (result.status === 'gone') {
-    // The browser invalidated this subscription (permission revoked,
-    // reinstall, profile reset). Clear it rather than failing on every
-    // future send.
-    await client.from('users').update({ push_sub: null }).eq('id', parent.id)
-    return jsonOk({ sent: 0, skipped: 'subscription expired, cleared' })
-  }
-
-  if (result.status === 'failed') {
-    console.error('notify-absence: push failed', result.statusCode, result.message)
-    return jsonError('Push delivery failed', 502)
-  }
-
-  return jsonOk({ sent: 1, tag: payload.tag })
+  if (result.failed > 0) return jsonError('Push delivery failed', 502)
+  return jsonOk(result)
 }

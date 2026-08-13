@@ -593,8 +593,8 @@ Enables tutors to create, assign, and track homework assignments for students. P
 #### 2.6. User Flows
 1.  Tutor opens "Homework" → Taps "Create New Assignment"
 2.  Fills in title, description, due date → Selects recipients (class or individuals)
-3.  Publishes assignment → Students and parents see it in their feed
-4.  Before due date: Parent/student receives reminder notification
+3.  Publishes assignment → Students and parents see it in their feed, **and receive a "new homework" push** (built, TAD ADR-015 part 2a — a database webhook fans out across the class roster to each family, naming only their own child; the assignment title stays out of the notification per DPIA R6)
+4.  Before due date: Parent/student receives reminder notification — *FR-005, still deferred: this one is a scheduled Function (ADR-015 part 2b), unlike step 3 which is event-driven*
 5.  After session: Tutor opens assignment → Marks each student's completion status
 
 #### 2.7. Design & Technical Considerations
@@ -697,6 +697,7 @@ Tracks each student's progression through the Yanbu'a curriculum (a structured m
 **FR-006: Jilid Completion Milestone**
 - Priority: Medium
 - System marks and celebrates when a student completes a jilid (notification to parent, visual indicator).
+- *Implementation status: **fully built** as of TAD ADR-015 part 2a. The visual indicator shipped with Milestone 1; the notification now runs on a database webhook over every Yanbu'a entry, with `notify-milestone` applying `src/lib/yanbua.ts#isJilidComplete` — the same function the screen uses, imported rather than copied, so the badge and the push can never disagree about what counts as complete. The jilid number is deliberately **not** in the notification (DPIA R6): the lock screen says the child finished a jilid, the app says which.*
 
 #### 3.4. Non-Functional Requirements
 *   **Performance:** Progress entry must save within 2 seconds
@@ -918,6 +919,7 @@ Tracks student progress in Murajaah (memorization review of Quranic verses), wit
 **FR-005: Memorization Milestone Tracking**
 - Priority: High
 - Track which surahs/juz a student has fully memorized (hafal) over time, building their memorization portfolio.
+- *Implementation status: **fully built**. The portfolio shipped with Milestone 4 (a target is memorized when the tutor's "Tandai Sudah Hafal" sets `murajaah_assignments.active = false` — checklist §13). Since TAD ADR-015 part 2a that same transition also fires a celebration push to the parent, so the milestone the tutor records is the milestone the family hears about, with no separate inference. The surah name stays out of the notification (DPIA R6).*
 
 **FR-006: Practice Reminders**
 - Priority: Medium
@@ -1078,7 +1080,7 @@ Generates a formal, per-student year-end report combining auto-computed statisti
 **FR-007: Publish Notification**
 - Priority: Medium
 - When a report is published (or re-published after edit), the parent and any linked 16+ student receive a push notification.
-- *Implementation status: **still not built**, but no longer for want of infrastructure. The Web Push pipeline now exists and Feature 1's FR-005 absence notification runs on it end to end (TAD ADR-015 part 1); this report-ready push, homework FR-005 due-date reminders, the Quran milestone celebration and Murajaah FR-006 daily reminders are each now a single Function away, scoped as ADR-015 part 2. `publish-report` still completes the publish without notifying anyone — families see a new report the next time they open the Reports screen. The localized message copy remains drafted (`reports.notification`) and unused.*
+- *Implementation status: **built** (TAD ADR-015 part 2a). A database webhook on `year_end_reports.status` reaching `published` triggers `notify-report-ready`, which notifies the parent and any linked 16+ student. Deliberately not a call inside `publish-report`: that flow's design is that a failure anywhere leaves the report untouched, and a push service having a bad minute must not sit in that path. Fires on the transition into published only — a re-publish after a correction (FR-006) leaves the status unchanged and preserves `published_at`, and an admin edit does not regenerate the PDF at all (ADR-014(e)), so a second "your report is ready" would announce a file that had not changed.*
 
 #### 6.4. Non-Functional Requirements
 *   **Performance:** PDF generation must complete within the Netlify Function execution limit (target <10s per report); bulk draft generation for a full class (~15-20 students) must complete without timeout, batched if needed.
@@ -1121,7 +1123,7 @@ Generates a formal, per-student year-end report combining auto-computed statisti
 - **Given:** A tutor has completed narrative + grades for a draft report
 - **When:** The tutor publishes it
 - **Then:** Status becomes published, a PDF is generated and stored, and the parent (and 16+ student, if applicable) receives a push notification within 5 minutes
-- *Implementation status (Milestone 6): the status/PDF half is built and verified; the push half is deferred — see FR-007 above.*
+- *Implementation status: **fully built and verified** as of ADR-015 part 2a — the status/PDF half since Milestone 6, the push half now. Verified live: publishing a draft notifies the parent and the 16+ student as two separate deliveries, the other family's parent receives nothing, and creating a draft or re-publishing an existing one notifies nobody. Delivery is seconds, not minutes.*
 
 **AC-004:** Parent can view and download
 - **Given:** A published report exists for a parent's child

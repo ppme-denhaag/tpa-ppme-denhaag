@@ -33,7 +33,7 @@ npm run build                  # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–009, applied in order). The
+Migrations live in `supabase/migrations/` (001–010, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -106,14 +106,17 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 ## RLS automated test suite
 
 `supabase/tests/database/rls.test.sql` implements all 27 cases from
-test-plan.md §3 (RLS-01…RLS-27) plus WH-01…WH-06 for migration 009's
-absence webhook, as 76 pgTAP assertions, using the standard
-fixture set from §2. The WH cases assert the trigger fires on the
-transition into `absent` and on nothing else, stays silent when
-unconfigured, carries the row id and never the absence `reason`, and that
-no client role can read the webhook secret — pg_net queues inside the
-calling transaction, so the whole thing rolls back with everything else
-and never makes a real request. RLS-22…RLS-27 cover the super-admin change (TAD
+test-plan.md §3 (RLS-01…RLS-27) plus WH-01…WH-12 for the notification
+webhooks in migrations 009 and 010, as 93 pgTAP assertions, using the
+standard fixture set from §2. The WH cases assert each trigger fires on
+exactly its own event and nothing else (a re-saved roster, a re-activated
+murajaah target and a re-published report must all notify nobody), that
+they are silent when unconfigured, that the body carries the row id and
+never the absence `reason` or the assignment title, that no client role
+can read the webhook secret, and that a broken webhook path cannot fail
+the write it observes. pg_net queues inside the calling transaction, so
+the whole thing rolls back with everything else and never makes a real
+request. RLS-22…RLS-27 cover the super-admin change (TAD
 ADR-014): that an admin INSERT/UPDATE lands on every operational table, and
 — the half that matters more — that those rows widen nobody else's
 visibility. It runs entirely inside a transaction that's rolled
@@ -152,6 +155,9 @@ against the live project in that window and appeared broken.
 | `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization (admin: any report; tutor: own class; parent/student 16+: own child/self, published only) |
 | `push-subscribe.mts` | Stores (POST) or clears (DELETE) the caller's own Web Push subscription in `users.push_sub`. **403 for tutor and admin** — notifications are family-facing (TAD ADR-015), so no push endpoint is stored for an account nothing sends to |
 | `notify-absence.mts` | Invoked by the **database webhook** on `public.attendance` (migration 009), not by the client that saved the attendance. Sends one push to the absent child's parent, in that parent's own locale |
+| `notify-milestone.mts` | Webhook on `yanbua_progress` (jilid completed — applies `src/lib/yanbua.ts#isJilidComplete`, imported rather than restated) and on `murajaah_assignments.active` going true→false (surah memorized) |
+| `notify-assignment.mts` | Webhook on `assignments`. The one sender that fans out across a whole class: every enrolled student's parent, plus any 16+ student themselves |
+| `notify-report-ready.mts` | Webhook on `year_end_reports.status` reaching `published` (PRD FR-007). Deliberately not called from inside `publish-report`, so a push failure can never affect whether a report published |
 
 All use the Netlify Functions v2 API (default export, Web-standard
 `Request`/`Response`) and are typechecked separately from the main app
@@ -190,11 +196,20 @@ production ones from `netlify env:list`.
 
 ## Web Push notifications
 
-The absence notification runs the whole pipeline: a tutor (or admin)
-records an absence → a trigger on `public.attendance` posts to
-`notify-absence` → that Function looks up the child's parent and sends a
-Web Push → the service worker shows it. Everything else in the TAD's
-Notification Spec is deferred to ADR-015 parts 2 and 3.
+Every **event-driven** notification is live: a tutor (or admin) records
+an absence, enters Yanbu'a progress that completes a jilid, marks a
+murajaah target memorized, creates an assignment, or publishes a
+year-end report → a trigger on that table posts to the matching Function
+→ the Function looks up who the child's family is and sends a Web Push →
+the service worker shows it.
+
+Still deferred: the four **scheduled** notifications (daily Murajaah
+reminder, homework due tomorrow, weekly digest, streak resets) are
+ADR-015 part 2b, and the in-app notification centre is part 3.
+
+The client never calls any of these. Every trigger is a database webhook,
+so a notification fires for a tutor write, an admin write (ADR-014) and
+any future import alike, and no write path has to remember to ask.
 
 ### VAPID keys
 
@@ -214,12 +229,34 @@ so generate once per environment and keep it.
 
 ### Database webhooks
 
-The trigger lives in migration 009, so it is version-controlled and
-reproduced by `supabase db reset`. What is *not* in the migration is
-where to send the request, since that differs per environment — the
-trigger reads it from Supabase Vault at fire time, and **does nothing at
-all if it is unset**. That is why a fresh local stack, CI and the pgTAP
-suite never make outbound requests.
+The triggers live in migrations 009 and 010, so they are
+version-controlled and reproduced by `supabase db reset`. What is *not*
+in the migration is where to send the request, since that differs per
+environment — `fn_post_webhook()` reads it from Supabase Vault at fire
+time, and **does nothing at all if it is unset**. That is why a fresh
+local stack, CI and the pgTAP suite never make outbound requests.
+
+Five triggers, all through the same sender:
+
+| Table | Fires when | Function |
+|---|---|---|
+| `attendance` | a row becomes `absent` | `notify-absence` |
+| `yanbua_progress` | **any** entry is recorded | `notify-milestone` |
+| `murajaah_assignments` | `active` goes true → false | `notify-milestone` |
+| `assignments` | a row is created | `notify-assignment` |
+| `year_end_reports` | `status` reaches `published` | `notify-report-ready` |
+
+The Yanbu'a one is the odd entry and is meant to be: it fires for every
+progress entry rather than only completions, because filtering in SQL
+would put a second copy of the jilid-completion rule next to the real one
+in `src/lib/yanbua.ts`. The Function applies the rule and exits quietly
+otherwise. See the migration's own comment and the TAD's Billing section
+for the invocation cost of that choice.
+
+None of these can fail the write they observe: each trigger function
+swallows its own errors (pgTAP asserts this by breaking the webhook path
+and checking the write still succeeds), and pg_net sends asynchronously
+after commit.
 
 To configure an environment (Supabase SQL editor, or `psql` locally):
 
@@ -369,24 +406,23 @@ this is a manual runbook, not a feature.
   tracking (Milestone 4), and Year-End Curriculum Reports (Milestone 6) are
   built.** Every route in `src/App.tsx` now points at a real feature — the
   `FeaturePlaceholder` page was deleted with the last one. See the
-  checklist's suggested build order for what's next — notifications/Netlify
-  Functions (§4) and offline/PWA sync polish (§5) are next up, deliberately
-  deferred from Milestone 1. Homework's own FR-005 (due-date reminders), the
-  Quran feature's jilid/juz milestone-celebration notification, Murajaah's
-  daily practice reminder (FR-006), and the year-end report's FR-007
-  ("report ready" push) are all deferred for the same reason — each needs
-  Netlify Scheduled Functions, which don't exist yet. The **webhook and
-  push infrastructure now does** exist (TAD ADR-015 part 1) and the
-  absence notification runs on it — see "Web Push notifications" above —
-  so each of those is now one Function away rather than blocked.
-  **Publishing a report still notifies nobody**; families see it the next
-  time they open the Reports screen.
-- **Notifications: absence only.** Milestone celebrations, homework
-  reminders, the daily Murajaah reminder, the weekly digest and the
-  report-ready push are ADR-015 part 2; the in-app notification centre
-  and the TopNav bell are part 3, held until its design is reviewed.
-  Notification settings live at `/settings/notifications`, reached from
-  the dashboard.
+  checklist's suggested build order for what's next — notifications (§4)
+  are largely done (below), and offline/PWA sync polish (§5) is the
+  remaining piece deliberately deferred from Milestone 1. Of the feature
+  FRs that were waiting on notification infrastructure, the milestone
+  celebrations and the year-end report's FR-007 are now built; Homework's
+  FR-005 (due-date reminders) and Murajaah's FR-006 (daily practice
+  reminders) still wait on Netlify Scheduled Functions, which don't exist
+  yet.
+- **Notifications: everything event-driven is built** (ADR-015 parts 1
+  and 2a) — absence, jilid completed, surah memorized, new homework, and
+  report ready (PRD FR-007, so publishing a report *does* now notify the
+  family). What remains is the four **scheduled** ones — the daily
+  Murajaah reminder (FR-006), homework due tomorrow (FR-005), the weekly
+  digest and streak resets — which are part 2b, plus the in-app
+  notification centre and TopNav bell in part 3, held until that screen's
+  design is reviewed. Notification settings live at
+  `/settings/notifications`, reached from the dashboard.
 - **Android and iOS push are unverified** — there is no phone available
   to this project, and test-plan §6's two mobile columns need one. The
   iOS "add to Home Screen first" path is implemented and unit-tested, but

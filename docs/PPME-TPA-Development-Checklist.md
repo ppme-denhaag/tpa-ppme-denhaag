@@ -62,19 +62,22 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 - [x] **RLS policies written and tested per table** — highest-risk item; a misconfigured policy leaks children's data across families. At minimum: Parent (own children only), Tutor (own assigned classes only), Student 16+ (own data only, read-only), Admin (all)
 - [x] Automated RLS tests: assert Parent A cannot query Parent B's child data, Student cannot query siblings' data, etc. — 38 pgTAP assertions (RLS-01..21), CI-gated
 - [x] Seed data: 114 Surahs (name, Arabic, transliteration, ayah count) and 7 Jilid (page counts) — version-controlled seed file (migration 004)
-- [~] Database webhooks configured (Supabase → Netlify Functions) — **absence notifications done** (migration 009: a pg_net trigger on `public.attendance`, written as a migration rather than configured in the Supabase dashboard so it is version-controlled and reproduced by `db reset`; per-environment target read from Vault, no-op when unconfigured). **Jilid-completion detection still client-side** (`src/lib/yanbua.ts`) — its webhook is TAD ADR-015 part 2, and needs the milestone rules shared server-side rather than restated
-- [x] Migration 009 added: `fn_notify_absence()` + `trg_notify_absence` + `fn_webhook_config()`. Covered by six new pgTAP cases (WH-01…WH-06) asserting the trigger fires on the transition into `absent` and *only* that, is silent when unconfigured, carries the row id and never the absence `reason`, and that no client role can execute `fn_webhook_config()` to read the shared secret
+- [x] Database webhooks configured (Supabase → Netlify Functions) for absence notifications **and jilid-completion detection** — both done, plus surah-memorized, new-homework and report-published. Written as migrations rather than configured in the Supabase dashboard, so they are version-controlled and reproduced by `db reset`; per-environment target read from Vault, no-op when unconfigured. Jilid completion is now detected **server-side** by `notify-milestone`, which *imports* `src/lib/yanbua.ts#isJilidComplete` rather than restating it — the client-side detection in the Yanbu'a screen remains, using the same function, so there is one rule with two callers rather than two rules
+- [x] Migration 009 added: `fn_notify_absence()` + `trg_notify_absence` + `fn_webhook_config()`. Covered by pgTAP cases WH-01…WH-06 asserting the trigger fires on the transition into `absent` and *only* that, is silent when unconfigured, carries the row id and never the absence `reason`, and that no client role can execute `fn_webhook_config()` to read the shared secret
+- [x] Migration 010 added: `fn_post_webhook()` (the shared sender, extracted once four more triggers needed it) plus triggers on `yanbua_progress`, `murajaah_assignments`, `assignments` and `year_end_reports`. Covered by WH-07…WH-12 — including that the Yanbu'a trigger is *deliberately unselective* (so the completion rule has one implementation), that re-activating a murajaah target and re-publishing a report both notify nobody, that the assignment title never leaves the database, and that a broken webhook path cannot fail the write it observes
 - [ ] Backup/PITR policy confirmed for chosen Supabase tier
 - [x] Migration 008 added: `fn_pending_registrations()` — not in the original 10-entity scope, added to support admin enrollment (see §10)
 
 ## 4. API & Netlify Functions
 
 - [x] Convention documented for when to call PostgREST directly vs. via a Netlify Function wrapper — emerged in practice rather than being decided upfront: plain CRUD goes straight through PostgREST from the client; anything needing the service-role key (bypassing RLS) goes through a Function that independently re-verifies the caller's authorization in code (see `invite-user.mts`)
-- [~] 5 custom functions built: **`push-subscribe` and `notify-absence` done** (TAD ADR-015 part 1 — the pipeline plus the highest-value single flow, end to end). `notify-milestone`, `streak-status` and `send-reminder` remain, as part 2
+- [~] 5 custom functions built: **`push-subscribe`, `notify-absence` and `notify-milestone` done** (ADR-015 parts 1 and 2a), plus two the original list did not anticipate — `notify-assignment` and `notify-report-ready`, added because the Notification Spec had rows ("New homework assigned", "Year-end report published") with no Function against them. `streak-status` and `send-reminder` remain, as part 2b
 - [ ] 4 scheduled functions built with correct cron — **decided and documented, not yet built** (part 2). DST is resolved: the crons run **hourly** and each Function gates on the local hour in `Europe/Amsterdam` (`isAmsterdamHour`), rather than a fixed UTC hour that is an hour wrong throughout CEST — which is what the TAD's original cron column would have produced. The helper and its DST tests (both switchover Sundays, and the repeated hour in autumn) ship with part 1; see TAD ADR-015(e)
 - [x] Notification deduplication-by-tag logic implemented and tested — tag is `(event, user, local date)`, asserted in unit tests and confirmed live (two identical events → one notification, not two)
 - [ ] Streak calculation logic — edge cases defined (assignment created mid-week, `daily` vs `3x_week` frequency, missed-day reset rules). Still open, and deliberately paired with `calculate-streak-resets` in part 2: building that job invalidates the reasoning currently written into `src/lib/murajaah.ts`, the TAD's domain-model footnote and §13 below, all of which say no such job exists. They must be rewritten together with it, not before
 - [x] Notification payload builder with the DPIA R6 content limits (child's first name + event type only), driven by the *recipient's* `users.locale`. Enforced structurally — the builder accepts no parameter that could carry a reason, grade or position — and mechanically, by a test that rejects any push string interpolating a placeholder other than `{{name}}`
+- [x] Recipient derivation shared by every sender (`netlify/functions/lib/notifyStudent.ts`) rather than written per Function. Sending one family a notification about another family's child is the worst thing this product could do, and the realistic way it happens is the fourth Function to need recipients writing its own slightly different query. One query, one mapping function, unit-tested exhaustively (including a two-family class roster) and re-confirmed live on every event
+- [x] Class-scale fan-out with bounded concurrency: one assignment reaches a whole roster, so sends run in parallel up to a cap — sequentially it could run the Function into its timeout with half the class notified, and unbounded it would open a socket per family. One dead subscription never costs the rest of the class their notification (unit-tested; that failure cannot be produced on demand against a real push service)
 - [x] A second authorization shape for Functions with **no caller** (`netlify/functions/lib/webhookAuth.ts`): shared-secret channel authentication, constant-time, failing closed when unconfigured. `callerAuth.ts` does not fit a webhook or a scheduled job, and inventing a service-account JWT to make it fit would have been worse. Proving the channel does not decide recipients — `notify-absence` re-reads the row from the database and derives the parent from `students.parent_id`, never from the request
 - [x] `invite-user.mts` built — the project's **first real Function**, landed ahead of the 5 above and not part of the original spec (admin email-invite, see §10 and TAD's Netlify Functions table)
 - [x] `generate-year-end-drafts.mts`, `publish-report.mts`, `report-pdf.mts` built (§9) — the 2nd–4th Functions, and the 2nd–4th holders of the service-role key. Their shared authorization shape (validate the JWT with an anon-key client, then look the role up independently with the service-role client) is now factored into `netlify/functions/lib/callerAuth.ts` rather than copied per Function
@@ -107,9 +110,9 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 
 ## 7. Testing & Monitoring
 
-- [~] Vitest unit tests for streak/mastery/notification logic — notification logic now covered (payload building in both locales, R6 content limits, dedup tags, DST/local-time helpers, subscription validation, rate limiting, the service worker's own push/click handlers, and platform capability detection). 103 unit tests, up from 55. Streak logic still open, with `calculate-streak-resets` (§4)
+- [~] Vitest unit tests for streak/mastery/notification logic — notification logic now covered (payload building in both locales, R6 content limits, dedup tags, DST/local-time helpers, subscription validation, rate limiting, the service worker's own push/click handlers, platform capability detection, and recipient derivation + fan-out dispatch). 116 unit tests, up from 55. Streak logic still open, with `calculate-streak-resets` (§4)
 - [ ] Playwright E2E covering the 5 primary flows: attendance, homework, Yanbu'a, Al-Quran, Murajaah. Note for whoever picks this up: the CI `e2e` job runs against a bare dev server with no Supabase, which is why the suite is still the sign-in scaffold. The notification flow is instead verified by `scripts/verify-push.mjs`, which needs Docker + a loaded fixture + `netlify dev` and so cannot run in that job either — it is run by hand and its results are recorded in test-plan §6
-- [x] RLS policy tests automated in CI — 76 pgTAP assertions (RLS-01…RLS-27 plus WH-01…WH-06), up from 64
+- [x] RLS policy tests automated in CI — 93 pgTAP assertions (RLS-01…RLS-27 plus WH-01…WH-12), up from 64
 - [ ] Netlify Analytics + Supabase Dashboard monitoring wired up; define who's alerted on scheduled function failures (silent otherwise). More urgent now that a failure is *silent by design*: `fn_notify_absence` swallows its own errors so a notification problem can never fail a tutor's attendance save, and pg_net delivers asynchronously. The two places a failure shows up are Netlify's function logs and `net._http_response` in Postgres (see README); nobody is alerted by either today
 
 ## 8. Still Open — Resolve in Parallel, Non-Blocking
@@ -201,6 +204,22 @@ Built against the existing schema/RLS (migrations 002/003/004 already covered `m
 ## Suggested Build Order
 
 1. Repo + environments (§2) → 2. Database + RLS (§3) → 3. Auth flow (Google OAuth + role derivation) → 4. Ustadz attendance flow end-to-end (simplest, highest-value) → 5. Remaining Ustadz flows (Tugas, Yanbu'a, Al-Quran, Murajaah) → 6. Orang Tua views (read-mostly, reuses most backend work) → 7. Santri self-login (16+) → 8. Notifications/Functions (§4) → 9. PWA/offline polish (§5) → 10. Compliance docs finalized before any real student data is entered (§6)
+
+**Status update (notifications, TAD ADR-015 part 2a):** every
+*event-driven* notification is now built and verified — absence, jilid
+completed, surah memorized, new homework assigned, and year-end report
+published (PRD FR-007). Four of the five features that were waiting on
+notification infrastructure are unblocked; the two that remain
+(Homework's FR-005 due-date reminders and Murajaah's FR-006 daily
+practice reminders) are both **scheduled**, and wait on part 2b along
+with the weekly digest, `streak-status`, and the streak-reset decision.
+Part 2 was split into 2a and 2b during the build — 2b introduces a
+runtime this project has never run *and* the one real design decision
+left (`3x_week`/`weekly` streak semantics), which has nothing to do with
+the four event senders in 2a. The two Functions in 2a that were not in
+the original five-Function list — `notify-assignment` and
+`notify-report-ready` — exist because the Notification Spec had rows with
+no Function against them.
 
 **Status update (notifications, TAD ADR-015 part 1):** step 8 is now
 genuinely started rather than "barely". The push pipeline exists end to

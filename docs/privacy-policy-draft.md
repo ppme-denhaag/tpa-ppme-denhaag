@@ -30,7 +30,10 @@ is belegd bij het IT-team van PPME Den Haag, bereikbaar via `[e-mailadres]`.
 zelf aan onder "Meldingsinstellingen" en kunt ze daar op elk moment weer
 uitzetten, waarna uw abonnementsgegevens direct worden verwijderd. Een melding
 bevat alleen de **voornaam van uw kind en het soort gebeurtenis** — bijvoorbeeld
-"Ali was vandaag niet aanwezig bij TPA". De reden van afwezigheid, cijfers,
+"Ali was vandaag niet aanwezig bij TPA". U ontvangt er een bij afwezigheid, bij
+een nieuwe opdracht voor de klas, wanneer uw kind een jilid afrondt of een surah
+heeft gememoriseerd, en wanneer het jaarrapport klaar is. De reden van
+afwezigheid, cijfers,
 beoordelingen en voortgangsdetails worden nooit in een melding meegestuurd; die
 ziet u pas nadat u bent ingelogd. Dat is bewust: een melding is op een
 vergrendeld scherm zichtbaar voor iedereen die het toestel ziet liggen.
@@ -150,7 +153,9 @@ PPME Den Haag, dapat dihubungi melalui `[alamat email]`.
 mengaktifkannya sendiri di "Pengaturan notifikasi" dan dapat menonaktifkannya
 kapan saja, yang langsung menghapus data langganan Anda. Sebuah notifikasi hanya
 memuat **nama depan anak Anda dan jenis kejadian** — misalnya "Ali tidak hadir
-hari ini di TPA". Alasan ketidakhadiran, nilai, penilaian, dan detail progres
+hari ini di TPA". Anda menerimanya saat anak tidak hadir, saat ada tugas baru
+untuk kelasnya, saat anak menyelesaikan satu jilid atau hafal surah baru, dan
+saat rapor akhir tahun sudah siap. Alasan ketidakhadiran, nilai, penilaian, dan detail progres
 tidak pernah dikirim dalam notifikasi; semua itu baru terlihat setelah Anda
 masuk ke aplikasi. Ini disengaja: notifikasi tampil di layar kunci, yang bisa
 dilihat siapa pun di dekat perangkat. Notifikasi dikirim melalui layanan

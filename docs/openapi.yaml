@@ -248,11 +248,12 @@ paths:
       tags: [yanbua]
       summary: Record Yanbu'a progress (Tutor only)
       description: |
-        If this entry completes a jilid (page == jilid page count and mastery == lancar),
-        a DB webhook will trigger `/.netlify/functions/notify-milestone` —
-        **not built yet** (TAD ADR-015 part 2). Jilid completion is currently
-        detected client-side in `src/lib/yanbua.ts`; the webhook needs those
-        same rules server-side, sharing the module rather than restating it.
+        A DB webhook triggers `/.netlify/functions/notify-milestone` for
+        **every** entry (migration 010); that Function applies
+        `src/lib/yanbua.ts#isJilidComplete` — the same module the Yanbu'a
+        screen uses — and sends a celebration push only when the entry
+        completes a jilid. The trigger is unselective on purpose: a filter in
+        SQL would be a second copy of the completion rule.
       requestBody:
         required: true
         content:
@@ -691,12 +692,7 @@ paths:
             or no subscription, or the subscription may have expired.
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  sent: { type: integer, enum: [0, 1] }
-                  tag: { type: string, description: 'Dedup tag, when sent — `absence:{user_id}:{YYYY-MM-DD}`' }
-                  skipped: { type: string, description: 'Reason, when nothing was sent' }
+              schema: { $ref: '#/components/schemas/NotifyResult' }
         '400': { description: Malformed body, or record.id missing }
         '401': { description: Missing or invalid webhook secret }
         '405': { description: Method other than POST }
@@ -706,7 +702,29 @@ paths:
   /notify-milestone:
     post:
       tags: [functions]
-      summary: Send milestone celebration push (jilid completed / surah memorized) — NOT BUILT (TAD ADR-015 part 2)
+      summary: Send milestone celebration push (jilid completed / surah memorized) — BUILT
+      description: |
+        Invoked by a Supabase database webhook (migration 010), never by a
+        client. Serves both celebration rows of the Notification Spec; which
+        one is determined by the envelope's `table`, not by a field the caller
+        chooses:
+
+        - `yanbua_progress` — the row is re-read and
+          `src/lib/yanbua.ts#isJilidComplete` is applied. That rule is
+          **imported**, not restated, so the Function and the Yanbu'a screen
+          cannot disagree about what completes a jilid. The trigger is
+          correspondingly unselective (it fires for every progress entry) —
+          any filter in SQL would be a second copy of the rule. Entries that
+          are not completions return `sent: 0`.
+        - `murajaah_assignments` — fires on `active` going true → false, which
+          is exactly the tutor's "Tandai Sudah Hafal" action (checklist §13
+          resolved FR-005 that way rather than adding an assessment column),
+          so the celebration follows a tutor's judgement rather than inferring
+          one.
+
+        Recipient is the child's parent, derived from `students.parent_id`.
+        Neither the jilid number nor the surah name is in the payload (DPIA
+        R6) — the builder cannot carry them.
       security: []
       requestBody:
         required: true
@@ -714,14 +732,124 @@ paths:
           application/json:
             schema:
               type: object
-              required: [student_id, milestone_type]
+              required: [table, record]
               properties:
-                student_id: { type: string, format: uuid }
-                milestone_type: { type: string, enum: [jilid_completed, surah_memorized] }
-                detail: { type: object, additionalProperties: true }
+                type: { type: string, enum: [INSERT, UPDATE] }
+                table: { type: string, enum: [yanbua_progress, murajaah_assignments] }
+                schema: { type: string, enum: [public] }
+                record:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, format: uuid }
       responses:
-        '200': { description: Dispatched }
-        '401': { description: Invalid webhook secret }
+        '200':
+          description: |
+            Dispatched, or deliberately skipped — the entry was not a jilid
+            completion, the target was re-activated, the row is gone, or the
+            parent has no subscription.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotifyResult' }
+        '400': { description: Malformed body, record.id missing, or a table this Function does not serve }
+        '401': { description: Missing or invalid webhook secret }
+        '405': { description: Method other than POST }
+        '502': { description: The push service rejected the send }
+
+  /notify-assignment:
+    post:
+      tags: [functions]
+      summary: Send "new homework" push to a whole class — BUILT
+      description: |
+        Invoked by a database webhook on `public.assignments` (migration 010).
+        Not part of the original five-Function list — added because the
+        Notification Spec's "New homework assigned" row had no Function
+        against it.
+
+        The only sender that fans out across a **class**: the roster is read
+        from the database (`students.class_id`), and each student resolves to
+        their own parent plus, for a 16+ self-login student, themselves. Sends
+        run in parallel up to a fixed concurrency — sequentially a large class
+        could run the Function into its timeout with half the families
+        notified, and one dead subscription never costs the rest of the class
+        their notification.
+
+        The assignment **title is not in the payload** (DPIA R6) and is not
+        even sent from the database to the Function.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [record]
+              properties:
+                type: { type: string, enum: [INSERT] }
+                table: { type: string, enum: [assignments] }
+                record:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Dispatched, or skipped (no such assignment, empty class, nobody subscribed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotifyResult' }
+        '400': { description: Malformed body or record.id missing }
+        '401': { description: Missing or invalid webhook secret }
+        '405': { description: Method other than POST }
+        '502': { description: The push service rejected the send }
+
+  /notify-report-ready:
+    post:
+      tags: [functions]
+      summary: Send "year-end report ready" push (PRD FR-007) — BUILT
+      description: |
+        Invoked by a database webhook on `year_end_reports.status` reaching
+        `published` (migration 010). Deliberately **not** a call inside
+        `publish-report`: that flow's whole design is that a failure anywhere
+        leaves the report untouched rather than half-published, and adding a
+        push-service round trip inside it would put a family's notification in
+        the same failure path as their report.
+
+        Fires on the transition into `published` only. A re-publish after a
+        correction (FR-006) leaves `status` at `published` and preserves
+        `published_at`, so there is no second publish event; and an admin may
+        edit a published report *without* the PDF being regenerated
+        (ADR-014(e)), which is exactly the case where a second "your report is
+        ready" would be announcing an unchanged file.
+
+        Recipients are the parent **and** any linked 16+ student, who can open
+        the report themselves.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [record]
+              properties:
+                type: { type: string, enum: [UPDATE] }
+                table: { type: string, enum: [year_end_reports] }
+                record:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Dispatched, or skipped (report reverted to draft, or nobody subscribed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotifyResult' }
+        '400': { description: Malformed body or record.id missing }
+        '401': { description: Missing or invalid webhook secret }
+        '405': { description: Method other than POST }
+        '502': { description: The push service rejected the send }
 
   /streak-status:
     get:
@@ -914,6 +1042,29 @@ components:
       description: RLS policy denied the operation (PostgREST returns 403 or an empty result)
 
   schemas:
+    NotifyResult:
+      type: object
+      description: |
+        What every webhook-driven notification Function returns. A skip is
+        not an error: the triggering row may have been corrected or deleted,
+        the event may not have been a milestone after all, or nobody in the
+        family may have notifications enabled.
+      properties:
+        sent: { type: integer, description: Pushes accepted by the push service }
+        expired:
+          type: integer
+          description: >-
+            Subscriptions the push service reported gone (404/410). These are
+            cleared from users.push_sub so later sends do not keep burning a
+            request on a dead endpoint.
+        failed: { type: integer, description: Sends that failed for some other reason }
+        tags:
+          type: array
+          description: Dedup tag per delivery — `{event}:{user_id}:{YYYY-MM-DD}`
+          items: { type: string }
+        skipped:
+          type: string
+          description: Present instead of a delivery count when nothing was attempted
     UserRole:
       type: string
       enum: [admin, tutor, parent, student]
