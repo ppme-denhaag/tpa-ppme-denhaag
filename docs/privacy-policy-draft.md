@@ -51,26 +51,51 @@ Leerlingen van 16 jaar en ouder kunnen — met medeweten van de ouder — een ei
 account koppelen met alleen-lezen toegang tot hun eigen gegevens. De koppeling met
 het ouderaccount blijft altijd bestaan.
 
-### 5. Waar worden de gegevens opgeslagen?
+### 5. Wie binnen PPME kan welke gegevens zien?
+
+Toegang is beperkt tot wat iemand voor zijn of haar rol nodig heeft, en dat wordt
+afgedwongen in de database zelf — niet alleen in het scherm:
+
+| Rol | Toegang |
+|---|---|
+| Ouder/verzorger | Uitsluitend de gegevens van de eigen kinderen |
+| Docent (ustadz) | Uitsluitend de leerlingen van de eigen klas(sen) |
+| Leerling van 16+ | Uitsluitend de eigen gegevens, alleen-lezen |
+| Beheerder | Alle leerlingen en alle gegevens — ook wijzigen |
+
+Beheerders zijn vrijwilligers van de TPA-commissie. Zij hebben deze bredere toegang
+omdat zij het programma draaiende houden: een les overnemen als een docent afwezig
+is, een verkeerd geregistreerde afwezigheid corrigeren, een jaarrapport afronden.
+Het gaat om dezelfde onderwijsgegevens die ouders en docenten ook zien — er worden
+voor deze rol geen extra gegevens verzameld, en er wordt niets buiten PPME gedeeld.
+Twee handelingen blijven bewust voorbehouden aan anderen: alleen een ouder kan
+bevestigen dat er thuis geoefend is, en alleen de docent die een jaarrapport heeft
+geschreven kan het aan het gezin vrijgeven.
+
+Het aantal beheerdersaccounts wordt bewust klein gehouden en elk account staat op
+naam. Vragen over wie op enig moment beheerder is, kunt u stellen via
+`[e-mailadres]`.
+
+### 6. Waar worden de gegevens opgeslagen?
 
 Alle gegevens worden opgeslagen binnen de Europese Unie (Supabase, regio Frankfurt,
 Duitsland) en versleuteld opgeslagen (AES-256) en verzonden (TLS 1.3). Hosting van de
 applicatie verloopt via Netlify `[EU-regio bevestigen]`. Met verwerkers zijn
 verwerkersovereenkomsten gesloten. `[Supabase DPA: status invullen]`
 
-### 6. Hoe lang bewaren wij gegevens?
+### 7. Hoe lang bewaren wij gegevens?
 
 Leerlinggegevens en voortgangsgegevens worden bewaard tot uiterlijk `[3 jaar — te
 bevestigen]` na uitschrijving, waarna ze worden verwijderd of geanonimiseerd.
 
-### 7. Uw rechten
+### 8. Uw rechten
 
 U heeft het recht op inzage, rectificatie, verwijdering (art. 17 AVG),
 gegevensoverdraagbaarheid (art. 20 AVG — export als CSV), beperking en bezwaar.
 Verzoeken kunnen worden gericht aan `[e-mailadres]`. U kunt tevens een klacht
 indienen bij de Autoriteit Persoonsgegevens.
 
-### 8. Wijzigingen
+### 9. Wijzigingen
 
 Dit beleid kan worden gewijzigd; de actuele versie staat altijd in de app.
 Laatst bijgewerkt: `[datum]`.
@@ -120,26 +145,51 @@ Santri berusia 16 tahun ke atas dapat — dengan sepengetahuan orang tua — men
 akun sendiri dengan akses baca-saja ke data mereka sendiri. Tautan dengan akun orang
 tua tetap ada.
 
-### 5. Di mana data disimpan?
+### 5. Siapa saja di dalam PPME yang dapat melihat data apa?
+
+Akses dibatasi sesuai kebutuhan peran masing-masing, dan pembatasan itu diterapkan
+di dalam basis data — bukan hanya di tampilan aplikasi:
+
+| Peran | Akses |
+|---|---|
+| Orang tua/wali | Hanya data anak sendiri |
+| Ustadz | Hanya santri di kelas yang diampu |
+| Santri 16+ | Hanya data diri sendiri, baca-saja |
+| Admin | Seluruh santri dan seluruh data — termasuk mengubahnya |
+
+Admin adalah relawan pengurus TPA. Mereka memiliki akses yang lebih luas karena
+merekalah yang menjaga program tetap berjalan: menggantikan ustadz yang berhalangan,
+memperbaiki catatan kehadiran yang keliru, merampungkan rapor akhir tahun. Data yang
+mereka lihat adalah data pendidikan yang sama seperti yang dilihat orang tua dan
+ustadz — tidak ada data tambahan yang dikumpulkan untuk peran ini, dan tidak ada
+yang dibagikan ke luar PPME. Dua tindakan sengaja tetap menjadi hak pihak lain:
+hanya orang tua yang dapat mengonfirmasi hafalan yang disetorkan di rumah, dan hanya
+ustadz penulis rapor yang dapat menerbitkannya kepada keluarga.
+
+Jumlah akun admin sengaja dijaga tetap sedikit dan setiap akun atas nama perorangan.
+Pertanyaan mengenai siapa saja yang menjadi admin dapat diajukan ke
+`[alamat email]`.
+
+### 6. Di mana data disimpan?
 
 Semua data disimpan di dalam Uni Eropa (Supabase, region Frankfurt, Jerman) dan
 dienkripsi saat disimpan (AES-256) dan dikirim (TLS 1.3). Hosting aplikasi melalui
 Netlify `[konfirmasi region EU]`. Perjanjian pemrosesan data telah dibuat dengan
 pemroses. `[status DPA Supabase]`
 
-### 6. Berapa lama data disimpan?
+### 7. Berapa lama data disimpan?
 
 Data santri dan data progres disimpan paling lama `[3 tahun — perlu konfirmasi]`
 setelah keluar dari TPA, kemudian dihapus atau dianonimkan.
 
-### 7. Hak Anda
+### 8. Hak Anda
 
 Anda berhak atas akses, perbaikan, penghapusan (Pasal 17 GDPR), portabilitas data
 (Pasal 20 GDPR — ekspor CSV), pembatasan, dan keberatan. Permintaan dapat diajukan
 ke `[alamat email]`. Anda juga dapat mengajukan keluhan ke Autoriteit
 Persoonsgegevens (otoritas perlindungan data Belanda).
 
-### 8. Perubahan
+### 9. Perubahan
 
 Kebijakan ini dapat berubah; versi terbaru selalu tersedia di aplikasi.
 Terakhir diperbarui: `[tanggal]`.

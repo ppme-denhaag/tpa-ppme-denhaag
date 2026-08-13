@@ -431,6 +431,244 @@ insert into _tap_log(line) select throws_ok(
   'RLS-21: authenticated client cannot INSERT into storage.objects in the reports bucket'
 );
 
+-- ============================================================
+-- RLS-22 … RLS-27: super admin writes (TAD ADR-014)
+--
+-- Everything below already passed before ADR-014 — no migration was
+-- needed to make admin a super admin, because migration 003/005 always
+-- granted admin `ALL` on every table (`*_admin_all`, plus the
+-- `or fn_is_admin()` branches on the tutor policies). What changed is
+-- that the *application* stopped blocking those writes, so the suite now
+-- asserts them explicitly: if a future migration ever narrows an admin
+-- policy, the app would start 403-ing on screens that look writable
+-- rather than failing here first.
+--
+-- Two properties are being tested at once, and the second matters more:
+--   1. an admin INSERT/UPDATE actually lands on each operational table;
+--   2. those new rows widen *nobody* else's visibility (RLS-26/27) —
+--      admin gaining access must not leak sideways into a parent, tutor
+--      or student scope.
+--
+-- Deliberately placed after RLS-14, which asserts exact fixture row
+-- counts for admin and would fail if these inserts ran first.
+-- ============================================================
+set local role authenticated;
+set local request.jwt.claim.sub to 'a0000000-0000-0000-0000-000000000000';
+set local request.jwt.claim.role to 'authenticated';
+
+-- ============================================================
+-- RLS-22: admin INSERT lands on every operational table, for a class
+--         it is not a tutor of (Class B / T2), with its own id in the
+--         `tutor_id` "who recorded this" column
+-- ============================================================
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.sessions (id, class_id, date, tutor_id)
+     values ('e0000000-0000-0000-0000-0000000000ad', 'c0000000-0000-0000-0000-00000000000b',
+             current_date - 7, 'a0000000-0000-0000-0000-000000000000') $$,
+  'RLS-22: admin can INSERT a session for a class it does not tutor'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.attendance (session_id, student_id, status)
+     values ('e0000000-0000-0000-0000-0000000000ad', 'd0000000-0000-0000-0000-000000000003', 'late') $$,
+  'RLS-22: admin can INSERT attendance for another tutor''s student'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.assignments (id, class_id, tutor_id, title, due_date)
+     values ('b0000000-0000-0000-0000-0000000000ad', 'c0000000-0000-0000-0000-00000000000b',
+             'a0000000-0000-0000-0000-000000000000', 'Admin-set homework', current_date + 3) $$,
+  'RLS-22: admin can INSERT an assignment for a class it does not tutor'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.assignment_status (assignment_id, student_id, status)
+     values ('b0000000-0000-0000-0000-0000000000ad', 'd0000000-0000-0000-0000-000000000003', 'completed') $$,
+  'RLS-22: admin can INSERT an assignment_status verdict'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+     values ('d0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000000', 2, 5, 'lancar') $$,
+  'RLS-22: admin can INSERT yanbua_progress with its own id as tutor_id'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.quran_progress (student_id, tutor_id, surah_num, ayah_from, ayah_to, quality)
+     values ('d0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000000', 2, 1, 10, 'jayyid') $$,
+  'RLS-22: admin can INSERT quran_progress with its own id as tutor_id'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.murajaah_assignments (id, student_id, tutor_id, surah_num, ayah_from, ayah_to, frequency)
+     values ('f0000000-0000-0000-0000-0000000000ad', 'd0000000-0000-0000-0000-000000000003',
+             'a0000000-0000-0000-0000-000000000000', 3, 1, 5, 'weekly') $$,
+  'RLS-22: admin can INSERT a murajaah target with its own id as tutor_id'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.year_end_reports (student_id, academic_year, tutor_id, status)
+     values ('d0000000-0000-0000-0000-000000000003', '2023/2024',
+             '70000000-0000-0000-0000-000000000002', 'draft') $$,
+  'RLS-22: admin can INSERT a year_end_report for another tutor''s student'
+);
+
+-- ============================================================
+-- RLS-23: admin UPDATE lands on operational rows it did not create,
+--         including another tutor's report narrative/grades — the
+--         `yer_tutor_rw` WITH CHECK pin (`tutor_id = auth.uid()`) that
+--         makes a co-tutor read-only does not apply to `yer_admin_all`
+-- ============================================================
+do $$
+declare affected int;
+begin
+  update public.attendance set status = 'present'
+  where session_id = 'e0000000-0000-0000-0000-00000000000b'
+    and student_id = 'd0000000-0000-0000-0000-000000000003';
+  get diagnostics affected = row_count;
+  drop table if exists _rls_check;
+  create temp table _rls_check(n int);
+  insert into _rls_check values (affected);
+end $$;
+insert into _tap_log(line) select is((select n from _rls_check), 1, 'RLS-23: admin UPDATE of a tutor-recorded attendance row affects the row');
+drop table _rls_check;
+
+do $$
+declare affected int;
+begin
+  update public.year_end_reports
+  set narrative = 'Edited by admin', overall_grade = 'jayyid'
+  where student_id = 'd0000000-0000-0000-0000-000000000001' and academic_year = '2025/2026';
+  get diagnostics affected = row_count;
+  drop table if exists _rls_check;
+  create temp table _rls_check(n int);
+  insert into _rls_check values (affected);
+end $$;
+insert into _tap_log(line) select is((select n from _rls_check), 1, 'RLS-23: admin UPDATE of T1''s report narrative/grades affects the row');
+drop table _rls_check;
+
+-- ============================================================
+-- RLS-24: `tutor_id` on an admin-recorded row is the admin's own id,
+--         and that id is in nobody's `classes.tutor_ids` — the column
+--         means "who recorded this", not "a tutor of this class", and
+--         nothing downstream may assume otherwise (ADR-014 decision 1a)
+-- ============================================================
+insert into _tap_log(line) select is(
+  (select tutor_id from public.yanbua_progress
+   where student_id = 'd0000000-0000-0000-0000-000000000003' and page = 5),
+  'a0000000-0000-0000-0000-000000000000'::uuid,
+  'RLS-24: an admin-recorded yanbua row carries the admin''s own id in tutor_id'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.classes
+   where 'a0000000-0000-0000-0000-000000000000'::uuid = any (tutor_ids)),
+  0::bigint,
+  'RLS-24: that id is not a member of any class''s tutor_ids'
+);
+
+-- ============================================================
+-- RLS-25: RLS *permits* an admin murajaah_log insert (`mlog_admin_all`),
+--         which is exactly why the app has to be the thing that declines
+--         it. `confirmed_by` means "the parent who watched the child
+--         recite" — home practice nobody witnessed is not something an
+--         administrator can attest to, so ADR-014 leaves that one action
+--         with parents at the application layer, the same shape the old
+--         admin fence had. Asserted rather than assumed so the split
+--         between "the database allows this" and "the app does not offer
+--         it" stays visible.
+-- ============================================================
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.murajaah_log (assignment_id, confirmed_by, quality, date)
+     values ('f0000000-0000-0000-0000-0000000000ad', 'a0000000-0000-0000-0000-000000000000',
+             'hafal_lancar', current_date) $$,
+  'RLS-25: RLS permits an admin murajaah_log insert (the parent-only rule is application-layer)'
+);
+
+-- ============================================================
+-- RLS-26: admin's new rows are invisible to everyone they should be —
+--         admin gaining write access must not widen any other scope
+-- ============================================================
+set local request.jwt.claim.sub to '90000000-0000-0000-0000-000000000001';  -- P1 (Class A family)
+insert into _tap_log(line) select is(
+  (select count(*) from public.attendance where session_id = 'e0000000-0000-0000-0000-0000000000ad'),
+  0::bigint, 'RLS-26: P1 sees 0 of the admin-created attendance rows for P2''s child'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.yanbua_progress where student_id = 'd0000000-0000-0000-0000-000000000003'),
+  0::bigint, 'RLS-26: P1 still sees 0 yanbua rows for P2''s child after the admin write'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.quran_progress where student_id = 'd0000000-0000-0000-0000-000000000003'),
+  0::bigint, 'RLS-26: P1 still sees 0 quran rows for P2''s child after the admin write'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.year_end_reports where student_id = 'd0000000-0000-0000-0000-000000000003'),
+  0::bigint, 'RLS-26: P1 still sees 0 year_end_reports for P2''s child after the admin write'
+);
+
+set local request.jwt.claim.sub to '70000000-0000-0000-0000-000000000001';  -- T1 (Class A tutor)
+insert into _tap_log(line) select is(
+  (select count(*) from public.attendance where session_id = 'e0000000-0000-0000-0000-0000000000ad'),
+  0::bigint, 'RLS-26: T1 sees 0 of the admin-created Class B attendance rows'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.assignments where id = 'b0000000-0000-0000-0000-0000000000ad'),
+  0::bigint, 'RLS-26: T1 sees 0 of the admin-created Class B assignments'
+);
+
+set local request.jwt.claim.sub to '50000000-0000-0000-0000-000000000001';  -- S16 (Class B, but P3's child)
+insert into _tap_log(line) select is(
+  (select count(*) from public.yanbua_progress where student_id = 'd0000000-0000-0000-0000-000000000003'),
+  0::bigint, 'RLS-26: S16 sees 0 of the admin-created rows for a classmate'
+);
+
+set local role anon;
+set local request.jwt.claim.sub to '';
+set local request.jwt.claim.role to 'anon';
+insert into _tap_log(line) select is(
+  (select count(*) from public.attendance), 0::bigint,
+  'RLS-26: anon still sees 0 attendance rows after the admin writes'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.year_end_reports), 0::bigint,
+  'RLS-26: anon still sees 0 year_end_reports after the admin writes'
+);
+
+-- ============================================================
+-- RLS-27: the non-admin write boundaries are unchanged — a tutor still
+--         cannot reach into another class, a parent still cannot write
+--         operational data, a 16+ student is still read-only
+-- ============================================================
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+
+set local request.jwt.claim.sub to '70000000-0000-0000-0000-000000000001';  -- T1
+do $$
+declare affected int;
+begin
+  update public.attendance set status = 'absent'
+  where session_id = 'e0000000-0000-0000-0000-0000000000ad';
+  get diagnostics affected = row_count;
+  drop table if exists _rls_check;
+  create temp table _rls_check(n int);
+  insert into _rls_check values (affected);
+end $$;
+insert into _tap_log(line) select is((select n from _rls_check), 0, 'RLS-27: T1 cannot UPDATE an admin-created Class B attendance row');
+drop table _rls_check;
+
+set local request.jwt.claim.sub to '90000000-0000-0000-0000-000000000002';  -- P2 (the affected family)
+insert into _tap_log(line) select throws_ok(
+  $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+     values ('d0000000-0000-0000-0000-000000000003', '90000000-0000-0000-0000-000000000002', 1, 9, 'lancar') $$,
+  '42501', null,
+  'RLS-27: a parent still cannot INSERT yanbua_progress for their own child'
+);
+insert into _tap_log(line) select ok(
+  (select count(*) from public.yanbua_progress where student_id = 'd0000000-0000-0000-0000-000000000003') > 0,
+  'RLS-27: …but P2 does see the admin-recorded row for their own child'
+);
+
+set local request.jwt.claim.sub to '50000000-0000-0000-0000-000000000001';  -- S16
+insert into _tap_log(line) select throws_ok(
+  $$ insert into public.quran_progress (student_id, tutor_id, surah_num, ayah_from, ayah_to, quality)
+     values ('d0000000-0000-0000-0000-000000000004', '50000000-0000-0000-0000-000000000001', 1, 1, 3, 'jayyid') $$,
+  '42501', null,
+  'RLS-27: a 16+ student is still read-only after admin gained write access'
+);
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();

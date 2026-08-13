@@ -10,12 +10,16 @@ type AttendanceStatus = Database['public']['Enums']['attendance_status']
  * FR-001 — admin-triggered bulk creation of draft year-end reports.
  *
  * Admin-only, verified in-function against `public.users.role` (see
- * `authenticateCaller`), never trusted from the client. This is the one
- * point where the admin role touches report data at all, and it is
- * deliberately a *write-only* enrollment-wide operation: the response is
- * two counts, never the drafts themselves or any of their content — see
- * ADR-013 in the TAD for why bulk generation sits with admin while
- * everything about a report's content stays with the tutor.
+ * `authenticateCaller`), never trusted from the client — bulk-creating
+ * one draft per enrolled student for a whole academic year needs an
+ * enrollment-wide view, which only admin has.
+ *
+ * The response is still three counts and nothing else, but that is now
+ * just the natural shape of a bulk job rather than a privacy boundary:
+ * ADR-013 kept the response content-free because admin was not allowed
+ * to see report content at all, and ADR-014 supersedes that — admin
+ * reads and edits the drafts this creates, from the Reports screen the
+ * generation panel now lives on.
  *
  * No `config.path` export — the default `/.netlify/functions/<name>`
  * route is what we want, and restating it breaks local `netlify dev`

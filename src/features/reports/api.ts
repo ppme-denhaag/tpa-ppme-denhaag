@@ -37,6 +37,25 @@ export async function fetchReportsForStudents(studentIds: string[]): Promise<Yea
   return data ?? []
 }
 
+/**
+ * Full names for a set of authoring tutors, keyed by user id.
+ *
+ * Only ever called from the admin branch of the reports screen, and only
+ * admin can get a non-trivial answer: `users_self_read` is
+ * `id = auth.uid() or fn_is_admin()`, so a tutor asking for a colleague's
+ * name gets an empty result rather than an error. That is why no other
+ * feature shows a "recorded by" name to anyone — admin is the first role
+ * with a read path into the directory, and it needs one to say *which*
+ * tutor has to re-publish a report it just edited (ADR-014).
+ */
+export async function fetchTutorNames(tutorIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(tutorIds)]
+  if (unique.length === 0) return new Map()
+  const { data, error } = await supabase.from('users').select('id, full_name').in('id', unique)
+  if (error) throw error
+  return new Map((data ?? []).map((u) => [u.id, u.full_name]))
+}
+
 /** Tutor edit of narrative/grades — allowed on drafts and published reports alike (FR-006). */
 export async function updateReport(id: string, patch: Partial<ReportEdit>): Promise<YearEndReport> {
   const { data, error } = await supabase

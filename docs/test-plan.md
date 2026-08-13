@@ -27,7 +27,7 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 
 ### Standard fixture set (used by RLS + E2E suites)
 
-- 1 admin, 2 tutors (T1, T2), 3 parents (P1, P2, P3), 1 student account (S16, linked to P3's child)
+- 1 admin, 2 tutors (T1, T2), 3 parents (P1, P2, P3), 1 student account (S16, linked to P3's child). The admin is deliberately a tutor of **no** class, so any access it has comes from `fn_is_admin()` and never from class membership
 - 2 classes: Class A (tutor T1), Class B (tutor T2)
 - P1 has 2 children in Class A; P2 has 1 child in Class B; P3 has 1 child (16+, user_id set) in Class B
 - Sessions, attendance, assignments, and progress rows for each child
@@ -59,8 +59,16 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-19 | S16 SELECT own year_end_reports, status=published → row returned; status=draft → 0 rows |
 | RLS-20 | T2 (not the authoring tutor, different class) SELECT/PATCH a Class A report → rejected |
 | RLS-21 | Non-service-role client attempts to read/write `storage.objects` in the `reports` bucket directly → rejected (no client-facing policy exists) |
+| RLS-22 | Admin INSERT lands on every operational table — `sessions`, `attendance`, `assignments`, `assignment_status`, `yanbua_progress`, `quran_progress`, `murajaah_assignments`, `year_end_reports` — for a class it is *not* a tutor of |
+| RLS-23 | Admin UPDATE lands on rows it did not create, including another tutor's report narrative/grades (`yer_tutor_rw`'s `tutor_id = auth.uid()` WITH CHECK does not constrain `yer_admin_all`) |
+| RLS-24 | An admin-recorded row carries the admin's own id in `tutor_id`, and that id is in no class's `tutor_ids` — the column means "who recorded this", not "a tutor of this class" (TAD ADR-014(b)) |
+| RLS-25 | RLS *permits* an admin `murajaah_log` INSERT (`mlog_admin_all`). The parent-only rule for home-practice confirmation is application-layer by design (ADR-014(c)) — asserted so the split between "the database allows it" and "the app does not offer it" stays visible |
+| RLS-26 | Admin's new rows widen nobody else: P1 sees 0 of them for P2's child, T1 sees 0 of the Class B rows, S16 sees 0 of a classmate's, anon still sees 0 |
+| RLS-27 | The non-admin write boundaries are unchanged after admin gained access: T1 cannot UPDATE an admin-created Class B attendance row, a parent still cannot INSERT `yanbua_progress` for their own child (but *does* see the admin-recorded row), a 16+ student is still read-only |
 
 **Gate: all RLS tests green in CI is a merge requirement for any migration change, and a launch requirement before real data entry (DPIA risk R1).**
+
+*RLS-22…RLS-27 were added with TAD ADR-014 (admin as super admin). They test policies that already existed and were never modified, which is the point: an unchanged-green run of RLS-01…RLS-21 alongside them is the evidence that widening the application layer did not touch the database layer. 27 cases, 64 pgTAP assertions in `supabase/tests/database/rls.test.sql`.*
 
 ## 4. Unit tests (Vitest)
 
@@ -87,6 +95,8 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 - `publish-report`: status only flips to `published` after successful PDF generation; a simulated PDF-generation failure leaves status as `draft` (no partial state)
 - `publish-report` on an already-published report (post-edit regeneration case) overwrites the existing `pdf_path` rather than creating a second object
 - PDF content smoke test: generated PDF contains the student's name, academic year, attendance rate, and all three subject grades (basic text-extraction check, not visual regression)
+- **Header logo**: with the inlined brand asset present, the header wordmark is *drawn* (so "PPME Den Haag" does not appear as extractable text); with the asset missing (`logo: null`) or corrupt (a non-PNG Buffer), the render falls back to the typographic header and still succeeds — a publish must never fail over branding
+- **Admin edit vs. stale PDF (ADR-014(e))**: an admin may PATCH a published report's narrative/grades but `publish-report` returns 403 for admin, so the stored PDF keeps the pre-edit text until the authoring tutor re-publishes. Asserted live against `netlify dev`: edit → fetch the signed URL → the object does *not* contain the new text → tutor re-publishes → the same object now does, with `published_at` preserved and still exactly one object in the bucket. The UI counterpart (publish button hidden for admin, "the PDF will not update until *[tutor]* re-publishes" notice shown) is covered in the §5 click-through
 
 *Implemented in `tests/unit/reports.test.ts`. Two notes for anyone extending these: the publish ordering is tested through `publishReportFlow`'s injected dependencies (a `renderPdf`/`uploadPdf` that throws must leave `markPublished` uncalled), which is why that ordering lives in its own module rather than inline in the Function; and the smoke test renders with `compress: false` and decodes pdfkit's hex `TJ` runs, since a plain substring search over a normal (FlateDecode) PDF finds only the `/Info` metadata.*
 
@@ -106,6 +116,9 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | E2E-08 | Unregistered Google account signs in → sees "contact admin" screen, no data | — |
 | E2E-09 | Admin generates drafts for a class → tutor sees draft list → tutor writes narrative + sets 3 subject grades → publishes → parent receives notification and can view + download PDF; student (S16) can independently view + download the same report | Admin → Tutor → Parent → Student |
 | E2E-10 | Tutor edits a published report's narrative → re-publish → PDF updates (old download link still resolves but now serves the new content, per FR-006's single-current-version model) | Tutor → Parent |
+| E2E-11 | Admin opens each of the 6 feature tabs on a class it does not tutor → records attendance / progress / a homework verdict → the affected family sees the change in their own view, and no other family does (TAD ADR-014) | Admin → Parent |
+| E2E-12 | Admin opens a draft report, edits narrative + grades, saves; no publish button is offered and the "only *[tutor]* can publish this" notice is shown. On a *published* report the notice instead warns the PDF will not update until the authoring tutor re-publishes | Admin |
+| E2E-13 | Admin's bottom nav is the same five operational tabs as every other role (never the enrollment set), "Kelola" reaches `/admin/*`, and a non-admin visiting `/admin` or `/admin/classes` is redirected home | Admin, Tutor |
 
 ## 6. Notification & PWA test matrix (manual, real devices)
 

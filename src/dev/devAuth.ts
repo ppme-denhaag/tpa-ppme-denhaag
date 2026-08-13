@@ -22,8 +22,12 @@ export interface FixtureUser {
 // Matches supabase/dev-fixture.sql — see README "Local Postgres" for how
 // to load it into a local `supabase start` stack.
 export const FIXTURE_USERS: FixtureUser[] = [
-  { id: 'a1000000-0000-0000-0000-000000000001', label: 'Ustadz Ahmad (Tutor)' },
-  { id: 'a2000000-0000-0000-0000-000000000001', label: 'Ibu Siti (Parent — 2 children)' },
+  { id: 'a1000000-0000-0000-0000-000000000001', label: 'Ustadz Ahmad (Tutor — Kelas A + B)' },
+  // Second tutor, assigned to Kelas B only — the fixture's one way to
+  // check a tutor's class scoping from the browser rather than by hand
+  // with a minted JWT.
+  { id: 'b1000000-0000-0000-0000-000000000001', label: 'Ustadz Baru (Tutor — Kelas B only)' },
+  { id: 'a2000000-0000-0000-0000-000000000001', label: 'Ibu Siti (Parent — 3 children)' },
   { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 1 child)' },
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
   { id: 'c1000000-0000-0000-0000-000000000001', label: 'Admin Dev (Admin)' },

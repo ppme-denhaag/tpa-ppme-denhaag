@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AdminSectionNav } from '../../components/AdminSectionNav'
 import { getErrorMessage } from '../../lib/errors'
 import { createClass, fetchAllClasses, fetchUsersByRole, updateClass, type AdminClass, type DirectoryUser } from './api'
 import { ClassForm } from './ClassForm'
@@ -63,6 +64,7 @@ export function ClassesPage() {
 
   return (
     <div className="space-y-4">
+      <AdminSectionNav />
       <h1 className="text-lg font-bold text-ppme-primary">{t('admin.classesTitle')}</h1>
 
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}

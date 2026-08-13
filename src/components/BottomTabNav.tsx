@@ -1,19 +1,24 @@
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../context/AuthContext'
-import { ADMIN_NAV_TABS, NAV_TABS } from './tabs'
+import { NAV_TABS } from './tabs'
 
+/**
+ * The five operational tabs, identical for every role including admin
+ * (ADR-014). The enrollment screens are not here on purpose — 8 tabs
+ * cannot share a mobile bottom nav at 44px tap targets, and the 5 below
+ * are the prototype-validated set (checklist §5). Admin reaches
+ * `/admin/*` through the "Kelola" tile on the dashboard or the extra
+ * desktop tab.
+ */
 export function BottomTabNav() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
-  const tabs = profile?.role === 'admin' ? ADMIN_NAV_TABS : NAV_TABS
 
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-10 flex border-t border-black/5 bg-white pb-[env(safe-area-inset-bottom)] sm:hidden"
       aria-label={t('app.name')}
     >
-      {tabs.map(({ to, key }) => (
+      {NAV_TABS.map(({ to, key }) => (
         <NavLink
           key={to}
           to={to}

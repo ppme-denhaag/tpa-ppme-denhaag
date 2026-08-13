@@ -12,7 +12,8 @@
     "laporan": "Rapor",
     "pendaftaran": "Pendaftaran",
     "kelas": "Kelas",
-    "santri": "Santri"
+    "santri": "Santri",
+    "kelola": "Kelola"
   },
   "auth": {
     "signIn": "Masuk dengan Google",
@@ -231,7 +232,6 @@
     "allClasses": "Semua Kelas",
     "skippedExisting": "{{count}} dilewati (sudah punya rapor)",
     "skippedNoTutor": "{{count}} dilewati (kelas tanpa ustadz pengampu)",
-    "adminScopeNote": "Admin hanya memicu pembuatan draf rapor. Isi rapor — catatan dan nilai — hanya dapat dilihat dan diubah oleh ustadz pengampu.",
     "subjectYanbua": "Yanbu'a",
     "subjectQuran": "Al-Quran",
     "subjectMurajaah": "Murajaah",
@@ -243,7 +243,10 @@
     "republish": "Terbitkan Ulang & Perbarui PDF",
     "progressContext": "Ringkasan Perkembangan",
     "murajaahTargets": "{{active}} target aktif · {{total}} total",
-    "saved": "Perubahan disimpan"
+    "saved": "Perubahan disimpan",
+    "adminCannotPublish": "Anda dapat mengubah rapor ini, tetapi hanya {{name}} yang dapat menerbitkannya.",
+    "adminEditPdfStale": "Perubahan tersimpan langsung di aplikasi, tetapi berkas PDF baru diperbarui setelah {{name}} menerbitkan ulang rapor ini.",
+    "authoringTutor": "ustadz penulis rapor"
   },
   "errors": {
     "generic": "Terjadi kesalahan. Silakan coba lagi.",
@@ -252,8 +255,6 @@
     "notAuthorized": "Anda tidak memiliki akses untuk tindakan ini."
   },
   "admin": {
-    "restrictedTitle": "Tidak Tersedia untuk Admin",
-    "restrictedMessage": "Admin tidak memiliki akses ke data operasional santri, ustadz, atau orang tua di halaman ini.",
     "registrationsTitle": "Pendaftaran Pengguna",
     "inviteSectionTitle": "Undang Pengguna Baru",
     "inviteEmail": "Alamat Email",
@@ -279,6 +280,7 @@
     "studentDob": "Tanggal Lahir",
     "linkSelfLogin": "Tautkan Akun Login Mandiri (16+)",
     "linkSelfLoginNone": "Tidak ada",
-    "noParents": "Belum ada orang tua terdaftar"
+    "noParents": "Belum ada orang tua terdaftar",
+    "hubSubtitle": "Pendaftaran pengguna, kelas, dan data santri"
   }
 }

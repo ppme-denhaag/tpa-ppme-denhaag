@@ -1,5 +1,4 @@
 import { useAuth } from '../../context/AuthContext'
-import { AdminRestricted } from '../../components/AdminRestricted'
 import { TutorAssignmentsView } from './TutorAssignmentsView'
 import { FamilyAssignmentsView } from './FamilyAssignmentsView'
 
@@ -9,15 +8,13 @@ import { FamilyAssignmentsView } from './FamilyAssignmentsView'
 // child's name) or a 16+ student (assignments.myTitle) — not known
 // until a child is picked.
 //
-// Admin is deliberately routed to neither view — same reasoning as
-// AttendancePage/YanbuaPage: FamilyAssignmentsView's "my children"
-// query would return every student for admin (students_admin_all has
-// no parent_id predicate), not just none. See AdminRestricted's
-// docstring.
+// Admin gets the tutor view (ADR-014) — same reasoning as
+// AttendancePage/YanbuaPage: the class-picker shape needs no new query
+// for admin, while FamilyAssignmentsView's "my children" query would
+// return every student in the TPA (`students_admin_all` has no
+// `parent_id` predicate).
 export function AssignmentsPage() {
   const { profile } = useAuth()
-  if (profile?.role === 'admin') return <AdminRestricted />
-
-  const isManager = profile?.role === 'tutor'
+  const isManager = profile?.role === 'tutor' || profile?.role === 'admin'
   return isManager ? <TutorAssignmentsView /> : <FamilyAssignmentsView />
 }

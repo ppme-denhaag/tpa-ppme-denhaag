@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SignIn } from './pages/SignIn'
 import { Unauthorized } from './pages/Unauthorized'
@@ -13,7 +13,6 @@ import { ReportsPage } from './features/reports/ReportsPage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
 import { StudentsPage } from './features/admin/StudentsPage'
-import { ReportsAdminPage } from './features/admin/ReportsAdminPage'
 import { RequireAdmin } from './components/RequireAdmin'
 
 function Gate() {
@@ -40,6 +39,19 @@ function Gate() {
         <Route path="/quran" element={<QuranPage />} />
         <Route path="/murajaah" element={<MurajaahPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        {/* Single entry point into the enrollment section (the "Kelola"
+            dashboard tile and desktop tab both point here). Kept as a
+            real route rather than linking straight to the first
+            sub-screen so the tab stays highlighted across all of
+            `/admin/*`. */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <Navigate to="/admin/registrations" replace />
+            </RequireAdmin>
+          }
+        />
         <Route
           path="/admin/registrations"
           element={
@@ -61,14 +73,6 @@ function Gate() {
           element={
             <RequireAdmin>
               <StudentsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="/admin/reports"
-          element={
-            <RequireAdmin>
-              <ReportsAdminPage />
             </RequireAdmin>
           }
         />

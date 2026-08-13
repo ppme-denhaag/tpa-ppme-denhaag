@@ -25,7 +25,7 @@ organization warrants a documented assessment.
 | Purpose | Track attendance, homework, Yanbu'a reading progress, Quran recitation, and home memorization (murajaah) for TPA students; inform parents via push notifications |
 | Data subjects | Students (majority <16), parents/guardians, volunteer tutors, admins |
 | Data categories | Identity (name, DOB), contact (email via Google account — parents/tutors/16+ students only), educational progress, attendance incl. absence reasons, push subscription tokens |
-| Recipients | Parents (own children only), tutors (own classes only), TPA admins; no third-party sharing |
+| Recipients | Parents (own children only), tutors (own classes only), TPA admins (**all students, all data, read and write** — see §3 and R11); no third-party sharing |
 | Processors | Supabase Inc. (database + auth; data region Frankfurt, DE), Netlify (hosting/functions, EU region), Google (OAuth identity provider only — no app data shared) |
 | Transfers outside EU | None by design (Frankfurt data residency). **[IT TEAM]**: verify via Supabase DPA whether any sub-processor (support/telemetry) accesses data from outside the EU, and document SCCs if so. |
 | Retention | Proposed: 3 years post-enrollment, then delete/anonymize. **[IT TEAM]**: confirm. |
@@ -35,6 +35,32 @@ organization warrants a documented assessment.
 - **Data minimization:** Only educational progress data is collected; no photos, no
   free-form health data (absence reason is a short optional text — see risk R4), no
   location, no behavioral tracking or analytics beyond aggregate hosting metrics.
+- **Who inside the organization can see what:** access is need-to-know by role and
+  enforced at the database layer (Row Level Security), not merely in the interface.
+  A parent sees only their own children; a tutor sees only the classes they are
+  assigned to; a 16+ student sees only their own record, read-only. **The `admin`
+  role is the exception: it can read *and* modify every student's attendance,
+  homework, Yanbu'a/Quran/Murajaah progress and year-end reports, across the whole
+  TPA.** That was always true of the database policies; since TAD ADR-014 it is also
+  true of the application, which previously hid those screens from admin.
+
+  This is assessed as proportionate for a ~200-student community programme with a
+  handful of volunteer administrators: someone has to be able to cover a session for
+  an absent tutor, correct a mis-recorded absence, and finish a year-end report at
+  the end of term, and the alternative — an administrator who can enrol a child but
+  cannot fix a single record about them — pushed that work into email and paper,
+  outside any access control at all. It is a *breadth* decision, not a *category*
+  one: admin sees the same educational-progress data everyone else does, no new
+  field is collected, and nothing is disclosed outside the organization.
+
+  Two boundaries are kept deliberately, and both are about attribution rather than
+  confidentiality: only a parent can confirm that a child practised at home (the
+  record means "a parent watched this"), and only the tutor who wrote a year-end
+  report can publish it to the family. **[IT TEAM]** should keep the number of admin
+  accounts small and named (not shared), require 2FA on the Google accounts behind
+  them, and treat admin offboarding at least as promptly as tutor offboarding
+  (R11). Note that the app keeps no audit log, so an administrative correction is
+  not attributable after the fact.
 - **Lawful basis:** **[IT TEAM]** to confirm: consent by parent at enrollment
   (recommended for clarity given the community context) vs. legitimate interest.
   For under-16 students, parental consent is obtained at enrollment regardless.
@@ -60,6 +86,7 @@ organization warrants a documented assessment.
 | R6 | Push notification content leaks child data on lock screens | Medium | Low | Notification text limited to first name + event type; no progress details or reasons in push payloads |
 | R7 | 16+ student self-login sees more than intended | Low | Medium | Student RLS scope is read-only and limited to own `student_id`; automated tests cover sibling and classmate isolation |
 | R8 | Volunteer tutors access data after leaving | Medium | Medium | Admin offboarding procedure: remove tutor from `classes.tutor_ids` immediately on departure; **[IT TEAM]**: add to volunteer onboarding/offboarding checklist |
+| R11 | **A privileged (`admin`) account is retained after the holder leaves, or is compromised** | Low–Medium | **High** | The larger version of R8: an admin reads and writes every student's data across the whole TPA, so the same lapse that costs one class's data for a departed tutor costs all of it here. Controls: (a) keep admin accounts few and individually named — never a shared committee login; (b) require 2FA on the underlying Google account (the app has no password of its own, so account security *is* Google account security — R2); (c) offboarding is a role change or profile deletion in `public.users` and must happen the same day, ahead of tutor offboarding in the checklist; (d) periodic review — **[IT TEAM]** to set a cadence — of who currently holds `role = 'admin'`. Residual: there is no audit log, so an administrative read is invisible and an administrative write is only attributable where the row records who created it. **[IT TEAM]**: decide whether an audit trail is required before launch, or accepted as residual risk for a volunteer-run community app |
 | R9 | Community-built app lacks continuity (single maintainer) | Medium | Medium | Documentation set (PRD/TAD/API contract/migrations) maintained in repo owned by PPME IT team account, not a personal account |
 | R10 | Year-end report PDF, once downloaded, is outside the app's access controls (parent can forward/print/share it freely) | Medium | Low-Medium | Inherent to any exportable document; mitigated by minimizing PDF content to what's appropriate for the parent to already hold (educational grades/narrative, no other students' data, no internal tutor-only notes); PDF is watermarked with recipient context (student name + academic year) implicitly via its content, deterring casual redistribution; accepted residual risk — flag for **[IT TEAM]** awareness rather than a technical control |
 
@@ -68,7 +95,7 @@ organization warrants a documented assessment.
 | Right | Implementation |
 |---|---|
 | Access / portability (art. 15/20) | Parent-facing CSV export of all data for their child(ren) |
-| Rectification (art. 16) | Admin edits student records; users edit own profile |
+| Rectification (art. 16) | Admin edits student records *and* the operational records about them (attendance, progress, report narratives and grades) directly in the app since ADR-014 — previously only enrolment fields were correctable without a database intervention; users edit own profile |
 | Erasure (art. 17) | Admin-triggered cascade delete of student + all related records (attendance, progress, murajaah, year-end reports); DB-level `on delete cascade` handles table rows automatically, but the year-end report PDF lives in Supabase **Storage**, which cascade does not reach — the erasure procedure must explicitly delete the corresponding Storage object(s) as a separate step; verified by test |
 | Objection / restriction | Handled manually via **[contact email]**; documented procedure **[IT TEAM]** |
 
@@ -77,6 +104,7 @@ organization warrants a documented assessment.
 - [ ] **[IT TEAM]** Review Supabase DPA and sub-processor list — record conclusion in §2
 - [ ] **[IT TEAM]** Confirm lawful basis (§3) and retention period (§2)
 - [ ] **[IT TEAM]** Confirm breach-response owner (§4 R3)
+- [ ] **[IT TEAM]** Sign off on the super-admin role (§3, §4 R11) — number of admin accounts, 2FA requirement, offboarding cadence, and whether an audit log is required before launch. **This one gates real student data**, not just the DPIA
 - [ ] **[IT TEAM]** Parent representative consulted (recommended: brief the parent community before launch)
 - [ ] Sign-off: name, role, date: `[...]`
 - [ ] Review date: `[launch + 12 months]`
