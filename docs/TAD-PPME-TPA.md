@@ -187,6 +187,7 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | ~~ADR-012~~ | ~~**Admin role scoped to enrollment/setup only, not operational data**~~ — **SUPERSEDED by ADR-014** | Explicit product decision during the admin UI build: admin manages users/classes/students but cannot view attendance, Yanbu'a/Quran/Murajaah progress, homework, or reports — those nav tabs are hidden for admin and the routes redirect if visited directly (`AdminRestricted.tsx`). This is an **application-layer** restriction only — RLS still grants admin `ALL` at the DB layer per ADR-006/the RLS policy table below, kept for legitimate support/data-recovery needs. Narrows the "CS Tools → Admin Dashboard" scope below from the original spec (which included Attendance Reports and Progress Overview). *Kept on the record because Milestones 1–6 were all built around it — `AdminRestricted.tsx`, the exclusive admin nav, and `report-pdf`'s admin denial all existed because of this row.* | Full CS Tools scope as originally specced (rejected at the time: puts student progress/attendance data in front of a role with no pedagogical relationship to the student, beyond what enrollment administration requires — **this is the alternative ADR-014 ultimately adopted**) |
 | ~~ADR-013~~ | ~~**Year-end draft generation is admin-triggered; everything about a report's content stays with the tutor**~~ — **PARTLY SUPERSEDED by ADR-014** (the content-blindness half; the publishing half stands) | Resolved the one apparent conflict between the Netlify Functions table below (which describes `generate-year-end-drafts` as "Admin-triggered") and ADR-012. Bulk-creating one draft per enrolled student for a whole academic year genuinely needs an enrollment-wide view, which only admin has — so the *trigger* is admin's, exposed at `/admin/reports` as a form with two inputs (academic year, optional class) whose only output is `created_count` / `skipped_existing` / `skipped_no_tutor`. That screen never listed the drafts, never showed a narrative or grade, and offered no route to one; `/reports` blocked admin via `AdminRestricted`, and `report-pdf` refused admin outright even though RLS grants admin ALL. **The one part of this row that ADR-014 leaves exactly as written**: `publish-report` accepts **only the authoring tutor**, not admin, matching what `yer_tutor_rw`'s WITH CHECK (`tutor_id = auth.uid()`) already allows through PostgREST | Admin able to browse/review report content (rejected then as the pedagogical data ADR-012 excluded — **adopted by ADR-014**); tutor-triggered generation (rejected, and still rejected: a tutor sees only their own classes, so nobody could generate for the whole TPA in one action, and per-class triggers would silently miss students whose class has no tutor assigned); admin allowed to publish as a break-glass (rejected then and now: publishing is what makes a report visible to a family — an authoring judgement, not an enrollment operation) |
 | ADR-014 | **`admin` is a super admin: full read *and* write access to every feature, on every class** | Reverses ADR-012 and the content-blind half of ADR-013 at PPME's request. An administrator of a ~200-student TPA needs to be able to see and fix operational data — cover a session when a tutor is away, correct a mis-recorded absence, finish a report — and the previous fence made the only account with an org-wide view the one account that could do none of that.<br><br>**No migration and no RLS change.** Migration 003 has always granted admin `ALL` on every table (`*_admin_all` policies plus the `or fn_is_admin()` branches on the tutor policies) and migration 005 does the same for `year_end_reports` (`yer_admin_all`), so the fence was only ever application-layer. The whole change is the removal of `AdminRestricted.tsx`, the six `role === 'admin'` guards in the feature pages, and `report-pdf`'s `default: return false`. An unchanged-green pgTAP run is the evidence RLS was untouched; RLS-22…RLS-27 were added to assert the admin writes land *and* that no other role's scope widened.<br><br>Five decisions inside it:<br>**(a) Class-shaped, not family-shaped.** Admin gets the tutor view of every screen (class picker → roster → drill-down). `useMyClasses` already returns all classes for admin, so this needed no new query. The family views are child-scoped and their `useMyStudents` query has no `parent_id` predicate for admin — a ChildPicker would list all ~200 students as though they were the admin's own children.<br>**(b) `tutor_id` records the admin's own id.** Six tables carry a NOT NULL `tutor_id` FK meaning "who recorded this row". An admin write stores the admin's id: simplest, and honest — it really was the admin. The consequence is that `tutor_id` no longer implies membership of `classes.tutor_ids`, which nothing downstream may assume (asserted as RLS-24). `year_end_reports.tutor_id` is unaffected: it is set once at draft generation from the class's first tutor and is the authorship record that `publish-report` checks.<br>**(c) Home-practice confirmation stays with parents.** `murajaah_log.confirmed_by` means "the parent who watched the child recite"; a confirmation from an administrator is a claim nobody witnessed. `mlog_admin_all` permits the insert at the DB layer (RLS-25 asserts it still does) — the app simply never offers the control, since it lives only in `FamilyMurajaahView`. Every other operational write being available is what makes this exception meaningful rather than arbitrary.<br>**(d) Nav: the five operational tabs stay, the enrollment screens move down a level.** 5 operational + 4 admin tabs will not fit a mobile bottom nav at 44px tap targets, and the 5-tab order is prototype-validated (checklist §5). Admin now gets exactly the same bottom nav as everyone else, plus one "Kelola" entry point (dashboard tile + a sixth desktop tab) into `/admin/*`, where a secondary tab strip (`AdminSectionNav`) moves between Pendaftaran/Kelas/Santri. `RequireAdmin` still guards those routes.<br>**(e) Reports: read and edit yes, publish no.** Admin sees every report including drafts, edits narratives and grades, and downloads PDFs (`report-pdf` gained an admin branch). Publishing stays authoring-tutor-only per ADR-013. That combination has a sharp edge: editing does not regenerate the PDF (the client calls `publish-report` afterwards, which 403s for admin), so an admin edit to a published report leaves the stored PDF stale. The editor hides the publish button for admin and shows "the PDF will not update until *[tutor]* re-publishes" — the mismatch is made visible rather than silently produced or prevented. `/admin/reports` (the counts-only generation screen) folded into the admin's own Reports view as a panel, since a deliberately content-blind screen had nothing left to protect | A 5th `user_role` enum value, so PPME could have both a narrow enrollment admin and a super admin (rejected: no concrete need for both was identified, and it would mean a migration, an RLS rewrite and a fixture change for a distinction nobody asked for — revisit if PPME ever wants a volunteer registrar who is not a full administrator); read-only super admin (rejected: the stated need is to *fix* things, and RLS already permits the writes); letting the admin pick which tutor an entry is attributed to (rejected as more UI for a worse record — it invites putting a tutor's name on something they did not do; better records here would mean a separate `recorded_by` column, which is a schema change, not this one); blocking admin edits on published reports to avoid the stale PDF (rejected: it takes away the one repair the role most obviously needs, at year-end when the authoring tutor may be unreachable); letting admin publish as a break-glass (rejected — see ADR-013) |
+| ADR-015 | **Web Push pipeline: family-facing recipients, lock-screen-minimal copy, a database webhook as the trigger, and timezone handled in code rather than in cron** | The notification work in checklist §4 is larger than any single milestone this project has shipped, and part of it (the real-device matrix, test-plan §6) cannot be verified from a development machine at all. It is therefore being delivered in three parts; this row records the decisions that all three depend on, taken while building the first.<br><br>**Part 1 (this row's implementation):** VAPID + `web-push`, `push-subscribe`, the payload builder, the service-worker handlers, the notification-settings screen, and `notify-absence` end to end — the highest-value single flow, and the one that exercises every layer of the pipeline once. **Part 2:** the four scheduled Functions, `notify-milestone`, `streak-status`, and the `calculate-streak-resets` consequences (`src/lib/murajaah.ts`'s docstring, the domain-model footnote and checklist §13 all describe a system with no streak-reset job, and must be rewritten *together with* the job that invalidates them). **Part 3:** the in-app notification centre, which needs a new table, RLS policies and pgTAP cases — and whose screen §5 records as never having been design-reviewed in the prototype batch. Deferring it is not a scheduling convenience: building an unreviewed screen and a migration together is how a schema gets locked in around a design nobody agreed to.<br><br>Eight decisions:<br>**(a) Recipients are families only.** Every row in the Notification Spec below addresses a parent or a 16+ student. A tutor learns about an absence by recording it, and ADR-014 does not change that for admin: making admin a super admin granted access to *screens*, which is not the same as subscribing one account to two hundred children's lock screens, and would be hard to defend under data minimization. `push-subscribe` therefore returns 403 for `tutor` and `admin` rather than storing a push endpoint — personal data — that nothing would ever send to. The settings screen renders for every role, says plainly that this role receives nothing, and still shows the lock-screen privacy note, which everyone has reason to be able to read.<br>**(b) Push copy is minimal; the drafted richer copy becomes the in-app wording.** DPIA risk R6 limits a payload to the child's first name and the event type. Several strings drafted from the Notification Spec table interpolate more than that (jilid number, surah name, assignment title). Rather than choose between the DPIA and reviewed copy, the two are separated: `notifications.push.*` carries the lock-screen text (name and event type only) and the existing `notifications.*` strings become the in-app wording for Part 3's notification list, shown to someone already signed in. Enforced two ways — `buildPayload` accepts no parameter that *could* carry a reason, grade or position, so there is no channel for one; and the unit suite rejects any string under `notifications.push` that interpolates a placeholder other than `{{name}}`.<br>**(c) The trigger is a database webhook, written as a migration.** Attendance is written from the tutor screen, the admin screen and potentially any future import; a webhook fires for all of them without each write path remembering to ask, and a client that crashes mid-save cannot skip the notification. Supabase's dashboard "Database Webhooks" feature builds exactly this (a pg_net trigger) but by hand, per project, with the URL and secret baked into the trigger body. Migration 009 writes the trigger instead — version-controlled, reproduced by `db reset`, identical in CI — and reads the per-environment target from Supabase Vault at fire time. With no Vault configuration the trigger is a no-op, which is what keeps a fresh local stack and CI silent. It also never fails an attendance write: recording attendance is the product, the push is a courtesy.<br>**(d) A scheduled/webhook Function authenticates its channel, not a caller.** `callerAuth.ts` validates a user's JWT and looks up their role — the right shape when a signed-in person is asking for something, and the wrong one when the request comes from Postgres or from Netlify's scheduler. `webhookAuth.ts` is the counterpart: a shared secret (Netlify `NOTIFY_WEBHOOK_SECRET`, Vault `notify_webhook_secret`), compared in constant time, **failing closed** when unset — a misconfigured deploy that sends nothing is a visible bug; an endpoint that serves unauthenticated requests to real families is not. Proving the channel only earns the right to ask: `notify-absence` re-reads the attendance row from the database rather than trusting the posted body, and derives the recipient from `students.parent_id`. Nothing about who receives a notification comes from the request.<br>**(e) DST is handled in the Function, not the cron expression.** Netlify cron is UTC-only, and the Scheduler table's original entries were written against CET — `0 17 * * *` is 18:00 in winter and 19:00 through the whole CEST summer term. Rather than being wrong for half the year or hand-editing crons twice a year, the reminder Functions run **hourly** and decide for themselves whether it is the target hour in `Europe/Amsterdam`, using the runtime's IANA database (`isAmsterdamHour`). The dedup tag, keyed on the family's local date, makes a repeated run harmless. Cost: 24 invocations/day per scheduled Function — see Billing. (Helpers and their DST tests ship with Part 1; the crons themselves are Part 2.)<br>**(f) Push handlers are imported into the generated service worker.** `workbox.importScripts: ['/push-sw.js']` rather than switching vite-plugin-pwa to `injectManifest`, which would hand us a working precache/runtime-cache configuration to maintain by hand in order to add two event listeners.<br>**(g) One subscription per user, not per device.** `users.push_sub` is a single jsonb column (migration 002, and the Technical Implementation note below). Enabling notifications on a second device therefore *moves* them rather than adding one, and the settings screen says so instead of quietly overwriting. Multi-device would need a `push_subscriptions` table keyed on (user_id, endpoint) and a fan-out in every sender — a schema change worth making only if PPME reports families wanting it.<br>**(h) The settings screen reads server state, not the browser's.** A push service can invalidate an endpoint at any time; `notify-absence` clears `users.push_sub` when it does. The browser keeps its own subscription object regardless, so a screen keyed on `pushManager.getSubscription()` would tell a family notifications were on when nothing could ever arrive again — silent, and indistinguishable from a quiet week. This happened during live verification, which is how it was found | Calling `notify-absence` from the client after a successful attendance save (rejected — see (c): it would need re-adding to every write path, and a client could then fire notifications at will); configuring the webhook in the Supabase dashboard (rejected: not version-controlled, not reproducible in CI, and invisible to anyone reading the repo); baking the webhook URL into the migration (rejected: one migration cannot be right for a laptop, CI and Frankfurt at once); a service-account JWT for scheduled Functions (rejected: a long-lived credential with a real user identity, to solve a problem a shared secret solves without one); trusting the webhook body's `record` (rejected: it makes the trigger's payload security-relevant for no gain, since the Function has database access anyway); pinning the crons to CEST and accepting winter drift (rejected: the same bug in the other half of the year); two cron entries with a seasonal comment (rejected: nobody will remember to switch them); rewriting the drafted notification copy to be R6-safe (rejected in favour of (b) — the celebration in "Alhamdulillah! [name] finished Jilid 3" is worth keeping where it can safely be read); shipping the notification centre with a schema before its design review (rejected — see above) |
 
 # Impact
 
@@ -195,12 +196,12 @@ Build a Progressive Web App (PWA) for PPME Den Haag's TPA (Taman Penitipan Al-Qu
 | Domain Model | 11 core entities: User, Student, Class, Session, Attendance, Assignment, YanbuaProgress, QuranProgress, MurajaahAssignment, MurajaahLog, YearEndReport |
 | API Spec | RESTful API via Supabase auto-generated endpoints + Netlify Functions for custom logic (notifications, streak calculation) |
 | Batch Files Spec | N/A — no batch file processing required |
-| Notification Spec | Web Push (VAPID) for absence alerts, homework reminders, milestone celebrations; optional WhatsApp via Business API (Phase 3) |
+| Notification Spec | Web Push (VAPID) for absence alerts, homework reminders, milestone celebrations; optional WhatsApp via Business API (Phase 3). Pipeline and the absence alert built (ADR-015 part 1); the rest deferred to parts 2–3 |
 | Flows | 5 primary flows: Attendance recording, Homework lifecycle, Yanbu'a entry, Quran entry, Murajaah assignment + daily confirmation |
 | Database | PostgreSQL on Supabase (Frankfurt EU); encrypted at rest (AES-256); TLS in transit; Row Level Security; automated daily backups |
 | Billing | Supabase Free Tier (500MB DB, 1GB storage, 50K monthly active users); Netlify Free/Pro ($0-$19/mo); Google OAuth (free); Total estimated: $0-$19/month |
 | CS Tools | Admin dashboard for TPA committee: enrollment management, class management, user registration/invite — plus, since ADR-014, full read/write access to every operational screen (attendance, homework, Yanbu'a, Quran, Murajaah, year-end reports) on every class, using the same class-shaped views a tutor gets |
-| Scheduler | Netlify Scheduled Functions: daily Murajaah reminders (configurable per family, default 18:00 CET); streak reset calculation (midnight CET) |
+| Scheduler | Netlify Scheduled Functions: daily Murajaah reminders (default 18:00 Europe/Amsterdam); streak reset calculation (local midnight). Not built yet — ADR-015 part 2. Crons run hourly with a local-time gate rather than at a fixed UTC hour, so they stay correct across DST |
 | Others | PWA manifest, Service Worker, i18n (Bahasa Indonesia + Dutch), PPME branding assets |
 
 ## Domain Model
@@ -389,11 +390,11 @@ Supabase auto-generates RESTful endpoints from the PostgreSQL schema via PostgRE
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/.netlify/functions/notify-absence` | Triggered after attendance POST; sends push to parents of absent students |
-| POST | `/.netlify/functions/notify-milestone` | Triggered when jilid completed or surah memorized; sends celebration push |
-| GET | `/.netlify/functions/streak-status` | Calculates current streak for a student's Murajaah assignment |
-| POST | `/.netlify/functions/push-subscribe` | Stores Web Push subscription for a user |
-| POST | `/.netlify/functions/send-reminder` | (Scheduled) Daily Murajaah reminder trigger |
+| POST | `/.netlify/functions/notify-absence` | **Built.** Invoked by the database webhook on `public.attendance` (migration 009), not by the client that saved the attendance — so it fires for a tutor write, an admin write (ADR-014) and any future import alike. Authenticates the *channel* with a shared secret (`webhookAuth.ts`), then trusts nothing else the request said: it re-reads the attendance row by id and derives the recipient from `students.parent_id`. Sends one push to that child's parent, in the parent's own locale, containing the child's first name and the event type only. Clears `users.push_sub` if the push service reports the endpoint gone |
+| POST | `/.netlify/functions/notify-milestone` | Not built (ADR-015 part 2). Will need `isJilidComplete`/the Quran rules server-side, shared from `src/lib/` rather than restated |
+| GET | `/.netlify/functions/streak-status` | Not built (ADR-015 part 2) |
+| POST/DELETE | `/.netlify/functions/push-subscribe` | **Built.** POST stores the caller's own Web Push subscription in `users.push_sub`; DELETE clears it. Caller-authenticated (`callerAuth.ts`) and writes only to the id from the validated JWT. Returns 403 for `tutor`/`admin`: notifications are family-facing (ADR-015(a)), so a push endpoint is not collected for an account nothing would send to. Validates the subscription shape — the column is untyped `jsonb` and the sender will POST to whatever is in it — and rate-limits per caller (checklist §6) |
+| POST | `/.netlify/functions/send-reminder` | Not built (ADR-015 part 2) |
 | POST | `/.netlify/functions/generate-year-end-drafts` | **Admin-only** (verified in-function via the caller's JWT + `public.users.role`, same as `invite-user`). Computes the attendance stats snapshot and inserts one draft `year_end_reports` row per enrolled student for the given `academic_year` (optionally scoped to `class_id`). Idempotent: students who already have a report for that year are skipped (unique constraint on `(student_id, academic_year)`), and the response is three counts — `created_count`, `skipped_existing`, `skipped_no_tutor`. Under ADR-013 that counts-only response was a privacy boundary; since ADR-014 it is just the shape of a bulk job, and the trigger lives on the admin's own Reports screen rather than a separate `/admin/reports` page |
 | POST | `/.netlify/functions/publish-report` | **Authoring tutor only** (narrowed from "tutor or admin" by ADR-013 — it matches `yer_tutor_rw`'s WITH CHECK, so a co-tutor who cannot edit a report cannot publish it either. ADR-014 made admin a super admin over everything else and left this check exactly as it is, which is why an admin edit to a published report leaves the stored PDF stale until the authoring tutor re-publishes — surfaced as a notice in the report editor). Renders the PDF (pdfkit — ADR-011), uploads it to Storage, and only then flips `draft → published` and sets `pdf_path`/`published_at`; a failed render or upload leaves the row untouched (PRD 6.4 reliability). Requires a non-empty `narrative` (PRD 6.8 AC-003; grades stay optional). Also the FR-006 path — re-publishing after a post-publish edit overwrites the same object and preserves the original `published_at`. **The report-ready notification is not sent**: no push infrastructure exists yet (see Notification Spec) |
 | GET | `/.netlify/functions/report-pdf` | Returns a short-lived signed URL (300s) for a report's PDF after verifying the caller is authorized — **admin: any report, any status** (ADR-014, mirroring `yer_admin_all`; was denied outright under ADR-012/ADR-013); tutor: own class, any status; parent: own children, published only; student 16+: self, published only. This check is load-bearing: a signed URL bypasses RLS and the bucket has no client read policy, so it is the only gate in front of the file |
@@ -452,20 +453,37 @@ Not applicable. The PPME - TPA does not process batch files. All data entry is r
 | Daily Murajaah reminder | Parent | "Waktunya Murajaah! [Nama]: [Surah] ayat [X-Y]" | "Tijd voor Murajaah! [Naam]: [Surah] ayat [X-Y]" | Medium |
 | Year-end report published | Parent + Student (16+) | "Rapor akhir tahun [Nama] sudah siap" | "Jaarrapport van [Naam] is klaar" | Medium |
 
-**None of the above are implemented.** No push/webhook/scheduled-function
-infrastructure exists in the project yet, so every notification row in this
-table — including PRD Feature 6's FR-007 — is deferred. `publish-report`
-completes the publish without notifying anyone; families see a new report
-the next time they open the Reports screen. The localized copy for the
-report-ready message is already drafted (`reports.notification` in both
-locale files) and is deliberately left unused until the pipeline exists.
+**Implementation status.** The pipeline exists as of ADR-015 part 1, and
+the first row is live:
+
+| Trigger | Status |
+|---|---|
+| Student marked absent | **Built.** Database webhook on `public.attendance` (migration 009) → `notify-absence` → Web Push. Verified end to end against a real browser and a real push service (`scripts/verify-push.mjs`) |
+| New homework assigned | Deferred to ADR-015 part 2 |
+| Homework due tomorrow | Deferred to part 2 (scheduled Function `homework-due-reminders`) |
+| Jilid completed | Deferred to part 2 (`notify-milestone`; needs the jilid rules server-side — see below) |
+| Surah memorized | Deferred to part 2 (`notify-milestone`) |
+| Daily Murajaah reminder | Deferred to part 2 (scheduled Function `send-murajaah-reminders`) |
+| Year-end report published | Deferred to part 2. `publish-report` still completes the publish without notifying anyone; families see a new report the next time they open the Reports screen |
+
+The message column above is the **in-app** wording. What reaches a lock
+screen is the shorter text under `notifications.push.*` — the child's
+first name and the event type, nothing else (DPIA R6, ADR-015(b)).
+
+Milestone detection is still client-side (`src/lib/yanbua.ts`,
+`src/lib/quran.ts`). `notify-milestone` needs those rules server-side and
+must share the module rather than restate it, the way
+`netlify/functions/` already imports `src/lib/reports.ts`.
 
 ### Technical Implementation
 
-* VAPID key pair generated once, stored in Netlify environment variables
-* Push subscriptions stored in `user.push_subscription` (JSONB column in Supabase)
-* Payload includes: title, localized body, PPME icon, deep-link URL, notification type tag
-* Notifications are deduplicated by tag to prevent duplicate alerts
+* VAPID key pair generated once per environment, stored in Netlify environment variables (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, plus `VITE_VAPID_PUBLIC_KEY` — the public half is also needed in the browser to subscribe). Rotating the pair invalidates every stored subscription
+* Push subscriptions stored in `users.push_sub` (JSONB column, migration 002), written only through `push-subscribe`, which validates the shape — the column is untyped `jsonb` and the sender POSTs to whatever endpoint it holds. **One subscription per user**, not per device (ADR-015(g))
+* Payload includes: title, localized body, PPME icon, deep-link URL, notification type tag. Built server-side only (`netlify/functions/lib/notifications.ts`) so the R6 content rules have one implementation and one test suite
+* The recipient's own `users.locale` selects the language — never the sender's, never a default
+* Notifications are deduplicated by a tag of `(event, user, local date)`, which both replaces rather than stacks in the browser and acts as the idempotency key for hourly scheduled Functions (ADR-015(e))
+* Delivery is best-effort by design: a push service that reports an endpoint gone (404/410) has it cleared from `users.push_sub`, and the settings screen reads that server state rather than the browser's (ADR-015(h))
+* Service-worker handlers live in `public/push-sw.js`, imported into the Workbox-generated worker (ADR-015(f))
 
 ### WhatsApp Integration (Phase 3 — Optional)
 
@@ -602,6 +620,8 @@ RLS policies enforce data isolation at the database level:
 | `year_end_reports` | Parent | SELECT | Only rows where `student_id` belongs to parent's children **and** `status = 'published'` — drafts never visible |
 | `year_end_reports` | Student (16+) | SELECT | Only own row **and** `status = 'published'` |
 | Storage `reports` bucket | All non-service roles | — | No direct read/write policy; access only via the `report-pdf` function's signed URL after an auth check |
+| `users.push_sub` | Self | UPDATE | Covered by the existing `users_self_update` policy (which only pins `role`), so storing a push subscription needed no migration and no new policy. Writes still go through `push-subscribe` rather than PostgREST — the column is untyped `jsonb` and the sender POSTs to whatever endpoint it holds, so shape validation, rate limiting and the recipient-role check all live in that Function (ADR-015) |
+| `public.fn_webhook_config()` | anon, authenticated | — | EXECUTE revoked. It returns the webhook shared secret from Vault; no client role may call it (asserted as WH-06 in the pgTAP suite) |
 | All tables | Admin | ALL | Full access for TPA committee admin role (`*_admin_all` / `fn_is_admin()`, migrations 003 + 005). Unchanged since it was written — ADR-012 fenced admin out of these screens in the *application* only, and ADR-014 removed that fence without touching a single policy. The one write the app still declines to offer admin is `murajaah_log` (home-practice confirmation), which RLS does permit — see ADR-014(c) |
 
 ## Billing
@@ -620,6 +640,26 @@ RLS policies enforce data isolation at the database level:
 
 **Year-end report PDFs:** at ~200 students × 1 report/year × ~150-300KB per PDF, total storage is on the order of tens of MB/year — comfortably inside Supabase's 1GB free-tier storage allowance alongside the database itself. No additional cost line needed.
 
+**Notification function invocations** (against Netlify's 125K/month free
+allowance). The scaling-trigger table used to flag this as "possible with
+daily notifications × 200 users", which was never checked; ADR-015 makes
+the arithmetic explicit because its hourly-cron approach deliberately
+trades invocations for correctness:
+
+| Source | Invocations/month | Note |
+|---|---|---|
+| `notify-absence` (webhook) | ~1,000 | One per absence. ~200 students × ~4 TPA days/month × a ~10–15% absence rate |
+| 4 scheduled Functions, hourly | 2,880 | 24 × ~30 × 4. The 23 hourly runs that are not the target hour return immediately |
+| `push-subscribe` | negligible | Once per family per device change |
+| Report/enrollment Functions | a few hundred | Seasonal (year-end), unchanged by this work |
+| **Total** | **~4,000–5,000/month** | **~4% of the free allowance** |
+
+Even at ten times the absence rate, or with a scheduled Function added
+per feature, this stays an order of magnitude inside the free tier. Note
+that the per-minute cron the hourly approach *avoided* would have been
+43,200 invocations/month — still free, but wasteful. Nothing here
+requires Netlify Pro.
+
 ### Scaling Triggers
 
 | Metric | Free Tier Limit | Action |
@@ -627,7 +667,7 @@ RLS policies enforce data isolation at the database level:
 | Database size > 500MB | Supabase Pro ($25/mo) | Unlikely in 3+ years at current growth |
 | MAU > 50,000 | Supabase Pro | Not applicable (max ~500 users) |
 | Bandwidth > 100GB/mo | Netlify Pro ($19/mo) | Unlikely for text-based PWA |
-| Function invocations > 125K/mo | Netlify Pro | Possible with daily notifications × 200 users |
+| Function invocations > 125K/mo | Netlify Pro | Examined rather than assumed — see below. Comfortably inside the free tier at PPME's size |
 
 ## CS Tools
 
@@ -656,26 +696,45 @@ behind a single "Kelola" entry point, and remain admin-only (`RequireAdmin`).
 |---|---|
 | Profile Management | Update name, notification preferences, locale (ID/NL) |
 | Link Children | Connect parent account to student profile (admin-approved) |
-| Notification Settings | Enable/disable push; set Murajaah reminder time |
+| Notification Settings | Enable/disable push (`/settings/notifications`, reached from the dashboard) — **built**. Also states what a notification can contain, which is shown to every role including the ones that receive nothing. **Per-family Murajaah reminder time is not built**: it would need a column on `users` and only matters once `send-murajaah-reminders` exists (ADR-015 part 2), so it is deferred to the milestone that would use it. Until then the reminder hour is one TPA-wide default, 18:00 local |
 
 ## Scheduler
 
 ### Netlify Scheduled Functions
 
-| Function | Schedule (Cron) | Description |
-|---|---|---|
-| `send-murajaah-reminders` | `0 17 * * *` (17:00 UTC = 18:00 CET) | Query active Murajaah assignments not confirmed today; send push to parents |
-| `calculate-streak-resets` | `5 23 * * *` (23:05 UTC = 00:05 CET) | For any Murajaah assignments with no log today, reset streak to 0 |
-| `homework-due-reminders` | `0 7 * * *` (07:00 UTC = 08:00 CET) | Check assignments due tomorrow; send reminder push |
-| `weekly-progress-digest` | `0 8 * * 5` (08:00 UTC Friday) | Send weekly summary push to parents (attendance %, new progress) |
+**None of these are built yet — they are ADR-015 part 2.** The cron column
+below has been rewritten, because the original was wrong for most of the
+year and would have been copied straight into the implementation.
+
+| Function | Schedule (Cron, UTC) | Local gate | Description |
+|---|---|---|---|
+| `send-murajaah-reminders` | `0 * * * *` (hourly) | 18:00 Europe/Amsterdam | Query active Murajaah assignments not confirmed today; send push to parents |
+| `calculate-streak-resets` | `0 * * * *` (hourly) | 00:00 Europe/Amsterdam | For any Murajaah assignments with no log yesterday, reset streak to 0 |
+| `homework-due-reminders` | `0 * * * *` (hourly) | 08:00 Europe/Amsterdam | Check assignments due tomorrow; send reminder push |
+| `weekly-progress-digest` | `0 * * * *` (hourly) | 08:00 Europe/Amsterdam, Friday | Send weekly summary push to parents (attendance %, new progress) |
+
+**Why hourly with a gate instead of a fixed UTC hour (ADR-015(e)).**
+Netlify cron expressions are UTC-only. The previous table read
+`0 17 * * *` "= 18:00 CET", which is true for the winter and one hour
+late for the whole of CEST — including the entire TPA summer term. The
+alternatives were being wrong half the year, or editing four crons twice
+a year and remembering to. Instead each Function runs every hour and asks
+`isAmsterdamHour(target)` (`netlify/functions/lib/notifications.ts`),
+which resolves the offset from the runtime's IANA database rather than
+arithmetic, and is unit-tested on both switchover Sundays. The dedup tag
+is keyed on the family's local date, so a duplicate run cannot produce a
+duplicate notification — including in the repeated 02:00–03:00 hour of
+the autumn switch.
 
 ### Implementation Approach
 
 Each scheduled function follows the same pattern:
-1. Query Supabase for pending items (e.g., unconfirmed Murajaah assignments for today)
-2. Retrieve associated parent push subscriptions
-3. Send Web Push notifications via `web-push` library (VAPID)
-4. Log delivery status for monitoring
+1. Authenticate the channel, not a caller (`webhookAuth.ts`) — a scheduled Function has no signed-in user, and must not be usefully invokable by a stranger over HTTP
+2. Return immediately unless it is the target hour in `Europe/Amsterdam`
+3. Query Supabase for pending items (e.g., unconfirmed Murajaah assignments for today)
+4. Retrieve associated parent push subscriptions
+5. Send Web Push notifications via `web-push` library (VAPID), building payloads with the shared builder so the R6 content limits apply identically
+6. Clear any subscription the push service reports as gone; log delivery status for monitoring
 
 # Other Artifacts
 

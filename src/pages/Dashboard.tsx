@@ -44,6 +44,19 @@ export function Dashboard() {
         </Link>
       </div>
 
+      {/* Every role, not only recipients: the settings screen also
+          explains what a notification can contain, and a tutor or admin
+          should be able to read that too (TAD ADR-015). */}
+      <Link
+        to="/settings/notifications"
+        className="flex min-h-11 items-center justify-between gap-3 rounded-lg bg-white p-4 shadow-sm transition-colors hover:bg-ppme-bg-alt"
+      >
+        <span className="font-medium text-ppme-text">{t('common.notifications')}</span>
+        <span aria-hidden className="text-ppme-primary">
+          →
+        </span>
+      </Link>
+
       {isAdmin && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-ppme-text/70">{t('nav.kelola')}</h2>

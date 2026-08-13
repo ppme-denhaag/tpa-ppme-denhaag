@@ -100,9 +100,12 @@ paths:
       tags: [attendance]
       summary: Record attendance (Tutor only, own classes)
       description: |
-        Bulk insert supported (array body). After a successful POST the client calls
-        `/.netlify/functions/notify-absence` (or a DB webhook triggers it) for any
-        rows with status `absent`.
+        Bulk insert supported (array body). The client does **not** call any
+        notification endpoint: a database trigger (migration 009) fires
+        `/.netlify/functions/notify-absence` for each row that transitions
+        *into* status `absent`. Writes from the tutor screen and the admin
+        screen therefore both notify, and re-saving a roster whose rows are
+        already `absent` notifies nobody a second time. See TAD ADR-015(c).
       requestBody:
         required: true
         content:
@@ -246,7 +249,10 @@ paths:
       summary: Record Yanbu'a progress (Tutor only)
       description: |
         If this entry completes a jilid (page == jilid page count and mastery == lancar),
-        a DB webhook triggers `/.netlify/functions/notify-milestone`.
+        a DB webhook will trigger `/.netlify/functions/notify-milestone` —
+        **not built yet** (TAD ADR-015 part 2). Jilid completion is currently
+        detected client-side in `src/lib/yanbua.ts`; the webhook needs those
+        same rules server-side, sharing the module rather than restating it.
       requestBody:
         required: true
         content:
@@ -636,10 +642,30 @@ paths:
   /notify-absence:
     post:
       tags: [functions]
-      summary: Send absence push notification to parents
+      summary: Send absence push notification to a parent (BUILT)
       description: |
-        Invoked by Supabase DB webhook after attendance INSERT with status=absent.
-        Validates the webhook secret; not intended for direct client calls.
+        Invoked by the Supabase database webhook (migration 009) when an
+        attendance row transitions into status `absent` — on INSERT, or on
+        UPDATE from any other status. Not intended for, and not usable by,
+        direct client calls.
+
+        **Authentication is of the channel, not a caller** — a webhook has no
+        signed-in user, so `callerAuth.ts` does not apply. The request must
+        carry `x-webhook-secret` matching Netlify's `NOTIFY_WEBHOOK_SECRET`,
+        compared in constant time. Missing configuration fails closed (500),
+        never open. See TAD ADR-015(d).
+
+        **Only `record.id` is read.** The Function re-reads the attendance row
+        from the database rather than trusting the posted body, and derives the
+        recipient from `students.parent_id` — nothing about who receives a
+        notification comes from the request. The trigger therefore sends only
+        the id, which also keeps the absence `reason` (potential health data,
+        DPIA R4/R6) inside Postgres entirely.
+
+        Sends at most one push, to the child's parent, in that parent's own
+        `users.locale`, containing the child's first name and the event type
+        only. If the push service reports the endpoint gone (404/410),
+        `users.push_sub` is cleared and the response is a 200 no-op.
       security: []
       requestBody:
         required: true
@@ -649,16 +675,38 @@ paths:
               type: object
               required: [record]
               properties:
-                type: { type: string, enum: [INSERT] }
-                record: { $ref: '#/components/schemas/Attendance' }
+                type: { type: string, enum: [INSERT, UPDATE] }
+                table: { type: string, enum: [attendance] }
+                schema: { type: string, enum: [public] }
+                record:
+                  type: object
+                  required: [id]
+                  properties:
+                    id: { type: string, format: uuid }
       responses:
-        '200': { description: Notification(s) dispatched }
-        '401': { description: Invalid webhook secret }
+        '200':
+          description: |
+            Dispatched, or deliberately skipped. Skips are not errors: the row
+            may have been corrected or deleted, the parent may have no account
+            or no subscription, or the subscription may have expired.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent: { type: integer, enum: [0, 1] }
+                  tag: { type: string, description: 'Dedup tag, when sent — `absence:{user_id}:{YYYY-MM-DD}`' }
+                  skipped: { type: string, description: 'Reason, when nothing was sent' }
+        '400': { description: Malformed body, or record.id missing }
+        '401': { description: Missing or invalid webhook secret }
+        '405': { description: Method other than POST }
+        '500': { description: NOTIFY_WEBHOOK_SECRET or Supabase env vars not configured (fails closed) }
+        '502': { description: The push service rejected the send for a reason other than an expired subscription }
 
   /notify-milestone:
     post:
       tags: [functions]
-      summary: Send milestone celebration push (jilid completed / surah memorized)
+      summary: Send milestone celebration push (jilid completed / surah memorized) — NOT BUILT (TAD ADR-015 part 2)
       security: []
       requestBody:
         required: true
@@ -678,7 +726,7 @@ paths:
   /streak-status:
     get:
       tags: [functions]
-      summary: Current streak for a student's Murajaah assignment
+      summary: Current streak for a student's Murajaah assignment — NOT BUILT (TAD ADR-015 part 2, with `calculate-streak-resets`)
       parameters:
         - name: assignment_id
           in: query
@@ -701,7 +749,27 @@ paths:
   /push-subscribe:
     post:
       tags: [functions]
-      summary: Store a Web Push subscription for the authenticated user
+      summary: Store a Web Push subscription for the authenticated user (BUILT)
+      description: |
+        Writes the caller's own subscription to `users.push_sub`. The user id
+        comes from the validated JWT, never from the body, so a caller can only
+        ever write their own row.
+
+        `users_self_update` (migration 003) would already permit this through
+        PostgREST; it goes through a Function anyway because `push_sub` is
+        untyped `jsonb` and the sender will POST to whatever endpoint it holds.
+        This is the only validation in front of that column. Only `endpoint`
+        and the two keys are persisted — extra fields sent by a client are
+        dropped. Rate-limited per caller (checklist §6; see TAD ADR-015 for
+        the limiter's honest scope).
+
+        **403 for `tutor` and `admin`.** Notifications are family-facing
+        (ADR-015(a)); a push endpoint is personal data and is not collected for
+        an account nothing would ever send to. ADR-014 made admin a super admin
+        over the *screens*, which is a different question.
+
+        One subscription per user, not per device: enabling on a second device
+        replaces the first (ADR-015(g)).
       requestBody:
         required: true
         content:
@@ -710,7 +778,7 @@ paths:
               type: object
               required: [endpoint, keys]
               properties:
-                endpoint: { type: string, format: uri }
+                endpoint: { type: string, format: uri, description: 'Must be https; max 1024 chars' }
                 keys:
                   type: object
                   required: [p256dh, auth]
@@ -718,18 +786,56 @@ paths:
                     p256dh: { type: string }
                     auth: { type: string }
       responses:
-        '201': { description: Subscription stored on users.push_sub }
+        '201':
+          description: Subscription stored on users.push_sub
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscribed: { type: boolean, enum: [true] }
+        '400': { description: Not a valid push subscription (non-HTTPS endpoint, missing keys, oversized values, malformed JSON) }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: This role does not receive notifications (tutor, admin) }
+        '429': { description: Rate limited; `retry-after` header set }
+    delete:
+      tags: [functions]
+      summary: Clear the authenticated user's Web Push subscription (BUILT)
+      description: |
+        Sets `users.push_sub` to null. Allowed for every role, including the
+        ones POST refuses — clearing is never something to refuse. The client
+        calls this *before* unsubscribing in the browser, so a failure leaves a
+        live browser subscription nothing sends to, rather than a stored
+        endpoint that no longer exists.
+      responses:
+        '200':
+          description: Subscription cleared (idempotent — succeeds when there was none)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscribed: { type: boolean, enum: [false] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Rate limited; `retry-after` header set }
 
   /send-reminder:
     post:
       tags: [functions]
-      summary: (Scheduled) daily Murajaah reminder dispatcher
+      summary: (Scheduled) daily Murajaah reminder dispatcher — NOT BUILT
       description: |
-        Invoked by Netlify scheduled function (cron). Default 18:00 CET/CEST —
-        note the cron is configured in UTC and must be adjusted at DST changes,
-        or implemented as an hourly run with a timezone check inside the function
-        (recommended).
+        TAD ADR-015 part 2. The recommendation this stub carried has been
+        adopted and recorded as a decision: the cron runs **hourly**
+        (`0 * * * *`, UTC — Netlify offers nothing else) and the Function
+        returns immediately unless it is 18:00 in `Europe/Amsterdam`, using
+        `isAmsterdamHour()` from `netlify/functions/lib/notifications.ts`.
+        A fixed UTC hour would be an hour late throughout CEST, which covers
+        the whole TPA summer term. The dedup tag is keyed on the family's
+        local date, so a repeated run cannot produce a repeated notification.
+
+        Will authenticate its channel the same way `notify-absence` does
+        (`webhookAuth.ts`) — a scheduled Function has no caller, and must not
+        be usefully invokable by a stranger over HTTP.
       security: []
       responses:
         '200': { description: Reminders dispatched (count in body) }

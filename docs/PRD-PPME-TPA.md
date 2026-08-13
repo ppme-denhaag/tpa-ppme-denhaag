@@ -455,6 +455,7 @@ Digital attendance management system allowing tutors to record student presence/
 **FR-005: Absence Notification**
 - Priority: Medium
 - System should notify parents when their child is marked absent (configurable notification preference).
+- *Implementation status: **built** (TAD ADR-015 part 1). A database trigger on `attendance` fires `notify-absence`, which sends one Web Push to the child's parent in that parent's own language. "Configurable" means opt-in: notifications are off until a parent enables them at `/settings/notifications`, and can be turned off again there. The message names the child and says they were not present — nothing more. The absence **reason is deliberately never included** and is never even sent out of the database, since that field can carry health information (DPIA R4/R6); a parent sees it by opening the app.*
 
 **FR-006: Attendance Summary Dashboard**
 - Priority: Medium
@@ -495,6 +496,7 @@ Digital attendance management system allowing tutors to record student presence/
 - **Given:** A parent has notifications enabled for their child
 - **When:** The tutor marks their child as Absent and submits
 - **Then:** The parent receives a notification within 5 minutes indicating their child was marked absent
+- *Implementation status: **built and verified end to end** against a real browser and a real push service — subscribe → attendance write → database webhook → push → notification displayed, with the other family's parent receiving nothing (test-plan §6). Delivery in practice is seconds, not minutes. Verified on desktop Chrome; **Android and iOS remain unverified for want of a device**, which is a gap in the test matrix rather than in the implementation.*
 
 **AC-003:** Attendance history is accurate
 - **Given:** A parent views their child's attendance history
@@ -1076,7 +1078,7 @@ Generates a formal, per-student year-end report combining auto-computed statisti
 **FR-007: Publish Notification**
 - Priority: Medium
 - When a report is published (or re-published after edit), the parent and any linked 16+ student receive a push notification.
-- *Implementation status (Milestone 6): **not built**. No push/webhook/scheduled-function infrastructure exists in the project yet, so this is deferred with every other notification in this PRD (attendance absence alerts, homework FR-005 due-date reminders, the Quran milestone celebration, Murajaah FR-006 daily reminders). `publish-report` completes the publish without notifying anyone — families see a new report the next time they open the Reports screen. The localized message copy is already drafted (`reports.notification` in both locale files) and left unused until the pipeline exists.*
+- *Implementation status: **still not built**, but no longer for want of infrastructure. The Web Push pipeline now exists and Feature 1's FR-005 absence notification runs on it end to end (TAD ADR-015 part 1); this report-ready push, homework FR-005 due-date reminders, the Quran milestone celebration and Murajaah FR-006 daily reminders are each now a single Function away, scoped as ADR-015 part 2. `publish-report` still completes the publish without notifying anyone — families see a new report the next time they open the Reports screen. The localized message copy remains drafted (`reports.notification`) and unused.*
 
 #### 6.4. Non-Functional Requirements
 *   **Performance:** PDF generation must complete within the Netlify Function execution limit (target <10s per report); bulk draft generation for a full class (~15-20 students) must complete without timeout, batched if needed.
