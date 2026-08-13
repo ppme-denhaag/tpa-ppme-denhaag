@@ -178,7 +178,38 @@
     "jilidMilestone": "Alhamdulillah! {{name}} heeft Jilid {{number}} voltooid",
     "surahMemorized": "Alhamdulillah! {{name}} heeft Surah {{surah}} gememoriseerd",
     "murajaahReminder": "Tijd voor murajaah met {{name}}",
-    "empty": "Nog geen meldingen"
+    "empty": "Nog geen meldingen",
+    "push": {
+      "absence": "{{name}} was vandaag niet aanwezig bij TPA",
+      "newAssignment": "Er is een nieuwe opdracht voor {{name}}",
+      "assignmentDueTomorrow": "De opdracht van {{name}} moet morgen af zijn",
+      "jilidMilestone": "Alhamdulillah! {{name}} heeft een jilid afgerond",
+      "surahMemorized": "Alhamdulillah! {{name}} heeft een nieuwe surah gememoriseerd",
+      "murajaahReminder": "Tijd voor murajaah met {{name}}",
+      "reportReady": "Jaarrapport van {{name}} is klaar"
+    },
+    "settings": {
+      "title": "Meldingsinstellingen",
+      "intro": "Zet meldingen aan om belangrijk nieuws over uw kind bij de TPA te ontvangen.",
+      "enable": "Meldingen inschakelen",
+      "disable": "Meldingen uitschakelen",
+      "enabled": "Meldingen staan aan op dit apparaat",
+      "disabled": "Meldingen staan uit op dit apparaat",
+      "enabledOtherDevice": "Meldingen staan aan op een ander apparaat. Eén account ontvangt meldingen op één apparaat.",
+      "moveHere": "Verplaats naar dit apparaat",
+      "working": "Een moment…",
+      "whatYouGet": "Wat u ontvangt",
+      "itemAbsence": "Bericht wanneer uw kind als afwezig is geregistreerd",
+      "privacyTitle": "Wat er op het vergrendelscherm verschijnt",
+      "privacyBody": "Een melding bevat alleen de voornaam van uw kind en het soort gebeurtenis. De reden van afwezigheid, cijfers en voortgangsdetails worden nooit in een melding meegestuurd — die ziet u pas nadat u bent ingelogd in de app.",
+      "permissionDenied": "Meldingen zijn geblokkeerd in deze browser. Sta meldingen voor deze site toe via de browserinstellingen en probeer het opnieuw.",
+      "unsupported": "Deze browser ondersteunt geen pushmeldingen.",
+      "iosInstallTitle": "Voeg eerst toe aan het beginscherm",
+      "iosInstallBody": "Op iPhone en iPad werken meldingen pas nadat de app aan het beginscherm is toegevoegd. Open het deelmenu in Safari, kies \"Zet op beginscherm\", open de app vanaf dat icoon en kom terug naar deze pagina.",
+      "notARecipient": "TPA-meldingen zijn bedoeld voor ouders en leerlingen. Als {{role}} ontvangt u geen meldingen, dus inschakelen stuurt hier niets.",
+      "pushServiceUnreachable": "De meldingsdienst van de browser reageert niet. Controleer uw internetverbinding en probeer het opnieuw.",
+      "error": "Instellingen voor meldingen konden niet worden bijgewerkt. Probeer het opnieuw."
+    }
   },
   "roles": {
     "ustadz": "Ustadz",

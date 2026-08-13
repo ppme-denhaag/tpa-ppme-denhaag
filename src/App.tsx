@@ -10,6 +10,7 @@ import { YanbuaPage } from './features/yanbua/YanbuaPage'
 import { QuranPage } from './features/quran/QuranPage'
 import { MurajaahPage } from './features/murajaah/MurajaahPage'
 import { ReportsPage } from './features/reports/ReportsPage'
+import { NotificationSettingsPage } from './features/notifications/NotificationSettingsPage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
 import { StudentsPage } from './features/admin/StudentsPage'
@@ -39,6 +40,10 @@ function Gate() {
         <Route path="/quran" element={<QuranPage />} />
         <Route path="/murajaah" element={<MurajaahPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        {/* Not a tab: the five operational tabs are the
+            prototype-validated set (checklist §5) and settings is not
+            one of them. Reached from the dashboard instead. */}
+        <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
         {/* Single entry point into the enrollment section (the "Kelola"
             dashboard tile and desktop tab both point here). Kept as a
             real route rather than linking straight to the first

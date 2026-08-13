@@ -669,6 +669,133 @@ insert into _tap_log(line) select throws_ok(
   'RLS-27: a 16+ student is still read-only after admin gained write access'
 );
 
+-- ============================================================
+-- WH-01…WH-06: notification webhooks (migration 009)
+--
+-- Not RLS assertions, but they belong to the same "what does the
+-- database do on its own" suite: the absence webhook is a trigger that
+-- fires on every attendance write in the product, including admin's,
+-- and it reaches outside the database. Two things need pinning — that
+-- it fires on exactly the right transition and nothing else, and that
+-- the shared secret it carries is not reachable from a client role.
+--
+-- pg_net queues into net.http_request_queue inside the calling
+-- transaction, so a rolled-back test can assert on what *would* be sent
+-- without a network, a listener, or anything left behind.
+-- ============================================================
+reset role;
+
+insert into _tap_log(line) select has_function('public', 'fn_notify_absence', 'WH-01: fn_notify_absence() exists');
+insert into _tap_log(line) select ok(
+  exists (
+    select 1 from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'attendance'
+      and t.tgname = 'trg_notify_absence' and not t.tgisinternal
+  ),
+  'WH-01: trg_notify_absence is attached to public.attendance'
+);
+
+-- Unconfigured (a fresh db reset, CI, this suite): silent.
+insert into _tap_log(line) select ok(
+  (select base_url from public.fn_webhook_config()) is null,
+  'WH-02: fn_webhook_config() returns NULL when Vault holds no configuration'
+);
+create temp table _wh_mark(n bigint);
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+
+update public.attendance set status = 'absent'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  0::bigint,
+  'WH-02: an absence recorded in an unconfigured environment queues no request'
+);
+update public.attendance set status = 'present'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000001';
+
+-- Configured: the trigger fires on the transition into absent, once.
+select vault.create_secret('https://webhook.test.local/.netlify/functions', 'notify_webhook_base_url');
+select vault.create_secret('test-shared-secret', 'notify_webhook_secret');
+
+-- Give the row a reason *before* the absence fires, so WH-06 is a real
+-- assertion about a row that has one rather than about an empty column.
+update public.attendance set reason = 'koorts'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000001';
+
+delete from _wh_mark;
+insert into _wh_mark select coalesce(max(id), 0) from net.http_request_queue;
+
+update public.attendance set status = 'present'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000002';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  0::bigint,
+  'WH-03: recording a student as present queues nothing'
+);
+
+update public.attendance set status = 'absent'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-03: present -> absent queues exactly one request'
+);
+
+-- Re-saving the roster (the upsert `submitAttendance` performs) must not
+-- re-notify a family that was already marked absent.
+update public.attendance set status = 'absent'
+where session_id = 'e0000000-0000-0000-0000-00000000000a'
+  and student_id = 'd0000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from net.http_request_queue where id > (select n from _wh_mark)),
+  1::bigint,
+  'WH-04: re-saving an already-absent row queues nothing further'
+);
+
+insert into _tap_log(line) select is(
+  (select url from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'https://webhook.test.local/.netlify/functions/notify-absence',
+  'WH-05: the request targets the configured base URL'
+);
+insert into _tap_log(line) select is(
+  (select headers ->> 'x-webhook-secret' from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1),
+  'test-shared-secret',
+  'WH-05: the request carries the configured shared secret'
+);
+
+-- The absence `reason` can carry health data (DPIA R4/R6). The webhook
+-- body must carry the row id and nothing else, so the reason never
+-- leaves the database at all.
+insert into _tap_log(line) select ok(
+  (select (convert_from(body, 'utf8')::jsonb -> 'record') - 'id'
+   from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1) = '{}'::jsonb,
+  'WH-06: the webhook body''s record carries the row id and nothing else'
+);
+insert into _tap_log(line) select ok(
+  (select convert_from(body, 'utf8') from net.http_request_queue where id > (select n from _wh_mark) order by id limit 1)
+    not like '%koorts%',
+  'WH-06: the absence reason does not appear anywhere in the webhook body'
+);
+
+-- The shared secret must not be reachable from a client role.
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+set local request.jwt.claim.sub to '90000000-0000-0000-0000-000000000001';  -- P1
+insert into _tap_log(line) select throws_ok(
+  $$ select * from public.fn_webhook_config() $$,
+  '42501', null,
+  'WH-06: a signed-in user cannot execute fn_webhook_config() to read the secret'
+);
+reset role;
+drop table _wh_mark;
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();

@@ -178,7 +178,38 @@
     "jilidMilestone": "Alhamdulillah! {{name}} telah menyelesaikan Jilid {{number}}",
     "surahMemorized": "Alhamdulillah! {{name}} telah hafal Surah {{surah}}",
     "murajaahReminder": "Waktunya murajaah bersama {{name}}",
-    "empty": "Belum ada notifikasi"
+    "empty": "Belum ada notifikasi",
+    "push": {
+      "absence": "{{name}} tidak hadir hari ini di TPA",
+      "newAssignment": "Ada tugas baru untuk {{name}}",
+      "assignmentDueTomorrow": "Tugas {{name}} deadline besok",
+      "jilidMilestone": "Alhamdulillah! {{name}} menyelesaikan satu jilid",
+      "surahMemorized": "Alhamdulillah! {{name}} hafal satu surah baru",
+      "murajaahReminder": "Waktunya murajaah bersama {{name}}",
+      "reportReady": "Rapor akhir tahun {{name}} sudah siap"
+    },
+    "settings": {
+      "title": "Pengaturan notifikasi",
+      "intro": "Aktifkan notifikasi untuk mengetahui kabar penting tentang anak Anda di TPA.",
+      "enable": "Aktifkan notifikasi",
+      "disable": "Matikan notifikasi",
+      "enabled": "Notifikasi aktif di perangkat ini",
+      "disabled": "Notifikasi tidak aktif di perangkat ini",
+      "enabledOtherDevice": "Notifikasi aktif di perangkat lain. Satu akun menerima notifikasi di satu perangkat.",
+      "moveHere": "Pindahkan ke perangkat ini",
+      "working": "Mohon tunggu…",
+      "whatYouGet": "Yang akan Anda terima",
+      "itemAbsence": "Pemberitahuan bila anak Anda tercatat tidak hadir",
+      "privacyTitle": "Apa yang tampil di layar kunci",
+      "privacyBody": "Notifikasi hanya memuat nama depan anak dan jenis kejadian. Alasan ketidakhadiran, nilai, dan detail progres tidak pernah dikirim dalam notifikasi — semua itu hanya terlihat setelah Anda masuk ke aplikasi.",
+      "permissionDenied": "Notifikasi diblokir di peramban ini. Izinkan notifikasi untuk situs ini melalui pengaturan peramban, lalu coba lagi.",
+      "unsupported": "Peramban ini tidak mendukung notifikasi push.",
+      "iosInstallTitle": "Tambahkan ke Layar Utama dulu",
+      "iosInstallBody": "Di iPhone dan iPad, notifikasi hanya berfungsi setelah aplikasi ditambahkan ke Layar Utama. Buka menu Bagikan di Safari, pilih \"Tambahkan ke Layar Utama\", lalu buka aplikasi dari ikon tersebut dan kembali ke halaman ini.",
+      "notARecipient": "Notifikasi TPA ditujukan untuk orang tua dan santri. Sebagai {{role}} Anda tidak menerima notifikasi, sehingga mengaktifkannya di sini tidak mengirimkan apa pun.",
+      "pushServiceUnreachable": "Layanan notifikasi peramban tidak merespons. Periksa koneksi internet Anda, lalu coba lagi.",
+      "error": "Gagal memperbarui pengaturan notifikasi. Coba lagi."
+    }
   },
   "roles": {
     "ustadz": "Ustadz",

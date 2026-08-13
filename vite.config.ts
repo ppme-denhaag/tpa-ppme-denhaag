@@ -26,6 +26,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Web Push handlers, pulled into the generated service worker
+        // rather than switching to `injectManifest` — that strategy
+        // would hand us the whole precache manifest to maintain by hand
+        // just to add two event listeners (TAD ADR-015).
+        importScripts: ['/push-sw.js'],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/rest/v1/'),

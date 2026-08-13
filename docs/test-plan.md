@@ -70,12 +70,25 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 
 *RLS-22…RLS-27 were added with TAD ADR-014 (admin as super admin). They test policies that already existed and were never modified, which is the point: an unchanged-green run of RLS-01…RLS-21 alongside them is the evidence that widening the application layer did not touch the database layer. 27 cases, 64 pgTAP assertions in `supabase/tests/database/rls.test.sql`.*
 
+*WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
+webhook). They are not RLS assertions, but they belong to the same "what
+does the database do on its own" suite: the trigger fires on every
+attendance write in the product and reaches outside the database. They
+assert it exists, fires on the transition into `absent` and on nothing
+else (a re-saved roster must not re-notify), is completely silent in an
+unconfigured environment, targets the configured URL with the configured
+secret, carries the row id and **never** the absence `reason` (DPIA
+R4/R6), and that no client role can execute `fn_webhook_config()` to read
+the secret. pg_net queues inside the calling transaction, so a
+rolled-back test can assert on what would have been sent without a
+network, a listener, or anything left behind. Total: 76 assertions.*
+
 ## 4. Unit tests (Vitest)
 
 ### 4.1 Streak logic
 - Consecutive daily confirmations increment streak (1→2→3)
 - Gap of 1 day resets streak to 1
-- `confirmed_today` boolean correct across CET/CEST midnight (test with fixed timezones around DST switch: last Sunday of March & October)
+- `confirmed_today` boolean correct across CET/CEST midnight (test with fixed timezones around DST switch: last Sunday of March & October). **The timezone half of this is done** — `amsterdamDate`/`amsterdamHour`/`isAmsterdamHour` (`netlify/functions/lib/notifications.ts`) are tested on both 2026 switchover Sundays, on a CET date and a CEST date, and across the repeated 02:00–03:00 hour in autumn, which is the case that can fire a reminder twice. The streak logic that uses them is still to come with `calculate-streak-resets`
 - Best-streak derivation from log history
 - **3x_week / weekly frequency:** define expected behavior first (open design point flagged in migration 002), then test scheduled-period counting
 
@@ -85,9 +98,20 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 - Jilid 7 completion → program-complete variant
 
 ### 4.3 Notification payload builder
-- Absence, new-assignment, due-tomorrow, milestone, reminder payloads render correctly in **both locales** based on recipient's `users.locale`
-- Payload contains first name only, no progress details (DPIA risk R6)
-- Dedup tag generated per (user, event-type, date)
+
+*Implemented in `tests/unit/notifications.test.ts` (17 assertions).*
+
+- [x] Absence, new-assignment, due-tomorrow, milestone, reminder payloads render correctly in **both locales** based on recipient's `users.locale` — all seven event types are built and tested, though only `absence` has a sender wired to it so far (TAD ADR-015 part 1)
+- [x] Payload contains first name only, no progress details (DPIA risk R6). Asserted three ways: a full name is reduced to its first token; a serialized payload contains none of a set of sample reasons, grades and positions; and — the one that will still hold when someone adds an event type in a year — every string under `notifications.push` is rejected if it interpolates any placeholder other than `{{name}}`. The builder's own signature is the primary control: it accepts no field that *could* carry a reason or a grade
+- [x] Dedup tag generated per (user, event-type, date), and differs when any of the three differs
+- [x] Known and pinned: the tag being per (user, event, date) means a parent with two children absent on one day sees one notification, not two. That is the spec's dedup unit; per-child detail belongs in the in-app list (part 3), not on a lock screen
+- [x] Deep-link URLs carry no data of their own
+
+Also tested alongside it:
+
+- `tests/unit/push.test.ts` (10) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter
+- `tests/unit/pushServiceWorker.test.ts` (8) — `public/push-sw.js` loaded into a VM and driven with the browser's own event shapes: it renders the payload, never re-alerts on a replaced notification, still shows *something* when the payload is missing or unparseable (otherwise Android substitutes its own "site updated in the background" notice), and routes a click to an already-open tab rather than opening a second one
+- `tests/unit/pushCapability.test.ts` (13) — platform detection, including the iOS branch this project cannot verify on hardware (see §6)
 
 ### 4.4 Year-end report generation
 - `generate-year-end-drafts` computes `attendance_present/absent/late` and `attendance_rate` that exactly match a hand-computed value from fixture attendance rows for the academic year window
@@ -124,15 +148,47 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 
 | Case | Android Chrome | iOS Safari (16.4+, installed to home screen) | Desktop Chrome |
 |---|---|---|---|
-| Permission prompt & subscribe | ☐ | ☐ | ☐ |
-| Absence push received | ☐ | ☐ | ☐ |
-| Milestone push received | ☐ | ☐ | ☐ |
-| Scheduled reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | ☐ |
-| Dedup: same event twice → one notification | ☐ | ☐ | ☐ |
+| Permission prompt & subscribe | ☐ | ☐ | ☑ |
+| Absence push received | ☐ | ☐ | ☑ |
+| Milestone push received | ☐ | ☐ | n/a — not built (ADR-015 part 2) |
+| Scheduled reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | n/a — not built (ADR-015 part 2) |
+| Dedup: same event twice → one notification | ☐ | ☐ | ☑ |
 | iOS not-installed state → graceful explanation, no broken prompt | — | ☐ | — |
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
 | Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
+
+**Android Chrome and iOS Safari are unverified, and are not being recorded
+as anything else.** No physical Android or iOS device is available to this
+project, and both columns need one — iOS especially, since its whole point
+is behaviour that only appears after "Add to Home Screen", which cannot be
+emulated. Someone with a phone needs to run those two columns before
+launch. What *is* known about iOS is that the app detects an iPhone in a
+Safari tab and shows the install explanation rather than a broken prompt
+(§4.3, `pushCapability.test.ts`) — that is the code path being right, not
+the platform being tested.
+
+**Desktop Chrome is genuinely run**, not inspected: `scripts/verify-push.mjs`
+drives a real Chromium against a real push service and asserts on what the
+browser displayed. 39 checks, currently all passing. Beyond the ticked rows
+above it also covers:
+
+- the subscription is stored, with exactly the three fields we use
+- **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property)
+- the body renders in the *recipient's* locale (verified in both `id` and `nl`)
+- DPIA R6 live: an absence carrying a reason (`demam tinggi` / `griep`) produces a payload with no trace of it
+- re-saving an already-absent roster notifies nobody a second time
+- unsubscribe clears `users.push_sub`, and a later absence then produces nothing at all
+- zero console errors and zero failed requests, for parent, tutor and admin
+- non-recipient roles (tutor, admin) are told plainly that they receive nothing, and are offered no toggle
+- endpoint authorization: `push-subscribe` 403s a tutor and an admin, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
+
+Two things that harness learned the hard way, both written into the README:
+Playwright's default headless shell has no push implementation at all
+(`Notification.permission` is permanently `denied`), so it must launch
+with `channel: 'chromium'`; and FCM throttles repeated registrations from
+one host, after which `pushManager.subscribe()` stops settling rather than
+rejecting — which is what prompted bounding that wait in the app.
 
 ## 7. i18n completeness (automated)
 

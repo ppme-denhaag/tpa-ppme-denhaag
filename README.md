@@ -33,7 +33,7 @@ npm run build                  # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–008, applied in order). The
+Migrations live in `supabase/migrations/` (001–009, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -106,8 +106,14 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 ## RLS automated test suite
 
 `supabase/tests/database/rls.test.sql` implements all 27 cases from
-test-plan.md §3 (RLS-01…RLS-27) as 64 pgTAP assertions, using the standard
-fixture set from §2. RLS-22…RLS-27 cover the super-admin change (TAD
+test-plan.md §3 (RLS-01…RLS-27) plus WH-01…WH-06 for migration 009's
+absence webhook, as 76 pgTAP assertions, using the standard
+fixture set from §2. The WH cases assert the trigger fires on the
+transition into `absent` and on nothing else, stays silent when
+unconfigured, carries the row id and never the absence `reason`, and that
+no client role can read the webhook secret — pg_net queues inside the
+calling transaction, so the whole thing rolls back with everything else
+and never makes a real request. RLS-22…RLS-27 cover the super-admin change (TAD
 ADR-014): that an admin INSERT/UPDATE lands on every operational table, and
 — the half that matters more — that those rows widen nobody else's
 visibility. It runs entirely inside a transaction that's rolled
@@ -144,13 +150,16 @@ against the live project in that window and appeared broken.
 | `generate-year-end-drafts.mts` | Admin-only: bulk-creates draft year-end reports for an academic year, optionally scoped to a class. Triggered from the panel at the top of the admin's own Reports screen |
 | `publish-report.mts` | Authoring tutor only — **not admin**, deliberately (TAD ADR-014 left this boundary where ADR-013 put it): renders the report PDF (pdfkit), uploads it to the private `reports` bucket, then flips `draft → published` |
 | `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization (admin: any report; tutor: own class; parent/student 16+: own child/self, published only) |
+| `push-subscribe.mts` | Stores (POST) or clears (DELETE) the caller's own Web Push subscription in `users.push_sub`. **403 for tutor and admin** — notifications are family-facing (TAD ADR-015), so no push endpoint is stored for an account nothing sends to |
+| `notify-absence.mts` | Invoked by the **database webhook** on `public.attendance` (migration 009), not by the client that saved the attendance. Sends one push to the absent child's parent, in that parent's own locale |
 
 All use the Netlify Functions v2 API (default export, Web-standard
 `Request`/`Response`) and are typechecked separately from the main app
 (`npm run typecheck:functions`) since `netlify/functions/` isn't a project
 reference of the root `tsconfig.json`.
 
-The four that hold `SUPABASE_SERVICE_ROLE_KEY` share one authorization
+The ones that hold `SUPABASE_SERVICE_ROLE_KEY` *and* have a signed-in
+caller share one authorization
 shape, extracted into `netlify/functions/lib/callerAuth.ts`: validate the
 caller's JWT with a plain anon-key client, then look their role up
 *independently* with the service-role client. The service-role key
@@ -178,6 +187,93 @@ Point `.env` at the local Supabase stack as usual, and additionally set
 Functions read `process.env` directly, not Vite's `import.meta.env`) —
 use the local stack's own keys from `supabase start`'s output, not the
 production ones from `netlify env:list`.
+
+## Web Push notifications
+
+The absence notification runs the whole pipeline: a tutor (or admin)
+records an absence → a trigger on `public.attendance` posts to
+`notify-absence` → that Function looks up the child's parent and sends a
+Web Push → the service worker shows it. Everything else in the TAD's
+Notification Spec is deferred to ADR-015 parts 2 and 3.
+
+### VAPID keys
+
+Generate **one pair per environment** and never commit them:
+
+```bash
+node -e "console.log(require('web-push').generateVAPIDKeys())"
+```
+
+Set in Netlify (`netlify env:set`) and in local `.env`:
+`VAPID_PRIVATE_KEY` (secret), `VAPID_PUBLIC_KEY`, and
+`VITE_VAPID_PUBLIC_KEY` — the same public value twice, because the
+browser needs it to subscribe and only `VITE_`-prefixed vars reach the
+client bundle. **Rotating the pair invalidates every stored
+subscription**: every family has to re-enable notifications, silently,
+so generate once per environment and keep it.
+
+### Database webhooks
+
+The trigger lives in migration 009, so it is version-controlled and
+reproduced by `supabase db reset`. What is *not* in the migration is
+where to send the request, since that differs per environment — the
+trigger reads it from Supabase Vault at fire time, and **does nothing at
+all if it is unset**. That is why a fresh local stack, CI and the pgTAP
+suite never make outbound requests.
+
+To configure an environment (Supabase SQL editor, or `psql` locally):
+
+```sql
+select vault.create_secret('https://tpa.ppmedenhaag.nl/.netlify/functions',
+                           'notify_webhook_base_url');
+select vault.create_secret('<same value as Netlify NOTIFY_WEBHOOK_SECRET>',
+                           'notify_webhook_secret');
+```
+
+The secret authenticates the *channel* (`netlify/functions/lib/webhookAuth.ts`)
+— a webhook has no signed-in caller, so `callerAuth.ts` does not apply.
+It fails closed: with `NOTIFY_WEBHOOK_SECRET` unset the Function rejects
+every request rather than serving them unauthenticated.
+
+Locally, Postgres runs in Docker and `netlify dev` runs on the host, so
+the base URL must be `http://host.docker.internal:8888/.netlify/functions`
+— `localhost` inside the database container is the container. Confirmed
+working on this stack; pg_net reaches the host fine.
+
+**pg_net is asynchronous.** The trigger queues into
+`net.http_request_queue` and a background worker sends it a moment later,
+which is what keeps a slow or failing Function from ever blocking a
+tutor's attendance save. Two consequences worth knowing: a rolled-back
+transaction never sends (which is what lets the pgTAP suite assert on
+queued requests without a network), and the Function's response is
+readable afterwards in `net._http_response` — the fastest way to see why
+a notification did not arrive:
+
+```sql
+select id, status_code, content from net._http_response order by id desc limit 5;
+```
+
+### Verifying it end to end
+
+`scripts/verify-push.mjs` drives the whole pipeline with nothing stubbed
+— a real Chromium, a real push subscription, a real attendance write,
+the real webhook, a real push — and asserts on what the browser actually
+displayed, including that the *other* family's parent received nothing.
+It is not part of `npm test` (it needs Docker, the dev fixture and a
+running `netlify dev`); run it by hand after touching anything in the
+notification path. The file header lists the exact setup steps.
+
+One trap it documents: Playwright's default headless shell has **no
+notifications or push implementation**, so `Notification.permission` is
+permanently `denied` there and every check fails for the wrong reason.
+The script launches with `channel: 'chromium'` for that reason.
+
+Also note the browser's push service (FCM for Chrome) will quietly
+**throttle repeated registrations** from one host — `pushManager.subscribe()`
+then never settles rather than rejecting. If a run hangs at the subscribe
+step, wait a few minutes rather than hunting for a bug in the app. The
+app itself bounds that wait and shows a "push service is not responding"
+message instead of spinning forever.
 
 **Do not add a `config.path` export to a v2 Function that just restates its
 own default route** (`/.netlify/functions/<name>`) — confirmed on
@@ -279,9 +375,23 @@ this is a manual runbook, not a feature.
   Quran feature's jilid/juz milestone-celebration notification, Murajaah's
   daily practice reminder (FR-006), and the year-end report's FR-007
   ("report ready" push) are all deferred for the same reason — each needs
-  Netlify Scheduled Functions/webhook infra, which don't exist yet for
-  anything in this project. **Publishing a report notifies nobody**;
-  families see it the next time they open the Reports screen.
+  Netlify Scheduled Functions, which don't exist yet. The **webhook and
+  push infrastructure now does** exist (TAD ADR-015 part 1) and the
+  absence notification runs on it — see "Web Push notifications" above —
+  so each of those is now one Function away rather than blocked.
+  **Publishing a report still notifies nobody**; families see it the next
+  time they open the Reports screen.
+- **Notifications: absence only.** Milestone celebrations, homework
+  reminders, the daily Murajaah reminder, the weekly digest and the
+  report-ready push are ADR-015 part 2; the in-app notification centre
+  and the TopNav bell are part 3, held until its design is reviewed.
+  Notification settings live at `/settings/notifications`, reached from
+  the dashboard.
+- **Android and iOS push are unverified** — there is no phone available
+  to this project, and test-plan §6's two mobile columns need one. The
+  iOS "add to Home Screen first" path is implemented and unit-tested, but
+  that is not the same as having watched a notification arrive on an
+  iPhone. Desktop Chrome is verified for real (`scripts/verify-push.mjs`).
 - **Admin enrollment UI is built** (`/admin/registrations`, `/admin/classes`,
   `/admin/students`), with two ways to register a user: invite by email
   (`invite-user.mts` — creates the account and profile together, no waiting

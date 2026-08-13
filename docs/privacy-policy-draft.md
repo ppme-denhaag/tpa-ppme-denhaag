@@ -26,6 +26,20 @@ is belegd bij het IT-team van PPME Den Haag, bereikbaar via `[e-mailadres]`.
 | Leervoortgang | Yanbu'a-niveau en -pagina's, Quran-leesvoortgang, memorisatie (murajaah), beoordelingen en notities van docenten | Leerlingen |
 | Meldingen | Web Push-abonnementsgegevens (technische sleutels, geen inhoud) | Gebruikers die meldingen inschakelen |
 
+**Over meldingen.** Meldingen zijn optioneel en staan standaard uit: u zet ze
+zelf aan onder "Meldingsinstellingen" en kunt ze daar op elk moment weer
+uitzetten, waarna uw abonnementsgegevens direct worden verwijderd. Een melding
+bevat alleen de **voornaam van uw kind en het soort gebeurtenis** — bijvoorbeeld
+"Ali was vandaag niet aanwezig bij TPA". De reden van afwezigheid, cijfers,
+beoordelingen en voortgangsdetails worden nooit in een melding meegestuurd; die
+ziet u pas nadat u bent ingelogd. Dat is bewust: een melding is op een
+vergrendeld scherm zichtbaar voor iedereen die het toestel ziet liggen.
+Meldingen worden verstuurd via de meldingsdienst van uw eigen browser (bij
+Chrome is dat Google, buiten de EU) — die dienst ontvangt daarbij de
+versleutelde inhoud van de melding en het technische adres van uw toestel.
+Eén account ontvangt meldingen op één toestel; zet u ze aan op een tweede
+toestel, dan verhuizen ze daarheen.
+
 Wij verwerken **geen** bijzondere persoonsgegevens in de zin van art. 9 AVG. Deelname aan
 TPA-onderwijs impliceert weliswaar een religieuze context, maar de app registreert
 uitsluitend onderwijsvoortgang; het IT-team beoordeelt in de DPIA of aanvullende
@@ -83,6 +97,17 @@ Duitsland) en versleuteld opgeslagen (AES-256) en verzonden (TLS 1.3). Hosting v
 applicatie verloopt via Netlify `[EU-regio bevestigen]`. Met verwerkers zijn
 verwerkersovereenkomsten gesloten. `[Supabase DPA: status invullen]`
 
+**Uitzondering: meldingen.** Zet u meldingen aan, dan verloopt de aflevering
+noodzakelijkerwijs via de meldingsdienst van uw eigen browser — bij Google
+Chrome en Android is dat Firebase Cloud Messaging (Google), waarvan de servers
+buiten de EU staan. Wij kunnen die dienst niet vervangen: de browser bepaalt
+welke meldingsdienst wordt gebruikt. Wat die dienst ontvangt, is beperkt
+gehouden: de inhoud van de melding is versleuteld (het protocol staat de
+tussenliggende dienst niet toe deze te lezen), en de melding zelf bevat sowieso
+niet meer dan de voornaam van uw kind en het soort gebeurtenis. Wie dit liever
+vermijdt, laat meldingen uit staan; de app werkt daar verder volledig zonder.
+`[IT-team: opnemen in het verwerkingsregister en de doorgifte-toets]`
+
 ### 7. Hoe lang bewaren wij gegevens?
 
 Leerlinggegevens en voortgangsgegevens worden bewaard tot uiterlijk `[3 jaar — te
@@ -120,6 +145,19 @@ PPME Den Haag, dapat dihubungi melalui `[alamat email]`.
 | Kehadiran | Hadir/absen/terlambat per sesi, alasan (mis. sakit) | Santri |
 | Progres belajar | Level dan halaman Yanbu'a, progres tilawah Al-Quran, hafalan (murajaah), penilaian dan catatan ustadz | Santri |
 | Notifikasi | Data langganan Web Push (kunci teknis, bukan isi) | Pengguna yang mengaktifkan notifikasi |
+
+**Tentang notifikasi.** Notifikasi bersifat opsional dan awalnya nonaktif: Anda
+mengaktifkannya sendiri di "Pengaturan notifikasi" dan dapat menonaktifkannya
+kapan saja, yang langsung menghapus data langganan Anda. Sebuah notifikasi hanya
+memuat **nama depan anak Anda dan jenis kejadian** — misalnya "Ali tidak hadir
+hari ini di TPA". Alasan ketidakhadiran, nilai, penilaian, dan detail progres
+tidak pernah dikirim dalam notifikasi; semua itu baru terlihat setelah Anda
+masuk ke aplikasi. Ini disengaja: notifikasi tampil di layar kunci, yang bisa
+dilihat siapa pun di dekat perangkat. Notifikasi dikirim melalui layanan
+notifikasi peramban Anda sendiri (pada Chrome layanan tersebut milik Google, di
+luar UE) — layanan itu menerima isi notifikasi dalam bentuk terenkripsi beserta
+alamat teknis perangkat Anda. Satu akun menerima notifikasi di satu perangkat;
+jika Anda mengaktifkannya di perangkat kedua, notifikasi berpindah ke sana.
 
 Kami **tidak** memproses data pribadi kategori khusus sesuai Pasal 9 GDPR. Meskipun
 pendidikan TPA berlangsung dalam konteks keagamaan, aplikasi hanya mencatat progres
@@ -176,6 +214,17 @@ Semua data disimpan di dalam Uni Eropa (Supabase, region Frankfurt, Jerman) dan
 dienkripsi saat disimpan (AES-256) dan dikirim (TLS 1.3). Hosting aplikasi melalui
 Netlify `[konfirmasi region EU]`. Perjanjian pemrosesan data telah dibuat dengan
 pemroses. `[status DPA Supabase]`
+
+**Pengecualian: notifikasi.** Jika Anda mengaktifkan notifikasi, pengirimannya
+mau tidak mau melewati layanan notifikasi peramban Anda sendiri — pada Google
+Chrome dan Android layanan itu adalah Firebase Cloud Messaging (Google), yang
+servernya berada di luar UE. Kami tidak dapat menggantinya: peramban yang
+menentukan layanan notifikasi mana yang dipakai. Yang diterima layanan tersebut
+sudah dibatasi: isi notifikasi terenkripsi (protokolnya tidak mengizinkan
+layanan perantara membacanya), dan notifikasi itu sendiri memang tidak memuat
+lebih dari nama depan anak Anda dan jenis kejadian. Jika Anda ingin
+menghindarinya, biarkan notifikasi nonaktif; aplikasi tetap berfungsi penuh
+tanpa itu. `[tim IT: masukkan ke daftar pemrosesan dan penilaian transfer data]`
 
 ### 7. Berapa lama data disimpan?
 
