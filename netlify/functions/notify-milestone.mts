@@ -93,6 +93,11 @@ async function jilidMilestone(client: Client, rowId: string) {
     event: 'jilidMilestone',
     audience: 'parent',
     date: amsterdamDate(new Date(row.recorded_at)),
+    // In-app only. The lock screen says a jilid was finished; the
+    // notification centre says *which* one, which is the celebration
+    // the Notification Spec drafted and DPIA R6 keeps off a lock
+    // screen rather than deletes (ADR-015(b), ADR-017).
+    context: { number: row.jilid },
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)
@@ -102,7 +107,7 @@ async function jilidMilestone(client: Client, rowId: string) {
 async function surahMemorized(client: Client, rowId: string) {
   const { data: row, error } = await client
     .from('murajaah_assignments')
-    .select('id, student_id, active')
+    .select('id, student_id, active, surah_num')
     .eq('id', rowId)
     .maybeSingle()
   if (error) return jsonError(error.message, 500)
@@ -112,11 +117,21 @@ async function surahMemorized(client: Client, rowId: string) {
   // may have been reactivated between the write and this call.
   if (row.active) return jsonOk({ sent: 0, skipped: 'assignment is still active' })
 
+  // Read from the reference table rather than transliterated here, so
+  // the notification centre names the surah exactly as every other
+  // screen does.
+  const { data: surah } = await client
+    .from('surahs')
+    .select('transliteration')
+    .eq('surah_num', row.surah_num)
+    .maybeSingle()
+
   const result = await notifyStudent(client, {
     studentId: row.student_id,
     event: 'surahMemorized',
     audience: 'parent',
     date: amsterdamDate(),
+    context: surah ? { surah: surah.transliteration } : {},
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)

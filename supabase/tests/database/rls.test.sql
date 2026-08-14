@@ -951,6 +951,134 @@ insert into _tap_log(line) select throws_ok(
 reset role;
 drop table _wh_mark;
 
+
+-- ======================================================================
+-- NC-01…NC-10 — the in-app notification centre (migration 012, ADR-017)
+--
+-- A notification is a message addressed to one named person. The whole
+-- table is therefore one access-control question, asked from every
+-- direction below: can anyone read someone else's, and can anyone write
+-- one at all.
+-- ======================================================================
+insert into public.notifications (user_id, student_id, event, context, event_date)
+values
+  -- P1, about their own two children
+  ('90000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000001',
+   'absence', '{}'::jsonb, current_date),
+  ('90000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000002',
+   'jilidMilestone', '{"number": 3}'::jsonb, current_date),
+  -- P2, about theirs
+  ('90000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000003',
+   'absence', '{}'::jsonb, current_date),
+  -- The 16+ student, about themselves
+  ('50000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000004',
+   'reportReady', '{}'::jsonb, current_date);
+
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+set local request.jwt.claim.sub to '90000000-0000-0000-0000-000000000001';  -- P1
+
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications),
+  2::bigint,
+  'NC-01: a parent sees exactly their own notifications, and no others'
+);
+
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where user_id <> '90000000-0000-0000-0000-000000000001'),
+  0::bigint,
+  'NC-02: CROSS-FAMILY — another parent''s notifications are invisible, not merely filtered by the app'
+);
+
+-- The one write a client is allowed.
+update public.notifications set read_at = now()
+where user_id = '90000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications where read_at is not null),
+  2::bigint,
+  'NC-03: a recipient can mark their own notifications read'
+);
+
+-- …and the only one. RLS has no column granularity, so this is enforced
+-- by the column-level GRANT in migration 012 rather than by a policy:
+-- without it, a recipient could rewrite the event on their own row and
+-- make the app render something that never happened.
+insert into _tap_log(line) select throws_ok(
+  $$ update public.notifications set event = 'reportReady'
+     where user_id = '90000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'NC-04: a recipient cannot rewrite the event on their own notification'
+);
+insert into _tap_log(line) select throws_ok(
+  $$ update public.notifications set context = '{"number": 99}'::jsonb
+     where user_id = '90000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'NC-05: …nor its context'
+);
+
+-- Nobody may invent a notification. A client that could insert here
+-- could put words in the TPA's mouth on another parent's screen.
+insert into _tap_log(line) select throws_ok(
+  $$ insert into public.notifications (user_id, student_id, event, event_date)
+     values ('90000000-0000-0000-0000-000000000001',
+             'd0000000-0000-0000-0000-000000000001', 'absence', current_date) $$,
+  '42501', null,
+  'NC-06: a signed-in user cannot insert a notification, even addressed to themselves'
+);
+
+-- No delete either: retention is central (`prune-notifications`), so
+-- there is no path by which a record of what a family was told is
+-- removed early.
+insert into _tap_log(line) select throws_ok(
+  $$ delete from public.notifications
+     where user_id = '90000000-0000-0000-0000-000000000001' $$,
+  '42501', null,
+  'NC-07: a recipient cannot delete their own notifications'
+);
+
+-- The 16+ student reads their own, and only their own.
+set local request.jwt.claim.sub to '50000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications),
+  1::bigint,
+  'NC-08: a 16+ student sees their own notification'
+);
+
+-- Admin is the deliberate exception to ADR-014's super admin. Admin can
+-- read every operational table on every class, because running the TPA
+-- needs that; an inbox of every family's personal messages is a
+-- different kind of access and adds nothing to running the TPA.
+set local request.jwt.claim.sub to 'a0000000-0000-0000-0000-000000000000';
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications),
+  0::bigint,
+  'NC-09: an admin reads no notifications at all — the one place ADR-014 does not extend'
+);
+
+-- A tutor likewise.
+set local request.jwt.claim.sub to '70000000-0000-0000-0000-000000000001';
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications),
+  0::bigint,
+  'NC-10: a tutor reads none either, including for their own class'
+);
+
+reset role;
+
+-- NC-11: TRUNCATE is not filtered by RLS, and `anon`/`authenticated`
+-- held it on every table in `public` from Supabase's own role
+-- bootstrap. Migration 012 revokes it. Asserted on `attendance` rather
+-- than on `notifications`, because the point is that the revoke covers
+-- the whole schema and not just the table that prompted it.
+set local role authenticated;
+insert into _tap_log(line) select throws_ok(
+  $$ truncate public.attendance $$,
+  '42501', null,
+  'NC-11: a signed-in user cannot TRUNCATE a table RLS otherwise protects'
+);
+reset role;
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();

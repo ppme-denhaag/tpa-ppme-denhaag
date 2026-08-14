@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { LanguageToggle } from './LanguageToggle'
+import { NotificationBell } from '../features/notifications/NotificationBell'
 import { useAuth } from '../context/AuthContext'
 
 export function TopNav() {
@@ -27,6 +28,8 @@ export function TopNav() {
         >
           {t('nav.laporan')}
         </Link>
+        {/* Renders nothing for tutor/admin — see NotificationBell. */}
+        <NotificationBell />
         <LanguageToggle />
         <button
           type="button"

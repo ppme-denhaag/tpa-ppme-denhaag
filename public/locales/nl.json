@@ -180,11 +180,14 @@
   "notifications": {
     "title": "Meldingen",
     "absence": "{{name}} was vandaag niet aanwezig bij TPA",
-    "newAssignment": "Nieuwe opdracht: {{title}} — deadline {{date}}",
-    "assignmentDueTomorrow": "Herinnering: Opdracht {{title}} deadline morgen",
+    "newAssignment": "Nieuwe opdracht voor {{name}}: {{title}} — deadline {{date}}",
+    "assignmentDueTomorrow": "Herinnering: opdracht {{title}} van {{name}} moet morgen af zijn",
     "jilidMilestone": "Alhamdulillah! {{name}} heeft Jilid {{number}} voltooid",
     "surahMemorized": "Alhamdulillah! {{name}} heeft Surah {{surah}} gememoriseerd",
     "murajaahReminder": "Tijd voor murajaah met {{name}}",
+    "assignmentDueTomorrowMany": "Herinnering: {{count}} opdrachten van {{name}} moeten morgen af zijn",
+    "reportReady": "Het jaarrapport van {{name}} staat klaar",
+    "weeklyDigest": "Het weekoverzicht van {{name}} staat klaar",
     "empty": "Nog geen meldingen",
     "push": {
       "absence": "{{name}} was vandaag niet aanwezig bij TPA",

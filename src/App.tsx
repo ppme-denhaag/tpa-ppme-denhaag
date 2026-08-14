@@ -11,6 +11,7 @@ import { QuranPage } from './features/quran/QuranPage'
 import { MurajaahPage } from './features/murajaah/MurajaahPage'
 import { ReportsPage } from './features/reports/ReportsPage'
 import { NotificationSettingsPage } from './features/notifications/NotificationSettingsPage'
+import { NotificationCentrePage } from './features/notifications/NotificationCentrePage'
 import { RegistrationsPage } from './features/admin/RegistrationsPage'
 import { ClassesPage } from './features/admin/ClassesPage'
 import { StudentsPage } from './features/admin/StudentsPage'
@@ -44,6 +45,9 @@ function Gate() {
             prototype-validated set (checklist §5) and settings is not
             one of them. Reached from the dashboard instead. */}
         <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
+        {/* Reached from the TopNav bell, and from the deep link every
+            push notification carries once tapped (ADR-015 part 3). */}
+        <Route path="/notifications" element={<NotificationCentrePage />} />
         {/* Single entry point into the enrollment section (the "Kelola"
             dashboard tile and desktop tab both point here). Kept as a
             real route rather than linking straight to the first

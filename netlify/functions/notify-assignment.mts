@@ -47,7 +47,7 @@ export default async (req: Request) => {
 
   const { data: assignment, error } = await client
     .from('assignments')
-    .select('id, class_id, created_at')
+    .select('id, class_id, created_at, title, due_date')
     .eq('id', assignmentId)
     .maybeSingle()
   if (error) return jsonError(error.message, 500)
@@ -74,6 +74,9 @@ export default async (req: Request) => {
     // collapse two assignments that happen to share a deadline while
     // splitting two created in the same sitting.
     date: amsterdamDate(new Date(assignment.created_at)),
+    // The title and deadline the Spec's copy asked for, kept out of the
+    // push payload (DPIA R6) and carried here for the in-app list.
+    context: { title: assignment.title, date: assignment.due_date },
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)

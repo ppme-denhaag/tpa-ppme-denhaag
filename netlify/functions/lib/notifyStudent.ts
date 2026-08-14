@@ -48,7 +48,17 @@ export type Audience =
 export interface Recipient {
   userId: string
   locale: Locale
-  subscription: StoredSubscription
+  /**
+   * `null` when this recipient has no usable push subscription — they
+   * declined notifications, their browser cannot do them, or a push
+   * service invalidated the endpoint and a sender cleared it.
+   *
+   * They stay in the audience regardless, and that is the point: since
+   * ADR-017 every recipient gets a row in the notification centre, and
+   * the centre exists *for* the families who are not reachable by push.
+   * Only `dispatch` filters on this.
+   */
+  subscription: StoredSubscription | null
 }
 
 export interface StudentAudience {
@@ -88,22 +98,28 @@ export function buildAudiences(
   users: UserRow[],
   audience: Audience,
 ): StudentAudience[] {
-  const sendable = new Map<string, Recipient>()
+  const reachable = new Map<string, Recipient>()
   for (const user of users) {
     // Belt and braces with `push-subscribe`'s own check: a role that
     // never receives notifications is never sent one, even if a
     // subscription somehow reached its row.
     if (!canReceiveNotifications(user.role)) continue
-    if (!isValidSubscription(user.push_sub)) continue
-    sendable.set(user.id, { userId: user.id, locale: user.locale, subscription: user.push_sub })
+    // A missing or malformed subscription no longer excludes anyone —
+    // it only means this recipient is reached in the app rather than on
+    // their lock screen (ADR-017).
+    reachable.set(user.id, {
+      userId: user.id,
+      locale: user.locale,
+      subscription: isValidSubscription(user.push_sub) ? user.push_sub : null,
+    })
   }
 
   return students.map((student) => {
     const recipients: Recipient[] = []
-    const parent = sendable.get(student.parent_id)
+    const parent = reachable.get(student.parent_id)
     if (parent) recipients.push(parent)
     if (audience === 'family' && student.user_id) {
-      const self = sendable.get(student.user_id)
+      const self = reachable.get(student.user_id)
       // A 16+ student who is also their own parent contact would
       // otherwise be sent the same notification twice.
       if (self && self.userId !== student.parent_id) recipients.push(self)
@@ -204,7 +220,11 @@ export async function dispatch(
   const result: DispatchResult = { sent: 0, expired: 0, failed: 0, tags: [] }
 
   const deliveries = targets.flatMap((target) =>
-    target.recipients.map((recipient) => ({ target, recipient })),
+    target.recipients
+      // Everyone else already has their notification-centre row; a
+      // recipient with no subscription is simply not reachable here.
+      .filter((recipient) => recipient.subscription !== null)
+      .map((recipient) => ({ target, recipient })),
   )
 
   await pool(deliveries, async ({ target, recipient }) => {
@@ -217,7 +237,7 @@ export async function dispatch(
       date,
     })
 
-    const outcome = await deps.send(recipient.subscription, payload)
+    const outcome = await deps.send(recipient.subscription!, payload)
 
     if (outcome.status === 'sent') {
       result.sent += 1
@@ -239,6 +259,13 @@ export async function dispatch(
 }
 
 export interface NotifyResult extends DispatchResult {
+  /**
+   * Rows written to the notification centre — one per recipient,
+   * whether or not they were also pushed to. `recorded` is therefore
+   * normally *higher* than `sent`, and that difference is the feature
+   * rather than a discrepancy (ADR-017).
+   */
+  recorded: number
   skipped?: string
 }
 
@@ -263,25 +290,115 @@ export function reportable(result: NotifyResult): Omit<NotifyResult, 'tags'> {
   return counts
 }
 
+/**
+ * Everything the in-app copy interpolates beyond the child's name — the
+ * jilid number, the surah, the assignment title and its due date.
+ *
+ * Scalars only, deliberately. This ends up in a `jsonb` column that a
+ * screen renders, so the narrow type is what stops a sender from
+ * casually posting a whole database row into it and quietly widening
+ * what the notification centre stores about a child.
+ *
+ * The child's **name is not in here**: it is read through `student_id`,
+ * so a corrected name corrects every past notification and the name is
+ * not copied across hundreds of rows.
+ */
+export type NotificationContext = Record<string, string | number>
+
+/** Per-student, because one homework run can name a different assignment per child. */
+export type ContextInput = NotificationContext | ((studentId: string) => NotificationContext)
+
+function contextFor(input: ContextInput | undefined, studentId: string): NotificationContext {
+  if (!input) return {}
+  return typeof input === 'function' ? input(studentId) : input
+}
+
+/**
+ * Writes the notification-centre rows — one per (recipient, child) —
+ * before anything is pushed.
+ *
+ * Order matters. The push is the unreliable half: it depends on a third
+ * party, and `notify-absence` has already been seen clearing a
+ * subscription a push service invalidated. Recording first means a
+ * family's own record of what they were told never depends on whether
+ * Google's push service was having a good minute.
+ *
+ * `on conflict do update` on (user, child, event, date) — the same
+ * tuple as the dedup tag — is what makes an hourly scheduled Function
+ * safe to re-run: the second pass refreshes the row rather than filling
+ * a family's list with duplicates. It refreshes rather than ignores so
+ * a corrected context (a re-titled assignment) is not stuck at its
+ * first value.
+ */
+export async function recordNotifications(
+  client: ServiceClient,
+  targets: StudentAudience[],
+  event: NotificationEvent,
+  date: string,
+  context?: ContextInput,
+): Promise<number> {
+  const rows = targets.flatMap((target) =>
+    target.recipients.map((recipient) => ({
+      user_id: recipient.userId,
+      student_id: target.studentId,
+      event,
+      context: contextFor(context, target.studentId),
+      event_date: date,
+    })),
+  )
+  if (rows.length === 0) return 0
+
+  const { error } = await client
+    .from('notifications')
+    .upsert(rows, { onConflict: 'user_id,student_id,event,event_date' })
+  if (error) {
+    // Never fatal to the send. A family losing the in-app copy of a
+    // notification they still received on their phone is worse handled
+    // by also withholding the push.
+    console.error('notify: could not record notifications', error.message)
+    return 0
+  }
+  return rows.length
+}
+
 /** The whole "notify these children's families" path. */
+export interface NotifyArgs {
+  studentIds: string[]
+  event: NotificationEvent
+  audience: Audience
+  date: string
+  context?: ContextInput
+}
+
 export async function notifyStudents(
   client: ServiceClient,
-  args: { studentIds: string[]; event: NotificationEvent; audience: Audience; date: string },
+  args: NotifyArgs,
 ): Promise<NotifyResult> {
   const empty: DispatchResult = { sent: 0, expired: 0, failed: 0, tags: [] }
 
   const targets = await audiencesForStudents(client, args.studentIds, args.audience)
-  if (targets.length === 0) return { ...empty, skipped: 'no such student' }
+  if (targets.length === 0) return { ...empty, recorded: 0, skipped: 'no such student' }
   if (targets.every((t) => t.recipients.length === 0)) {
-    return { ...empty, skipped: 'no push subscription' }
+    // No account to tell at all — an unenrolled child, or a family whose
+    // parent has no user row yet. Distinct from "nobody to *push* to".
+    return { ...empty, recorded: 0, skipped: 'no recipient account' }
   }
 
-  return dispatch(client, targets, args.event, args.date)
+  const recorded = await recordNotifications(client, targets, args.event, args.date, args.context)
+
+  const reachable = targets.filter((t) => t.recipients.some((r) => r.subscription !== null))
+  if (reachable.length === 0) {
+    // Everyone was told in the app; nobody had push switched on. A
+    // normal outcome, not a failure.
+    return { ...empty, recorded, skipped: 'no push subscription' }
+  }
+
+  return { ...(await dispatch(client, targets, args.event, args.date)), recorded }
 }
 
 export function notifyStudent(
   client: ServiceClient,
-  args: { studentId: string; event: NotificationEvent; audience: Audience; date: string },
+  args: Omit<NotifyArgs, 'studentIds'> & { studentId: string },
 ): Promise<NotifyResult> {
   const { studentId, ...rest } = args
   return notifyStudents(client, { studentIds: [studentId], ...rest })

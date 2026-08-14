@@ -292,6 +292,54 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          context: Json
+          created_at: string
+          event: Database["public"]["Enums"]["notification_event"]
+          event_date: string
+          id: string
+          read_at: string | null
+          student_id: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          event: Database["public"]["Enums"]["notification_event"]
+          event_date: string
+          id?: string
+          read_at?: string | null
+          student_id: string
+          user_id: string
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          event?: Database["public"]["Enums"]["notification_event"]
+          event_date?: string
+          id?: string
+          read_at?: string | null
+          student_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quran_progress: {
         Row: {
           ayah_from: number
@@ -709,6 +757,15 @@ export type Database = {
       locale: "id" | "nl"
       murajaah_frequency: "daily" | "3x_week" | "weekly"
       murajaah_quality: "hafal_lancar" | "hafal_kurang_lancar" | "belum_hafal"
+      notification_event:
+        | "absence"
+        | "newAssignment"
+        | "assignmentDueTomorrow"
+        | "jilidMilestone"
+        | "surahMemorized"
+        | "murajaahReminder"
+        | "reportReady"
+        | "weeklyDigest"
       quran_quality:
         | "mumtaz"
         | "jayyid_jiddan"
