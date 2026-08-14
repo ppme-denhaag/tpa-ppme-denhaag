@@ -223,6 +223,16 @@ above it also covers:
 - **the three scheduled Functions, driven at a chosen instant** by `scripts/invoke-scheduled.mjs`, which pins the clock from outside the process (there is deliberately no test hook inside the Function). For each: the Europe/Amsterdam gate opens at 18:00 local on a **CET** date and at 18:00 local on a **CEST** date — an hour apart in UTC — and the same 17:00 UTC that is 18:00 in winter is correctly refused as 19:00 in summer; the **second, idempotent run** reports the same sends and adds no notification; a family already on track, a morning with nothing due, and a week with no activity each send nothing; a student who has marked homework `completed` drops out of the run; the Friday digest refuses a Thursday and refuses 09:00
 - **the scheduled Functions disclose nothing to an unauthenticated caller.** They carry no shared secret — Netlify's scheduler cannot send one — and under `netlify dev` they answer plain HTTP. Asserted: a hostile POST naming another family's child gets a response containing no dedup tags and no identifiers, and the posted body is not read at all (ADR-016(d)/(e))
 
+**One thing this could not check.** Netlify's own types describe a
+deployed scheduled function as "Not reachable via HTTP". That is
+unverified here and is *not* being recorded as verified: deploy previews
+on this project are password-protected and 401 every path including
+`health`, so there is no deployed environment available to curl. The
+local answer is the opposite — they are ordinary endpoints — which is
+why the jobs are built to be safe with no platform boundary at all.
+Someone with production access should confirm which behaviour the live
+site has.
+
 Two things that harness learned the hard way, both written into the README:
 Playwright's default headless shell has no push implementation at all
 (`Notification.permission` is permanently `denied`), so it must launch

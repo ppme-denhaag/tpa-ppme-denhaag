@@ -371,6 +371,14 @@ function as "Not reachable via HTTP". The cron itself does **not** run
 locally; nothing fires on its own. `netlify functions:invoke <name>`
 works too and goes to the same handler.
 
+**Whether the deployed site behaves as its own types claim is untested
+here**, and should not be assumed: deploy previews on this project sit
+behind Netlify's password protection, which 401s every path including
+`health`, so there is no deployed environment available to curl. Someone
+with access to the production site should check it once. Nothing depends
+on the answer — the jobs are built for the worse case — but it is worth
+knowing which one is true.
+
 Two consequences worth knowing before you change one of these:
 
 - Locally there is nothing in front of them. That is a stated reason
