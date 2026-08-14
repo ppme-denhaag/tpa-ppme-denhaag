@@ -11,6 +11,7 @@ import {
   copyValuesFor,
   type NotificationEventName,
 } from '../../lib/notificationCopy'
+import { EVENT_ICON_PATH, EVENT_TONE, TONE_CLASS } from './eventStyle'
 import { fetchNotifications, markAllRead, type NotificationRow } from './api'
 
 /**
@@ -127,38 +128,62 @@ export function NotificationCentrePage() {
           {rows.map((row) => {
             const context = (row.context ?? {}) as Record<string, unknown>
             const childName = row.students?.full_name ?? ''
+            const event = row.event as NotificationEventName
+            const unread = row.read_at === null
             return (
               <li
                 key={row.id}
                 // `ppme-bg-alt` is the page background, so an unread row
                 // is tinted with the brand colour instead — on a white
                 // card list, the page colour reads as a hole, not a
-                // highlight.
-                className={`rounded-lg p-3 shadow-sm ${
-                  row.read_at === null ? 'bg-ppme-primary/5' : 'bg-white'
+                // highlight. The left rule carries it further: a tint
+                // this light is easy to miss on a phone in daylight.
+                className={`overflow-hidden rounded-lg shadow-sm ${
+                  unread ? 'border-l-4 border-ppme-primary bg-ppme-primary/5' : 'bg-white'
                 }`}
               >
                 <Link
-                  to={NOTIFICATION_ROUTE[row.event as NotificationEventName] ?? '/'}
-                  className="block"
+                  to={NOTIFICATION_ROUTE[event] ?? '/'}
+                  className="flex items-start gap-3 p-3"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm text-ppme-text">
-                      {t(
-                        copyKeyFor(row.event as NotificationEventName, context),
-                        copyValuesFor(childName, context),
-                      )}
-                    </p>
-                    {row.read_at === null && (
-                      <span
-                        aria-hidden
-                        className="mt-1 h-2 w-2 shrink-0 rounded-full bg-ppme-primary"
-                      />
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-ppme-text/50">
-                    {dateFormatter.format(new Date(row.created_at))}
-                  </p>
+                  {/* Tone before text: the review's central finding was
+                      that an absence and a finished jilid looked
+                      identical, so the palette does the work the copy
+                      cannot do at a glance. See eventStyle.ts. */}
+                  <span
+                    aria-hidden
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                      TONE_CLASS[EVENT_TONE[event]]
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-5 w-5"
+                    >
+                      <path d={EVENT_ICON_PATH[event]} />
+                    </svg>
+                  </span>
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-ppme-text">
+                      {t(copyKeyFor(event, context), copyValuesFor(childName, context))}
+                    </span>
+                    <span className="mt-1 block text-xs text-ppme-text/50">
+                      {dateFormatter.format(new Date(row.created_at))}
+                    </span>
+                  </span>
+
+                  {unread && (
+                    <span
+                      aria-hidden
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-ppme-primary"
+                    />
+                  )}
                 </Link>
               </li>
             )
