@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { sendEmail } from './lib/email'
+import { invitationEmail } from './lib/emailTemplates'
 
 const VALID_ROLES = ['admin', 'tutor', 'parent', 'student'] as const
 type UserRole = (typeof VALID_ROLES)[number]
@@ -118,8 +120,47 @@ export default async (req: Request) => {
     )
   }
 
-  return new Response(JSON.stringify({ id: invited.user.id, email }), {
-    status: 201,
-    headers: { 'content-type': 'application/json' },
+  // ── The branded invitation email (ADR-018) ────────────────────────
+  // Deliberately *after* the profile insert and deliberately unable to
+  // affect it. The account exists at this point; an email is a courtesy
+  // on top, exactly as a push notification is, and the same rule
+  // applies — a mail provider having a bad minute must not turn a
+  // successful invite into a failed one. `sendEmail` never throws, and
+  // its result is reported rather than acted on.
+  //
+  // One call site, four roles: the template is chosen by `role`, so a
+  // tutor is invited to record a class's work and a parent to follow
+  // their child, without four separate integrations.
+  //
+  // `locale` is the freshly-created row's default (`id`) — this is the
+  // one email in the system sent before its recipient has ever had a
+  // chance to choose a language. Every later email will read
+  // `users.locale`, which is why `invitationEmail` takes it rather than
+  // assuming.
+  const invitation = invitationEmail({
+    role: role as UserRole,
+    locale: 'id',
+    fullName,
+    email,
   })
+  const emailResult = await sendEmail({
+    to: email,
+    subject: invitation.subject,
+    html: invitation.html,
+    text: invitation.text,
+  })
+  if (emailResult.status !== 'sent') {
+    console.warn(`invite-user: invitation email not sent (${emailResult.status}) for ${role}`)
+  }
+
+  return new Response(
+    JSON.stringify({
+      id: invited.user.id,
+      email,
+      // Surfaced so an admin screen can eventually say "invited, but the
+      // welcome email did not go out" instead of implying both worked.
+      invitation_email: emailResult.status,
+    }),
+    { status: 201, headers: { 'content-type': 'application/json' } },
+  )
 }
