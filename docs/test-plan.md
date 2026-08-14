@@ -190,8 +190,9 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 
 | Case | Android Chrome | iOS Safari (16.4+, installed to home screen) | Desktop Chrome |
 |---|---|---|---|
-| Permission prompt & subscribe | ☐ | ☐ | ☑ |
-| Absence push received | ☐ | ☐ | ☑ |
+| Permission prompt & subscribe | ☑ | ☐ | ☑ |
+| Notification shows the PPME mark, not a white block or Chrome's logo | ☐ | ☐ | ☑ |
+| Absence push received | ☑ | ☐ | ☑ |
 | Milestone push received | ☐ | ☐ | ☑ |
 | New-homework push received (class fan-out) | ☐ | ☐ | ☑ |
 | Report-ready push received (parent + 16+ student) | ☐ | ☐ | ☑ |
@@ -209,8 +210,19 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
 | Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
 
-**Android Chrome and iOS Safari are unverified, and are not being recorded
-as anything else.** No physical Android or iOS device is available to this
+**Two Android rows are now ticked, from a real device.** A reviewer with an
+Android phone ran the permission prompt, subscribed, and received a real
+absence push over a local HTTPS origin (a LAN cert, so the origin is a
+secure context — plain `http://<lan-ip>` is not, and neither the service
+worker nor `crypto.subtle` is available there). That run is also what
+caught the notification badge: Android masks the badge slot by its alpha
+channel, so the opaque `icon-192.png` it pointed at rendered as a white
+block, and where the browser fell back it showed Chrome's own logo. Fixed
+with a transparent silhouette (`icons/badge-96.png`); **the fix itself is
+not yet confirmed on the device**, so that row stays unticked until it is.
+
+**The rest of Android, and all of iOS Safari, are still unverified, and are
+not being recorded as anything else.** No physical Android or iOS device is available to this
 project, and both columns need one — iOS especially, since its whole point
 is behaviour that only appears after "Add to Home Screen", which cannot be
 emulated. Someone with a phone needs to run those two columns before

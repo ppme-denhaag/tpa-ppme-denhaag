@@ -474,6 +474,14 @@ Two things not to undo:
 - **The square icons carry the globe mark alone**, cropped out of the
   artwork — letterboxing a 1.93:1 wordmark into a square is what made the
   previous icon set unreadable at 48px. Never stretch the wordmark square.
+- **The notification badge is a transparent silhouette, not an icon.**
+  `public/icons/badge-96.png` is what Android draws in the status bar, and
+  Android *masks it by its alpha channel* — colours are discarded and
+  whatever is opaque is repainted in the system tint. Pointing that slot at
+  `icon-192.png`, which is an opaque square, renders a plain white block;
+  leaving it unset makes the browser fall back to Chrome's own logo. Both
+  were true on a real phone until it was tested on one. Regenerate it with
+  the brand script like every other asset, and keep it monochrome.
 - **The PDF header logo is inlined as base64, not shipped as a file.** A
   bundled Netlify Function resolves runtime file paths differently under
   `netlify dev` than on deployed Netlify, and that difference would only ever
