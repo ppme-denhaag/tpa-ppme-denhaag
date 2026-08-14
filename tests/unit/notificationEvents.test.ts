@@ -111,3 +111,34 @@ describe('copyValuesFor', () => {
     expect(copyValuesFor('Zainab Rahman', { name: 'Stale' })).toEqual({ name: 'Zainab' })
   })
 })
+
+describe('notification centre presentation (design review)', () => {
+  it('gives every event a tone and an icon', async () => {
+    const { EVENT_TONE, EVENT_ICON_PATH, TONE_CLASS } = await import(
+      '../../src/features/notifications/eventStyle'
+    )
+    for (const event of NOTIFICATION_EVENTS) {
+      expect(EVENT_TONE[event], `tone for ${event}`).toBeDefined()
+      expect(TONE_CLASS[EVENT_TONE[event]], `class for ${event}`).toBeTruthy()
+      expect(EVENT_ICON_PATH[event], `icon for ${event}`).toMatch(/^[Mm]/)
+    }
+  })
+
+  it('reserves gold for the celebration events, and nothing else', async () => {
+    // Checklist §5: the accent is *reserved* for achievement moments —
+    // the Murajaah streak and the "Sudah Hafal" badges. The notification
+    // centre carries the only other celebration content in the app, and
+    // must not spend gold anywhere else.
+    const { EVENT_TONE } = await import('../../src/features/notifications/eventStyle')
+    const celebration = NOTIFICATION_EVENTS.filter((e) => EVENT_TONE[e] === 'celebration')
+    expect(celebration.sort()).toEqual(['jilidMilestone', 'surahMemorized'])
+  })
+
+  it('marks the absence as the only alert', async () => {
+    // Danger red is specified for "absence markers, overdue items". A
+    // homework reminder is not an alert; making it one would spend the
+    // colour that has to still mean something when a child is missing.
+    const { EVENT_TONE } = await import('../../src/features/notifications/eventStyle')
+    expect(NOTIFICATION_EVENTS.filter((e) => EVENT_TONE[e] === 'alert')).toEqual(['absence'])
+  })
+})
