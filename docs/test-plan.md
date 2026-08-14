@@ -207,6 +207,7 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | Dedup: same event twice → one notification | ☐ | ☐ | ☑ |
 | iOS not-installed state → graceful explanation, no broken prompt | — | ☐ | — |
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
+| **Installed** PWA: notification is attributed to "TPA PPME Den Haag", not to Chrome | ☐ | ☐ | n/a |
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
 | Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
 

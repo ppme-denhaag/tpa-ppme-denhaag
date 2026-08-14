@@ -474,6 +474,16 @@ Two things not to undo:
 - **The square icons carry the globe mark alone**, cropped out of the
   artwork — letterboxing a 1.93:1 wordmark into a square is what made the
   previous icon set unreadable at 48px. Never stretch the wordmark square.
+- **A notification says "Chrome" until the app is installed.** Android
+  attributes a web push to whichever app delivered it, and there is no API
+  for a site to override that — the payload cannot change it. It changes on
+  its own once the PWA is *installed*: Chrome mints a WebAPK from the
+  manifest, and that WebAPK owns its notifications, so the shade shows the
+  app's own name and icon. This only works on a **publicly reachable HTTPS
+  origin**, because Google's WebAPK service has to fetch the manifest and
+  icons itself — on a LAN address behind a private CA, "Add to Home Screen"
+  degrades to a plain shortcut and the attribution stays Chrome. So this is
+  only testable on a real deploy, never on the local review stack.
 - **The notification badge is a transparent silhouette, not an icon.**
   `public/icons/badge-96.png` is what Android draws in the status bar, and
   Android *masks it by its alpha channel* — colours are discarded and
