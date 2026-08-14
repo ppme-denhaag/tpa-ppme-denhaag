@@ -5,12 +5,13 @@ import { useMyStudents } from '../../hooks/useMyStudents'
 import { ChildPicker } from '../../components/ChildPicker'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
-import { isStreakCurrent } from '../../lib/murajaah'
+import { computeBestStreak, computeStreak, isStreakCurrent } from '../../lib/murajaah'
 import type { Database } from '../../lib/database.types'
 import {
   confirmPractice,
   fetchAllLogsForAssignments,
   fetchAssignmentsForStudent,
+  localDate,
   todayLocalDate,
   type MurajaahAssignment,
   type MurajaahLog,
@@ -159,7 +160,21 @@ export function FamilyMurajaahView() {
             )
             const latest = assignmentLogs[0] ?? null
             const confirmedToday = isStreakCurrent(latest?.date ?? null, today)
-            const bestStreak = assignmentLogs.reduce((max, l) => Math.max(max, l.streak_count), 0)
+            // Derived on read rather than read from a column — ADR-016,
+            // and `src/lib/murajaah.ts` for why the column is gone. The
+            // unit is the target's own `frequency`, so a `3x_week` card
+            // counts weeks and says so.
+            const streakInput = {
+              logDates: assignmentLogs.map((log) => log.date),
+              frequency: assignment.frequency,
+              today,
+              since: localDate(new Date(assignment.created_at)),
+            }
+            const streak = computeStreak(streakInput)
+            const bestStreak = computeBestStreak(streakInput)
+            const unitKey = assignment.frequency === 'daily' ? 'murajaah.streak' : 'murajaah.streakWeeks'
+            const bestKey =
+              assignment.frequency === 'daily' ? 'murajaah.bestStreak' : 'murajaah.bestStreakWeeks'
 
             return (
               <AssignmentCard key={assignment.id} assignment={assignment} surahs={surahs}>
@@ -167,18 +182,20 @@ export function FamilyMurajaahView() {
                   {latest && (
                     <div>
                       <p className="text-2xl font-bold text-ppme-accent">
-                        {latest.streak_count} {t('murajaah.streak')}
+                        {streak} {t(unitKey)}
                       </p>
-                      {confirmedToday ? (
+                      {streak > 0 && confirmedToday ? (
                         <p className="text-xs text-ppme-text/50">{t('murajaah.streakEncourage')}</p>
                       ) : (
                         <p className="text-xs text-ppme-text/40">
-                          {dateFormatter.format(new Date(`${latest.date}T00:00:00`))}
+                          {t('murajaah.lastConfirmed', {
+                            date: dateFormatter.format(new Date(`${latest.date}T00:00:00`)),
+                          })}
                         </p>
                       )}
-                      {bestStreak > latest.streak_count && (
+                      {bestStreak > streak && (
                         <p className="text-xs text-ppme-text/50">
-                          {t('murajaah.bestStreak', { count: bestStreak })}
+                          {t(bestKey, { count: bestStreak })}
                         </p>
                       )}
                     </div>

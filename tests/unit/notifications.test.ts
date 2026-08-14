@@ -66,6 +66,7 @@ describe('DPIA risk R6 — lock-screen content limits', () => {
       locale: 'id',
       childFullName: 'Yusuf Rahman Abdullah',
       recipientUserId: 'u1',
+      studentId: 'child-1',
       date: '2026-03-10',
     })
     expect(payload.body).toContain('Yusuf')
@@ -93,6 +94,7 @@ describe('DPIA risk R6 — lock-screen content limits', () => {
       locale: 'nl',
       childFullName: 'Yusuf Rahman',
       recipientUserId: 'u1',
+      studentId: 'child-1',
       date: '2026-03-10',
     })
     const serialized = JSON.stringify(payload)
@@ -109,24 +111,32 @@ describe('DPIA risk R6 — lock-screen content limits', () => {
         locale: 'id',
         childFullName: 'Yusuf',
         recipientUserId: 'u1',
+        studentId: 'child-1',
         date: '2026-03-10',
       })
-      expect(url, event).toMatch(/^\/[a-z]+$/)
+      // A bare route and nothing else: no query string, no id, no
+      // fragment. `/` is the dashboard, where the weekly digest lands.
+      expect(url, event).toMatch(/^\/[a-z]*$/)
     }
   })
 })
 
 describe('dedup tag (test-plan §4.3)', () => {
-  it('is stable per (user, event type, date)', () => {
-    expect(dedupTag('absence', 'user-1', '2026-03-10')).toBe('absence:user-1:2026-03-10')
-    expect(dedupTag('absence', 'user-1', '2026-03-10')).toBe(dedupTag('absence', 'user-1', '2026-03-10'))
+  it('is stable per (user, event type, child, date)', () => {
+    expect(dedupTag('absence', 'user-1', 'child-1', '2026-03-10')).toBe(
+      'absence:user-1:child-1:2026-03-10',
+    )
+    expect(dedupTag('absence', 'user-1', 'child-1', '2026-03-10')).toBe(
+      dedupTag('absence', 'user-1', 'child-1', '2026-03-10'),
+    )
   })
 
-  it('differs across user, event type and date', () => {
-    const base = dedupTag('absence', 'user-1', '2026-03-10')
-    expect(dedupTag('absence', 'user-2', '2026-03-10')).not.toBe(base)
-    expect(dedupTag('murajaahReminder', 'user-1', '2026-03-10')).not.toBe(base)
-    expect(dedupTag('absence', 'user-1', '2026-03-11')).not.toBe(base)
+  it('differs across user, event type, child and date', () => {
+    const base = dedupTag('absence', 'user-1', 'child-1', '2026-03-10')
+    expect(dedupTag('absence', 'user-2', 'child-1', '2026-03-10')).not.toBe(base)
+    expect(dedupTag('murajaahReminder', 'user-1', 'child-1', '2026-03-10')).not.toBe(base)
+    expect(dedupTag('absence', 'user-1', 'child-2', '2026-03-10')).not.toBe(base)
+    expect(dedupTag('absence', 'user-1', 'child-1', '2026-03-11')).not.toBe(base)
   })
 
   it('is carried on the payload the browser sees', () => {
@@ -135,21 +145,27 @@ describe('dedup tag (test-plan §4.3)', () => {
       locale: 'id',
       childFullName: 'Yusuf',
       recipientUserId: 'user-1',
+      studentId: 'child-1',
       date: '2026-03-10',
     })
-    expect(payload.tag).toBe('absence:user-1:2026-03-10')
+    expect(payload.tag).toBe('absence:user-1:child-1:2026-03-10')
   })
 
-  it('keeps two children of the same parent on one tag per day', () => {
-    // Known and accepted: the tag is per (user, event, date), so a
-    // parent with two absent children sees one replaced notification,
-    // not two. The tag is the spec's dedup unit (TAD Notification Spec)
-    // and the in-app list — not the lock screen — is where per-child
-    // detail belongs. Pinned here so a future change to the tag shape is
-    // a deliberate one.
-    const a = dedupTag('absence', 'parent-1', '2026-03-10')
-    const b = dedupTag('absence', 'parent-1', '2026-03-10')
-    expect(a).toBe(b)
+  it('gives two children of the same parent two notifications, not one', () => {
+    // The regression this key shape exists to prevent (ADR-016). Same
+    // tag ⇒ the browser replaces rather than stacks, so keying without
+    // the child meant a parent of two absent children was told about
+    // one of them and never knew about the other.
+    const ali = dedupTag('absence', 'parent-1', 'child-ali', '2026-03-10')
+    const zainab = dedupTag('absence', 'parent-1', 'child-zainab', '2026-03-10')
+    expect(ali).not.toBe(zainab)
+  })
+
+  it('still collapses a repeated run for the same child on the same day', () => {
+    // The property the hourly-cron design depends on: re-running is free.
+    expect(dedupTag('murajaahReminder', 'parent-1', 'child-ali', '2026-03-10')).toBe(
+      dedupTag('murajaahReminder', 'parent-1', 'child-ali', '2026-03-10'),
+    )
   })
 })
 
@@ -194,8 +210,8 @@ describe('Amsterdam local time across the DST switch (test-plan §4.1)', () => {
     const secondPass = new Date('2026-10-25T01:30:00Z') // 02:30 CET
     expect(amsterdamHour(firstPass)).toBe(2)
     expect(amsterdamHour(secondPass)).toBe(2)
-    expect(dedupTag('murajaahReminder', 'u1', amsterdamDate(firstPass))).toBe(
-      dedupTag('murajaahReminder', 'u1', amsterdamDate(secondPass)),
+    expect(dedupTag('murajaahReminder', 'u1', 'child-1', amsterdamDate(firstPass))).toBe(
+      dedupTag('murajaahReminder', 'u1', 'child-1', amsterdamDate(secondPass)),
     )
   })
 })
@@ -210,6 +226,10 @@ describe('event coverage', () => {
       'surahMemorized',
       'murajaahReminder',
       'reportReady',
+      // Not in the Spec's own table — it comes from the Scheduler
+      // table's Friday digest, which had no notification defined for it
+      // because the copy it describes cannot go on a lock screen. ADR-016.
+      'weeklyDigest',
     ]
     expect([...NOTIFICATION_EVENTS]).toEqual(expected)
   })

@@ -33,7 +33,7 @@ npm run build                  # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–010, applied in order). The
+Migrations live in `supabase/migrations/` (001–011, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -158,6 +158,9 @@ against the live project in that window and appeared broken.
 | `notify-milestone.mts` | Webhook on `yanbua_progress` (jilid completed — applies `src/lib/yanbua.ts#isJilidComplete`, imported rather than restated) and on `murajaah_assignments.active` going true→false (surah memorized) |
 | `notify-assignment.mts` | Webhook on `assignments`. The one sender that fans out across a whole class: every enrolled student's parent, plus any 16+ student themselves |
 | `notify-report-ready.mts` | Webhook on `year_end_reports.status` reaching `published` (PRD FR-007). Deliberately not called from inside `publish-report`, so a push failure can never affect whether a report published |
+| `send-murajaah-reminders.mts` | **Scheduled**, hourly, acting in the 18:00 Europe/Amsterdam hour (PRD FR-006). Reminds a family only on the last day their target's `frequency` can still be met — see `needsReminder` in `src/lib/murajaah.ts` |
+| `homework-due-reminders.mts` | **Scheduled**, hourly, acting at 08:00 Europe/Amsterdam (PRD FR-005). Assignments due *tomorrow*, across each class roster, skipping students who already marked it `completed` |
+| `weekly-progress-digest.mts` | **Scheduled**, hourly, acting at 08:00 on a Friday in Europe/Amsterdam. Parents of any child with activity this week; the summary itself is on the dashboard, because DPIA R6 will not have an attendance figure on a lock screen |
 
 All use the Netlify Functions v2 API (default export, Web-standard
 `Request`/`Response`) and are typechecked separately from the main app
@@ -226,6 +229,27 @@ browser needs it to subscribe and only `VITE_`-prefixed vars reach the
 client bundle. **Rotating the pair invalidates every stored
 subscription**: every family has to re-enable notifications, silently,
 so generate once per environment and keep it.
+
+### Scheduled Functions
+
+The three `config.schedule` Functions all run on `0 * * * *` and decide
+for themselves whether it is their hour in `Europe/Amsterdam`. Netlify
+cron is UTC-only, so a fixed `0 17 * * *` would be 18:00 in winter and
+19:00 through the whole CEST summer term — the entire TPA summer. The
+gate resolves the offset from the runtime's IANA database
+(`isAmsterdamHour`), so it needs no seasonal edit and cannot drift.
+
+Cost: 24 invocations a day each, 72 total. 23 of every 24 return before
+opening a database connection.
+
+They authenticate nothing, and are built so they do not need to — TAD
+ADR-016(d). Netlify's scheduler cannot attach a shared secret, so
+requiring one would mean the job never running. Instead they read
+*nothing* from the request, do nothing outside their hour, return counts
+rather than dedup tags, and send nothing new on a repeat run. **Do not
+add a request-derived input to one of these** without revisiting that
+reasoning; see also the `netlify dev` note above, where they are plain
+HTTP endpoints.
 
 ### Database webhooks
 
@@ -309,8 +333,12 @@ Also note the browser's push service (FCM for Chrome) will quietly
 **throttle repeated registrations** from one host — `pushManager.subscribe()`
 then never settles rather than rejecting. If a run hangs at the subscribe
 step, wait a few minutes rather than hunting for a bug in the app. The
-app itself bounds that wait and shows a "push service is not responding"
-message instead of spinning forever.
+app itself bounds that wait (60s, `SUBSCRIBE_TIMEOUT_MS` in
+`src/lib/push.ts`) and shows a "push service is not responding" message
+instead of spinning forever. That bound was 30s until a subscription FCM
+served perfectly well was measured taking **32 seconds** — so if you
+lower it, you are choosing to tell families the feature is broken on a
+slow day. If you raise it, raise the harness's own wait with it.
 
 **Do not add a `config.path` export to a v2 Function that just restates its
 own default route** (`/.netlify/functions/<name>`) — confirmed on
@@ -319,6 +347,35 @@ makes local `netlify dev` refuse to match its own declared path and 404
 every request, while working fine on real deployed Netlify. Both existing
 functions omit it for this reason; only add `config.path` for an actually
 different custom path.
+
+**A scheduled Function is an ordinary HTTP endpoint under `netlify dev`.**
+Confirmed on `netlify-cli` 27.1.1: the three jobs with `config.schedule`
+(`send-murajaah-reminders`, `homework-due-reminders`,
+`weekly-progress-digest`) are listed at startup like any other function,
+and `curl` reaches them at `/.netlify/functions/<name>` on both GET and
+POST — despite `@netlify/functions`' own types describing a scheduled
+function as "Not reachable via HTTP". The cron itself does **not** run
+locally; nothing fires on its own. `netlify functions:invoke <name>`
+works too and goes to the same handler.
+
+Two consequences worth knowing before you change one of these:
+
+- Locally there is nothing in front of them. That is a stated reason
+  they read *nothing* from the request and return only counts, never a
+  dedup tag — a tag carries a user id and a student id (TAD ADR-016).
+  Keep it that way.
+- They will not do anything useful when you curl them, because 23 hours
+  out of 24 the Europe/Amsterdam gate returns `{"skipped": "not 18:00
+  in Europe/Amsterdam"}`. To actually exercise one, move the clock from
+  outside:
+
+  ```bash
+  node scripts/invoke-scheduled.mjs send-murajaah-reminders 2026-08-14T16:00:00Z
+  ```
+
+  That bundles the Function with esbuild exactly as Netlify does, pins
+  the clock and calls the handler in process. There is deliberately no
+  test hook inside the Function for this.
 
 ## Roles
 

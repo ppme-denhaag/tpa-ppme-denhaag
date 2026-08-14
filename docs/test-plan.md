@@ -98,11 +98,17 @@ assertions.*
 ## 4. Unit tests (Vitest)
 
 ### 4.1 Streak logic
-- Consecutive daily confirmations increment streak (1→2→3)
-- Gap of 1 day resets streak to 1
-- `confirmed_today` boolean correct across CET/CEST midnight (test with fixed timezones around DST switch: last Sunday of March & October). **The timezone half of this is done** — `amsterdamDate`/`amsterdamHour`/`isAmsterdamHour` (`netlify/functions/lib/notifications.ts`) are tested on both 2026 switchover Sundays, on a CET date and a CEST date, and across the repeated 02:00–03:00 hour in autumn, which is the case that can fire a reminder twice. The streak logic that uses them is still to come with `calculate-streak-resets`
-- Best-streak derivation from log history
-- **3x_week / weekly frequency:** define expected behavior first (open design point flagged in migration 002), then test scheduled-period counting
+All done as of Milestone 7 part 2b, against `computeStreak` in
+`src/lib/murajaah.ts` — a pure function over log dates, since migration
+011 dropped the stored `streak_count` (TAD ADR-016(a)).
+
+- [x] Consecutive daily confirmations increment streak (1→2→3)
+- [x] Gap of 1 day resets streak to 1 — specifically to **0**, not 1: a day that is over and was missed ends the run (PRD AC-003). Today being unconfirmed does *not* break it, because today is not over
+- [x] `confirmed_today` boolean correct across CET/CEST midnight. Both halves now done: `amsterdamDate`/`amsterdamHour`/`isAmsterdamHour`/`amsterdamWeekday` are tested on both 2026 switchover Sundays, on a CET date and a CEST date, and across the repeated 02:00–03:00 hour in autumn; and `computeStreak` itself is tested across both switchovers plus a month and year boundary, on date strings whose arithmetic never touches the host timezone
+- [x] Best-streak derivation from log history (`computeBestStreak`), including that a still-running streak counts and an unconfirmed today does not end it
+- [x] **3x_week / weekly frequency:** behaviour defined first (ADR-016(a)), then tested. The unit of a streak is the period the frequency asks for — a Mon–Sun week needing three confirmations for `3x_week`, one for `weekly` — so a `3x_week` target confirmed Mon/Wed/Fri every week is a run of *weeks*, which the old day-counting trigger scored as 1
+- [x] **Assignment created mid-week:** the week a target is assigned in asks only for as many confirmations as there were days to give them, never fewer than one, and weeks before the target existed are not counted
+- [x] **Reminder rule** (`needsReminder`, what `send-murajaah-reminders` decides on): remind on the last day the frequency can still be met — every unconfirmed evening for `daily`, Friday-if-none/Sunday-if-two for `3x_week`, Sunday for `weekly` — and stay quiet for a family on track
 
 ### 4.2 Milestone detection
 - [x] Yanbu'a entry at page == jilid page_count with mastery `lancar` → jilid-complete event fires
@@ -119,11 +125,11 @@ exercised live: a completing entry produces a push, and a last page at
 
 ### 4.3 Notification payload builder
 
-*Implemented in `tests/unit/notifications.test.ts` (17 assertions).*
+*Implemented in `tests/unit/notifications.test.ts` (20 assertions).*
 
-- [x] Absence, new-assignment, due-tomorrow, milestone, reminder payloads render correctly in **both locales** based on recipient's `users.locale` — all seven event types are built and tested, though only `absence` has a sender wired to it so far (TAD ADR-015 part 1)
+- [x] Absence, new-assignment, due-tomorrow, milestone, reminder, report-ready and weekly-digest payloads render correctly in **both locales** based on recipient's `users.locale` — all eight event types are built, tested, and have a sender wired to them (TAD ADR-015 part 2b)
 - [x] Payload contains first name only, no progress details (DPIA risk R6). Asserted three ways: a full name is reduced to its first token; a serialized payload contains none of a set of sample reasons, grades and positions; and — the one that will still hold when someone adds an event type in a year — every string under `notifications.push` is rejected if it interpolates any placeholder other than `{{name}}`. The builder's own signature is the primary control: it accepts no field that *could* carry a reason or a grade
-- [x] Dedup tag generated per (user, event-type, date), and differs when any of the three differs
+- [x] Dedup tag generated per (user, event-type, **child**, date), and differs when any of the four differs. The child was added in ADR-016(f): without it, two siblings shared a tag and the browser showed one notification instead of two. Asserted both ways — two siblings get distinct tags, and a repeated run for the same child on the same day still collapses, which is what the hourly cron depends on
 - [x] Known and pinned: the tag being per (user, event, date) means a parent with two children absent on one day sees one notification, not two. That is the spec's dedup unit; per-child detail belongs in the in-app list (part 3), not on a lock screen
 - [x] Deep-link URLs carry no data of their own
 
@@ -174,7 +180,10 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | Milestone push received | ☐ | ☐ | ☑ |
 | New-homework push received (class fan-out) | ☐ | ☐ | ☑ |
 | Report-ready push received (parent + 16+ student) | ☐ | ☐ | ☑ |
-| Scheduled reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | n/a — not built (ADR-015 part 2b) |
+| Scheduled Murajaah reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | ☑ |
+| Scheduled homework-due reminder at 08:00 local | ☐ | ☐ | ☑ |
+| Weekly digest, Friday 08:00 local, and the dashboard summary it links to | ☐ | ☐ | ☑ |
+| Two children absent → two notifications, one per child (ADR-016(f)) | ☐ | ☐ | ☑ |
 | Dedup: same event twice → one notification | ☐ | ☐ | ☑ |
 | iOS not-installed state → graceful explanation, no broken prompt | — | ☐ | — |
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
@@ -194,8 +203,9 @@ the platform being tested.
 **Desktop Chrome is genuinely run**, not inspected: `scripts/verify-push.mjs`
 drives three real Chromium profiles (a parent with two children in one class,
 a second family in the same class, and a 16+ student with their own account)
-against a real push service, and asserts on what each browser displayed. 63
-checks, currently all passing. Beyond the ticked rows above it also covers:
+against a real push service, and asserts on what each browser displayed. 104
+checks, currently all passing (63 before part 2b). Beyond the ticked rows
+above it also covers:
 
 - the subscription is stored, with exactly the three fields we use
 - **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property). Checked on every event type, and hardest on the class fan-out: one assignment notifies both families in the class, each naming only their own child
@@ -209,13 +219,21 @@ checks, currently all passing. Beyond the ticked rows above it also covers:
 - zero console errors and zero failed requests, for both parents, the 16+ student, tutor and admin
 - non-recipient roles (tutor, admin) are told plainly that they receive nothing, and are offered no toggle
 - endpoint authorization: `push-subscribe` 403s a tutor and an admin, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
+- **two children, two notifications** — a parent whose children are both absent receives one notification per child, on distinct tags. This is the regression ADR-016(f) fixed: keyed without the child, the second replaced the first and the parent was told about one of them
+- **the three scheduled Functions, driven at a chosen instant** by `scripts/invoke-scheduled.mjs`, which pins the clock from outside the process (there is deliberately no test hook inside the Function). For each: the Europe/Amsterdam gate opens at 18:00 local on a **CET** date and at 18:00 local on a **CEST** date — an hour apart in UTC — and the same 17:00 UTC that is 18:00 in winter is correctly refused as 19:00 in summer; the **second, idempotent run** reports the same sends and adds no notification; a family already on track, a morning with nothing due, and a week with no activity each send nothing; a student who has marked homework `completed` drops out of the run; the Friday digest refuses a Thursday and refuses 09:00
+- **the scheduled Functions disclose nothing to an unauthenticated caller.** They carry no shared secret — Netlify's scheduler cannot send one — and under `netlify dev` they answer plain HTTP. Asserted: a hostile POST naming another family's child gets a response containing no dedup tags and no identifiers, and the posted body is not read at all (ADR-016(d)/(e))
 
 Two things that harness learned the hard way, both written into the README:
 Playwright's default headless shell has no push implementation at all
 (`Notification.permission` is permanently `denied`), so it must launch
 with `channel: 'chromium'`; and FCM throttles repeated registrations from
 one host, after which `pushManager.subscribe()` stops settling rather than
-rejecting — which is what prompted bounding that wait in the app.
+rejecting — which is what prompted bounding that wait in the app. Part 2b
+added a third: that bound must be set against FCM's real latency, not a
+guess. At 30s it was rejecting subscriptions FCM went on to serve — one
+was measured taking **32 seconds** — so a family on a slow day was shown
+"the push service is not responding" for something that worked. It is
+60s now, and the harness waits longer than the app does.
 
 ## 7. i18n completeness (automated)
 

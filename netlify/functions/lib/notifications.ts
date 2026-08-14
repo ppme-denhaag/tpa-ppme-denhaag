@@ -28,6 +28,7 @@ export const NOTIFICATION_EVENTS = [
   'surahMemorized',
   'murajaahReminder',
   'reportReady',
+  'weeklyDigest',
 ] as const
 
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number]
@@ -46,6 +47,12 @@ const EVENT_URL: Record<NotificationEvent, string> = {
   surahMemorized: '/murajaah',
   murajaahReminder: '/murajaah',
   reportReady: '/reports',
+  // The dashboard, where the week the digest is about is actually
+  // written out. R6 keeps the attendance figure off the lock screen, so
+  // the notification exists to send the family somewhere it can be read
+  // — which means that somewhere has to exist. See ADR-016 and
+  // `src/features/dashboard/WeeklySummary.tsx`.
+  weeklyDigest: '/',
 }
 
 const COPY: Record<Locale, { app: { name: string }; notifications: { push: Record<string, string> } }> = {
@@ -85,6 +92,8 @@ export interface PayloadInput {
   childFullName: string
   /** Recipient's `users.id`, for the dedup tag. */
   recipientUserId: string
+  /** The child's `students.id`, for the dedup tag. Never rendered. */
+  studentId: string
   /** Europe/Amsterdam calendar date (YYYY-MM-DD) — see `amsterdamDate`. */
   date: string
 }
@@ -98,7 +107,7 @@ export interface PushPayload {
 }
 
 /**
- * Dedup tag, per (user, event type, date) — test-plan §4.3.
+ * Dedup tag, per (user, event type, **child**, date) — test-plan §4.3.
  *
  * Two jobs. In the browser, a repeat notification with the same tag
  * replaces the earlier one instead of stacking, so a family sees one
@@ -106,9 +115,28 @@ export interface PushPayload {
  * server it is the idempotency key that makes an hourly scheduled
  * Function safe to run more than once in a day (TAD ADR-015's DST
  * approach depends on exactly this).
+ *
+ * The child is in the key, and was not in part 1's version. Keyed on
+ * (user, event, date) alone, a parent of two children who were both
+ * absent received *one* notification naming *one* of them, because the
+ * second replaced the first on the lock screen — silently, with no way
+ * for the parent to know a notification had been swallowed. Part 1
+ * recorded that as accepted, which it should not have been: it is a
+ * parent not being told their child was missing from class. Part 2b's
+ * scheduled senders fan out per child by design (a whole class's
+ * homework, every family's weekly digest), so it would have stopped
+ * being an edge case. Adding the child narrows the key, so every
+ * idempotency property it had is preserved: the same child, the same
+ * event, on the same local date is still exactly one notification
+ * however many times the hourly cron fires. TAD ADR-016.
  */
-export function dedupTag(event: NotificationEvent, recipientUserId: string, date: string): string {
-  return `${event}:${recipientUserId}:${date}`
+export function dedupTag(
+  event: NotificationEvent,
+  recipientUserId: string,
+  studentId: string,
+  date: string,
+): string {
+  return `${event}:${recipientUserId}:${studentId}:${date}`
 }
 
 function interpolate(template: string, name: string): string {
@@ -125,7 +153,7 @@ export function buildPayload(input: PayloadInput): PushPayload {
   return {
     title: COPY[input.locale].app.name,
     body: pushBody(input.event, input.locale, input.childFullName),
-    tag: dedupTag(input.event, input.recipientUserId, input.date),
+    tag: dedupTag(input.event, input.recipientUserId, input.studentId, input.date),
     url: EVENT_URL[input.event],
     icon: '/icons/icon-192.png',
   }
@@ -170,4 +198,17 @@ export function amsterdamHour(now: Date = new Date()): number {
 /** True when `now` falls in the given Amsterdam local hour (0–23). */
 export function isAmsterdamHour(targetHour: number, now: Date = new Date()): boolean {
   return amsterdamHour(now) === targetHour
+}
+
+/**
+ * Amsterdam local day of week, 0 = Sunday … 6 = Saturday.
+ *
+ * Derived from `amsterdamDate` rather than from a locale-formatted
+ * weekday name, so it cannot drift with the runtime's locale data — and
+ * so "Friday" means the Friday the family is living in, not UTC's. Used
+ * by `weekly-progress-digest`, whose 08:00 gate falls on the wrong side
+ * of midnight in UTC for part of the year.
+ */
+export function amsterdamWeekday(now: Date = new Date()): number {
+  return new Date(`${amsterdamDate(now)}T00:00:00Z`).getUTCDay()
 }

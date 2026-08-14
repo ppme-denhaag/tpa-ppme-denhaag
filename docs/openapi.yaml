@@ -380,7 +380,10 @@ paths:
       summary: Confirm daily practice (Parent only, own children)
       description: |
         One confirmation per assignment per calendar day (unique constraint).
-        `streak_count` is computed server-side by trigger — clients must not send it.
+        There is no streak column to send: `murajaah_log.streak_count` and its
+        trigger were dropped in migration 011. The streak is derived from the
+        log at read time, in the period the target's `frequency` asks for, by
+        `computeStreak` in `src/lib/murajaah.ts` (TAD ADR-016).
       requestBody:
         required: true
         content:
@@ -851,10 +854,102 @@ paths:
         '405': { description: Method other than POST }
         '502': { description: The push service rejected the send }
 
+  /send-murajaah-reminders:
+    post:
+      tags: [functions]
+      summary: Evening Murajaah reminders — SCHEDULED (BUILT, TAD ADR-016)
+      description: |
+        Netlify Scheduled Function, cron `0 * * * *`, acting only in the 18:00
+        hour in Europe/Amsterdam. Invoked by Netlify's scheduler, never by a
+        client — and by nothing else in production, where the platform does not
+        route HTTP to a scheduled function. Under `netlify dev` it *is* an
+        ordinary endpoint (README), which is part of why it is built the way it
+        is:
+
+        - It reads **nothing** from the request — no body, no query, no header.
+          Every input comes from the database and the clock.
+        - Outside its hour it returns before opening a database connection.
+        - The response carries counts only, never dedup tags, which would each
+          disclose a user id and a student id (ADR-016(e)).
+        - Every notification is idempotent per (recipient, event, child, local
+          date), so a repeat run sends nothing new.
+
+        Reminds a family only on the last day the target's `frequency` can still
+        be met — `daily` every unconfirmed evening, `3x_week` once the days left
+        in the week drop to the confirmations still owed, `weekly` on Sunday.
+      responses:
+        '200':
+          description: |
+            Delivery counts, or a `skipped` reason when the local-time gate is
+            closed or there was nothing to send.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledResult' }
+        '500': { description: Missing Supabase service credentials, or the job failed }
+
+  /homework-due-reminders:
+    post:
+      tags: [functions]
+      summary: "\"Homework due tomorrow\" reminders — SCHEDULED (BUILT, TAD ADR-016)"
+      description: |
+        Netlify Scheduled Function, cron `0 * * * *`, acting only in the 08:00
+        hour in Europe/Amsterdam. Same authorization shape as
+        `/send-murajaah-reminders` above.
+
+        Covers every class with an assignment due *tomorrow*, and skips any
+        student whose `assignment_status` for it is already `completed`.
+        Addressed to the parent and, for a 16+ self-login student, to them too.
+      responses:
+        '200':
+          description: Delivery counts, or a `skipped` reason.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledResult' }
+        '500': { description: Missing Supabase service credentials, or the job failed }
+
+  /weekly-progress-digest:
+    post:
+      tags: [functions]
+      summary: Friday weekly digest — SCHEDULED (BUILT, TAD ADR-016)
+      description: |
+        Netlify Scheduled Function, cron `0 * * * *`, acting only in the 08:00
+        hour on a **Friday** in Europe/Amsterdam. Same authorization shape as
+        `/send-murajaah-reminders` above.
+
+        Sent to parents of any child with activity in the current Mon–Sun week;
+        a week with no attendance, no Yanbu'a or Quran entry and no Murajaah
+        confirmation sends nothing, which is the normal case over a school
+        holiday.
+
+        The payload says only that a summary is ready. The attendance percentage
+        and progress counts the Scheduler table describes are in the app, on the
+        dashboard — DPIA R6 does not allow them on a lock screen (ADR-016(g)).
+      responses:
+        '200':
+          description: Delivery counts, or a `skipped` reason.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledResult' }
+        '500': { description: Missing Supabase service credentials, or the job failed }
+
   /streak-status:
     get:
       tags: [functions]
-      summary: Current streak for a student's Murajaah assignment — NOT BUILT (TAD ADR-015 part 2, with `calculate-streak-resets`)
+      summary: Current streak for a Murajaah target — NOT BUILT, and superseded (TAD ADR-016(c))
+      description: |
+        Kept in this document as a decision, not a plan.
+
+        It would return an integer the caller can already compute. Every screen
+        that shows a streak (`FamilyMurajaahView`, `TutorOverviewView`) fetches
+        the confirmation history anyway, and runs `computeStreak`
+        (`src/lib/murajaah.ts`) over it — the same function
+        `send-murajaah-reminders` uses, so the number on the family's screen and
+        the number the reminder protects cannot disagree. An endpoint would add a
+        network round trip, a second authorization path and a second
+        implementation of one rule, and buy nothing.
+
+        If PPME ever wants it, it is a thin wrapper over that function plus the
+        `callerAuth` check every other caller-facing Function already has.
       parameters:
         - name: assignment_id
           in: query
@@ -1058,13 +1153,27 @@ components:
             cleared from users.push_sub so later sends do not keep burning a
             request on a dead endpoint.
         failed: { type: integer, description: Sends that failed for some other reason }
-        tags:
-          type: array
-          description: Dedup tag per delivery — `{event}:{user_id}:{YYYY-MM-DD}`
-          items: { type: string }
         skipped:
           type: string
           description: Present instead of a delivery count when nothing was attempted
+      # No `tags`. The dedup tag is `{event}:{user_id}:{student_id}:{YYYY-MM-DD}`,
+      # so returning the list would disclose two internal identifiers per
+      # delivery through a channel whose purpose is to report a number.
+      # `reportable()` in `netlify/functions/lib/notifyStudent.ts` strips them
+      # from every Function's response — TAD ADR-016(e).
+    ScheduledResult:
+      allOf:
+        - $ref: '#/components/schemas/NotifyResult'
+      description: |
+        What a Netlify Scheduled Function returns. Identical to `NotifyResult`,
+        with two extra `skipped` shapes that are the normal case rather than an
+        error — 23 of the 24 daily runs end in the first of them:
+
+        - `{ "skipped": "not 18:00 in Europe/Amsterdam", "hour": 12 }` — the
+          local-time gate is closed. The job returns before opening a database
+          connection.
+        - `{ "skipped": "not the scheduled weekday", "weekday": 4 }` — for the
+          Friday digest.
     UserRole:
       type: string
       enum: [admin, tutor, parent, student]
@@ -1246,7 +1355,6 @@ components:
         confirmed_by: { type: string, format: uuid, description: FK → users.id (parent) }
         quality: { $ref: '#/components/schemas/MurajaahQuality' }
         date: { type: string, format: date }
-        streak_count: { type: integer, readOnly: true, description: computed by DB trigger }
         created_at: { type: string, format: date-time }
     MurajaahLogInsert:
       type: object

@@ -15,6 +15,10 @@
     "santri": "Leerlingen",
     "kelola": "Beheer"
   },
+  "dashboard": {
+    "thisWeek": "Deze week",
+    "attendance": "Aanwezigheid"
+  },
   "auth": {
     "signIn": "Inloggen met Google",
     "signOut": "Uitloggen",
@@ -145,8 +149,11 @@
     "todayTarget": "Doel van vandaag",
     "target": "Murajaah-doel",
     "streak": "dagen op rij",
-    "streakEncourage": "dagen op rij. Ga zo door!",
+    "streakWeeks": "weken op rij",
+    "streakEncourage": "Ga zo door!",
+    "lastConfirmed": "Laatst bevestigd op {{date}}",
     "bestStreak": "Beste record: {{count}} dagen",
+    "bestStreakWeeks": "Beste record: {{count}} weken",
     "confirmDone": "✓ Murajaah voltooid",
     "notConfirmedToday": "Vandaag nog niet bevestigd",
     "thisWeek": "Deze week",
@@ -186,7 +193,8 @@
       "jilidMilestone": "Alhamdulillah! {{name}} heeft een jilid afgerond",
       "surahMemorized": "Alhamdulillah! {{name}} heeft een nieuwe surah gememoriseerd",
       "murajaahReminder": "Tijd voor murajaah met {{name}}",
-      "reportReady": "Jaarrapport van {{name}} is klaar"
+      "reportReady": "Jaarrapport van {{name}} is klaar",
+      "weeklyDigest": "Het weekoverzicht van {{name}} staat klaar"
     },
     "settings": {
       "title": "Meldingsinstellingen",

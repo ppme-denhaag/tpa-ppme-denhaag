@@ -1,6 +1,6 @@
 import { jsonError, jsonOk } from './lib/callerAuth'
 import { amsterdamDate } from './lib/notifications'
-import { notifyStudents } from './lib/notifyStudent'
+import { notifyStudents, reportable } from './lib/notifyStudent'
 import { serviceClient, verifyWebhookSecret } from './lib/webhookAuth'
 
 /**
@@ -77,5 +77,5 @@ export default async (req: Request) => {
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)
-  return jsonOk(result)
+  return jsonOk(reportable(result))
 }
