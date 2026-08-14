@@ -138,6 +138,40 @@ Function), not two rules to keep in step. Both branches are also
 exercised live: a completing entry produces a push, and a last page at
 `kurang_lancar` produces none (§6).*
 
+### 4.2b Transactional email (TAD ADR-018)
+
+*Implemented in `tests/unit/email.test.ts` (16 cases).* **Every test
+injects a fake transport**, so the suite cannot reach a real inbox —
+§1's "no real student data in any test environment, ever" extends to not
+mailing real people while developing.
+
+- [x] The Resend request is shaped correctly: endpoint, bearer key from `process.env`, JSON body, `text` omitted rather than sent empty when there is none
+- [x] A missing `RESEND_API_KEY` returns `not-configured` **and attempts nothing** — the assertion that matters is that no request was made
+- [x] `429` is its own outcome, with the `retry-after` hint parsed, and with a sane result when the header is missing. The free tier is 100/day, 3,000/month, 2/sec, and the per-second limit is the one a class-sized loop would hit
+- [x] An API error surfaces Resend's own message (e.g. the unverified-domain 403), so the deployment prerequisite diagnoses itself
+- [x] **It never throws** — a transport that explodes still resolves to a value, which is what stops a mail failure from taking down its caller
+- [x] The API key never appears in a returned result
+- [x] All four roles × both locales exist, each with `{{app_url}}`; the four role bodies are asserted *different* from each other, since that is the entire reason for keying by role
+- [x] Every placeholder is substituted with none left behind; an unknown placeholder is left intact rather than blanked
+- [x] Locale comes from the recipient and falls back to `id` rather than failing — a missing locale should send a slightly-wrong-language email, never no email
+- [x] **HTML injection**: a full name containing markup is escaped in the HTML part and left readable in the plain-text part
+- [x] The Islamic greeting is present in both languages, and the `Bapak/Ibu` honorific in the Indonesian parent template
+
+**Verified live** against the local stack and the real Resend API,
+without sending mail: an admin invite with no `RESEND_API_KEY` returns
+`201` with `invitation_email: "not-configured"` and the user still
+created; the same invite with a deliberately invalid key reaches Resend,
+comes back `401 API key is invalid`, is mapped to `failed`, logged, and
+the invite still returns `201`. That is the non-blocking property proven
+end to end rather than argued.
+
+**Not verified, and cannot be here:** that a real message arrives in a
+real inbox, that the HTML renders acceptably in Gmail/Outlook/Apple
+Mail, and that the EU region and domain verification are actually
+configured. All four need the Resend account and a verified domain, and
+the first two need a real recipient. Someone with the account should run
+them before the first real invitation.
+
 ### 4.3 Notification payload builder
 
 *Implemented in `tests/unit/notifications.test.ts` (20 assertions).*

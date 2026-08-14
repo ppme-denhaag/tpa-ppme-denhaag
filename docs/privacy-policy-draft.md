@@ -50,6 +50,15 @@ versleutelde inhoud van de melding en het technische adres van uw toestel.
 Eén account ontvangt meldingen op één toestel; zet u ze aan op een tweede
 toestel, dan verhuizen ze daarheen.
 
+**E-mail.** Wij sturen u e-mail over uw account: een uitnodiging wanneer
+uw account wordt aangemaakt, en later mogelijk berichten over uw kind.
+Die e-mail wordt verstuurd via Resend, een dienstverlener die wij
+daarvoor inschakelen; wij hebben daarbij de **EU-regio** gekozen, zodat
+uw e-mailadres en de inhoud van het bericht binnen de EU blijven — net
+als de rest van uw gegevens. Resend ontvangt uw e-mailadres en de tekst
+van het bericht, en gebruikt die uitsluitend om het bericht te
+bezorgen.
+
 **Meldingen in de app.** Elke melding wordt ook bewaard in een lijst in de
 app zelf, die u opent via het belletje bovenin. Die lijst werkt ook als u
 push-meldingen hebt uitgezet — u mist dan niets, u ziet het alleen pas
@@ -187,6 +196,14 @@ notifikasi peramban Anda sendiri (pada Chrome layanan tersebut milik Google, di
 luar UE) — layanan itu menerima isi notifikasi dalam bentuk terenkripsi beserta
 alamat teknis perangkat Anda. Satu akun menerima notifikasi di satu perangkat;
 jika Anda mengaktifkannya di perangkat kedua, notifikasi berpindah ke sana.
+
+**Email.** Kami mengirim email terkait akun Anda: undangan saat akun
+Anda dibuat, dan ke depan mungkin pemberitahuan mengenai anak Anda.
+Email tersebut dikirim melalui Resend, penyedia layanan yang kami
+gunakan untuk itu; kami memilih **wilayah Uni Eropa**, sehingga alamat
+email dan isi pesan Anda tetap berada di dalam UE — sama seperti data
+Anda yang lain. Resend menerima alamat email dan teks pesan Anda, dan
+menggunakannya semata-mata untuk mengantarkan pesan tersebut.
 
 **Notifikasi di dalam aplikasi.** Setiap notifikasi juga tersimpan dalam
 daftar di dalam aplikasi, yang Anda buka lewat ikon lonceng di bagian atas.

@@ -272,6 +272,58 @@ add a request-derived input to one of these** without revisiting that
 reasoning; see also the `netlify dev` note above, where they are plain
 HTTP endpoints.
 
+### Transactional email (Resend)
+
+A second notification channel alongside Web Push, added in TAD ADR-018.
+Push is not a channel every family has — on iOS it only works once the
+PWA is on the Home Screen, and that column of test-plan §6 has never
+been verified on a device — so email reaches the people push cannot.
+
+Set in Netlify:
+
+```
+RESEND_API_KEY   # secret; never committed, never defaulted, only read via process.env
+```
+
+**Two deployment prerequisites, both dashboard work rather than code:**
+
+1. **Verify `tpa.ppmedenhaag.nl` in Resend.** Until it is verified,
+   Resend refuses to send from it and permits only
+   `onboarding@resend.dev`, to the account owner's own address. If mail
+   fails before this is done, that is why — `lib/email.ts` deliberately
+   keeps the real intended `from` address so a misconfigured deploy
+   fails loudly instead of quietly sending from a sandbox sender.
+2. **Select the EU region in Resend.** Supabase is Frankfurt and Netlify
+   is EU by deliberate choice; mail carries a parent's address and a
+   child's name, so the same residency reasoning applies — and it cannot
+   be applied retroactively to mail already sent.
+
+Free tier is **100/day, 3,000/month, 2 requests/second**. A 429 is
+surfaced as its own result (`rate-limited`, with the retry hint) rather
+than folded into a generic failure, because the sensible response
+differs: a rate limit is worth retrying, a malformed address is not.
+
+**Email can never break what it accompanies.** `sendEmail` never throws;
+every outcome is a returned value, and `invite-user` reports it as
+`invitation_email` without acting on it. It also fails *open* — a
+missing key logs and returns `not-configured` — which is the opposite of
+`NOTIFY_WEBHOOK_SECRET`'s fail-closed behaviour, deliberately: an
+unauthenticated endpoint is a security failure, an unsent courtesy email
+is a degraded feature.
+
+**Known: `invite-user` now sends two emails** — GoTrue's magic-link
+invite and this branded one. Removing the first also removes the
+`auth.users` row the profile insert needs, so it is an auth change, not
+an email one. See ADR-018(b).
+
+**Never send real email while developing.** The transport is injected
+(`sendEmail(request, fetchImpl)`) and every test passes a fake, so the
+suite cannot reach a real inbox. test-plan's "no real student data in
+any test environment, ever" extends to not mailing real people.
+
+Copy lives in `netlify/functions/lib/emailTemplates.ts`, keyed
+role → locale, and is meant to be edited.
+
 ### Database webhooks
 
 The triggers live in migrations 009 and 010, so they are

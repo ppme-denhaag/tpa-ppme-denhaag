@@ -1165,6 +1165,19 @@ paths:
         the existing user rather than erroring) and the profile insert
         then hits a unique-constraint violation — surfaced as 409, not
         the generic 500.
+
+        **Sends two emails**, which is a known consequence of adding the
+        branded invitation (TAD ADR-018) to a call site that already emailed:
+        GoTrue's own magic-link invite, and the Resend invitation/onboarding
+        template chosen by the new user's `role`. Removing the first would
+        also remove the `auth.users` row this endpoint depends on, so it is a
+        separate decision from adding the second — recorded in ADR-018, not
+        settled here.
+
+        The invitation email can never fail this request. It is sent after the
+        profile insert, `sendEmail` never throws, and the outcome is reported
+        in `invitation_email` so a caller can tell "invited" from "invited and
+        welcomed" instead of assuming both.
       requestBody:
         required: true
         content:
@@ -1178,7 +1191,12 @@ paths:
                 role: { $ref: '#/components/schemas/UserRole' }
       responses:
         '201':
-          description: Invited — auth.users + public.users rows created
+          description: |
+            Invited — auth.users + public.users rows created. `invitation_email`
+            reports the branded email separately: `sent`, `not-configured`
+            (no `RESEND_API_KEY`), `rate-limited` (Resend free tier: 100/day,
+            3,000/month, 2/sec) or `failed`. Any value other than `sent` still
+            means the account was created.
           content:
             application/json:
               schema:
