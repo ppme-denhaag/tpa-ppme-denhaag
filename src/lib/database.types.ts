@@ -258,7 +258,6 @@ export type Database = {
           date: string
           id: string
           quality: Database["public"]["Enums"]["murajaah_quality"]
-          streak_count: number
         }
         Insert: {
           assignment_id: string
@@ -267,7 +266,6 @@ export type Database = {
           date?: string
           id?: string
           quality: Database["public"]["Enums"]["murajaah_quality"]
-          streak_count?: number
         }
         Update: {
           assignment_id?: string
@@ -276,7 +274,6 @@ export type Database = {
           date?: string
           id?: string
           quality?: Database["public"]["Enums"]["murajaah_quality"]
-          streak_count?: number
         }
         Relationships: [
           {

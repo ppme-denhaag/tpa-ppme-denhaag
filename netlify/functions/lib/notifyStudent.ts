@@ -213,6 +213,7 @@ export async function dispatch(
       locale: recipient.locale,
       childFullName: target.childFullName,
       recipientUserId: recipient.userId,
+      studentId: target.studentId,
       date,
     })
 
@@ -239,6 +240,27 @@ export async function dispatch(
 
 export interface NotifyResult extends DispatchResult {
   skipped?: string
+}
+
+/**
+ * What a Function may put in its HTTP response.
+ *
+ * `DispatchResult.tags` is genuinely useful — it is how the tests and
+ * the live harness prove a notification was addressed to the right
+ * family — but a tag is `event:userId:studentId:date`, so returning it
+ * hands the caller two internal identifiers per delivery. That is
+ * personal data leaving through a channel that exists to report a
+ * count, and for the scheduled Functions the caller is not necessarily
+ * anyone: they carry no shared secret (see `lib/scheduled.ts`), and
+ * under `netlify dev` they answer unauthenticated HTTP.
+ *
+ * Counts are not personal data and are what a Netlify log is read for,
+ * so counts are what goes out. Anything needing the tags has the
+ * `dispatch` return value in process. ADR-016.
+ */
+export function reportable(result: NotifyResult): Omit<NotifyResult, 'tags'> {
+  const { tags: _tags, ...counts } = result
+  return counts
 }
 
 /** The whole "notify these children's families" path. */

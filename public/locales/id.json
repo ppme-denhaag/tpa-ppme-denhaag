@@ -15,6 +15,10 @@
     "santri": "Santri",
     "kelola": "Kelola"
   },
+  "dashboard": {
+    "thisWeek": "Minggu ini",
+    "attendance": "Kehadiran"
+  },
   "auth": {
     "signIn": "Masuk dengan Google",
     "signOut": "Keluar",
@@ -145,8 +149,11 @@
     "todayTarget": "Target hari ini",
     "target": "Target Murajaah",
     "streak": "hari berturut-turut",
-    "streakEncourage": "hari berturut-turut. Terus semangat!",
+    "streakWeeks": "minggu berturut-turut",
+    "streakEncourage": "Terus semangat!",
+    "lastConfirmed": "Terakhir dikonfirmasi {{date}}",
     "bestStreak": "Rekor terbaik: {{count}} hari",
+    "bestStreakWeeks": "Rekor terbaik: {{count}} minggu",
     "confirmDone": "✓ Selesai Murajaah",
     "notConfirmedToday": "Belum dikonfirmasi hari ini",
     "thisWeek": "Minggu ini",
@@ -186,7 +193,8 @@
       "jilidMilestone": "Alhamdulillah! {{name}} menyelesaikan satu jilid",
       "surahMemorized": "Alhamdulillah! {{name}} hafal satu surah baru",
       "murajaahReminder": "Waktunya murajaah bersama {{name}}",
-      "reportReady": "Rapor akhir tahun {{name}} sudah siap"
+      "reportReady": "Rapor akhir tahun {{name}} sudah siap",
+      "weeklyDigest": "Ringkasan mingguan {{name}} sudah siap"
     },
     "settings": {
       "title": "Pengaturan notifikasi",

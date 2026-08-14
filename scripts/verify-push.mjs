@@ -54,6 +54,7 @@ const ZAINAB = 'a5000000-0000-0000-0000-000000000002' // Ibu Siti's second child
 const FATIMAH = 'a5000000-0000-0000-0000-000000000003' // Bapak Rudi's child, Kelas A, 16+ self-login
 const KELAS_A = 'a4000000-0000-0000-0000-000000000001'
 const MURAJAAH_TARGET = 'a7000000-0000-0000-0000-0000000000e1'
+const DUE_TOMORROW = 'a8000000-0000-0000-0000-0000000000e1'
 
 const sql = (query) =>
   execFileSync('docker', ['exec', '-i', DB_CONTAINER, 'psql', '-U', 'postgres', '-tAc', query], {
@@ -154,6 +155,26 @@ const clearTray = (page) =>
     for (const n of await registration.getNotifications()) n.close()
   })
 
+/**
+ * Waits for at least `count` notifications.
+ *
+ * `waitForNotification` returns on the first one, which is a race as
+ * soon as a family has two children: the second delivery is a separate
+ * HTTPS round trip to a push service and lands whenever it lands. Since
+ * ADR-016 put the child in the dedup tag those are two notifications
+ * rather than one replaced one, so anything asserting on a sibling pair
+ * has to wait for both.
+ */
+async function waitForCount(page, count, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs
+  let tray = await shown(page)
+  while (Date.now() < deadline && tray.length < count) {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    tray = await shown(page)
+  }
+  return tray
+}
+
 async function waitForNotification(page, timeoutMs = 45000) {
   const deadline = Date.now() + timeoutMs
   let last = []
@@ -171,7 +192,10 @@ async function enable(page, label) {
   await button.click()
   await page
     .getByText(/Notifikasi aktif di perangkat ini|Meldingen staan aan op dit apparaat/)
-    .waitFor({ timeout: 30000 })
+    // Must exceed `SUBSCRIBE_TIMEOUT_MS` in `src/lib/push.ts`, or this
+    // gives up before the screen it is watching has finished deciding.
+    // FCM has been measured taking 32s to serve a subscription.
+    .waitFor({ timeout: 75000 })
   console.log(`       (${label} subscribed)`)
 }
 
@@ -223,6 +247,61 @@ function draftReport(studentId, year = '2025/2026') {
 
 const today = sql("select to_char(current_date, 'YYYY-MM-DD')")
 
+/**
+ * Runs a scheduled Function at a chosen instant and returns its
+ * response — see `scripts/invoke-scheduled.mjs` for why the clock is
+ * moved out here rather than through a hook in the Function.
+ */
+function invokeScheduled(name, instant) {
+  const out = execFileSync('node', ['scripts/invoke-scheduled.mjs', name, instant], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  return JSON.parse(out)
+}
+
+const addDaysStr = (date, days) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10)
+
+const mondayOf = (date) => {
+  const day = new Date(Date.parse(`${date}T00:00:00Z`)).getUTCDay()
+  return addDaysStr(date, day === 0 ? -6 : 1 - day)
+}
+
+/**
+ * The UTC instant at which it is `hour` o'clock in Amsterdam on `date`.
+ *
+ * Found by asking the IANA database rather than by adding an offset,
+ * which is the same reason the Functions themselves do — an offset
+ * hard-coded here would make the CET/CEST assertions agree with a bug
+ * rather than catch one.
+ */
+function amsterdamInstant(date, hour) {
+  const localHour = (d) =>
+    Number(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Amsterdam',
+        hour: '2-digit',
+        hour12: false,
+      }).format(d),
+    )
+  const localDate = (d) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d)
+
+  for (let utcHour = hour - 3; utcHour <= hour; utcHour += 1) {
+    const candidate = new Date(
+      Date.parse(`${date}T00:00:00Z`) + ((utcHour + 24) % 24) * 3600000 - (utcHour < 0 ? 86400000 : 0),
+    )
+    if (localHour(candidate) === hour && localDate(candidate) === date) return candidate.toISOString()
+  }
+  throw new Error(`no UTC instant maps to ${hour}:00 Europe/Amsterdam on ${date}`)
+}
+
 // ── preconditions ────────────────────────────────────────────────
 const configured = sql('select base_url is not null and secret is not null from public.fn_webhook_config()')
 if (configured !== 't') {
@@ -267,13 +346,40 @@ try {
   if (received.length === 1) {
     check('body is the Indonesian copy, first name only', received[0].body === 'Ali tidak hadir hari ini di TPA', received[0].body)
     check('DPIA R6: the absence reason is nowhere in the payload', !JSON.stringify(received[0]).includes('demam'))
-    check('dedup tag is per (user, event, date)', received[0].tag === `absence:${SITI.id}:${today}`, received[0].tag)
+    check('dedup tag is per (user, event, child, date)', received[0].tag === `absence:${SITI.id}:${ALI}:${today}`, received[0].tag)
     check('title is the app name', received[0].title === 'TPA PPME Den Haag', received[0].title)
   }
   check(
     'CROSS-FAMILY: the other parent received nothing (test-plan §1)',
     (await shown(rudi.page)).length === 0,
   )
+
+  console.log('\n2b. two children, two notifications (ADR-016)')
+  // The regression the child was added to the dedup tag for: keyed on
+  // (user, event, date) alone these two collapse on the lock screen and
+  // the parent is told about one child while the other silently
+  // disappears. Ibu Siti is the fixture's only two-child family.
+  // Ali's notification from the previous section is deliberately left
+  // on screen — the whole question is whether Zainab's replaces it.
+  markAbsent(ZAINAB)
+  // Ali's is still displayed from the previous section's send.
+  const sitiTray = await waitForCount(siti.page, 2)
+  check('a parent of two absent children sees two notifications', sitiTray.length === 2, JSON.stringify(sitiTray.map((n) => n.tag)))
+  check(
+    '…one naming each child',
+    new Set(sitiTray.map((n) => n.body)).size === 2 &&
+      sitiTray.some((n) => n.body.startsWith('Ali ')) &&
+      sitiTray.some((n) => n.body.startsWith('Zainab ')),
+    JSON.stringify(sitiTray.map((n) => n.body)),
+  )
+  check(
+    '…on two distinct tags, one per child',
+    new Set(sitiTray.map((n) => n.tag)).size === 2 &&
+      sitiTray.every((n) => n.tag === `absence:${SITI.id}:${ALI}:${today}` || n.tag === `absence:${SITI.id}:${ZAINAB}:${today}`),
+    JSON.stringify(sitiTray.map((n) => n.tag)),
+  )
+  await clearTray(siti.page)
+  markPresent(ZAINAB)
 
   console.log('\n3. recipient locale drives the copy')
   sql(`update public.users set locale='nl' where id='${RUDI.id}'`)
@@ -343,16 +449,25 @@ try {
     insert into public.assignments (class_id, tutor_id, title, due_date)
     values ('${KELAS_A}', '${AHMAD.id}', 'Hafalan Surah An-Nas ayat 1-6', current_date + 2);
   `)
-  const sitiHomework = await waitForNotification(siti.page)
+  await waitForNotification(siti.page)
   const rudiHomework = await waitForNotification(rudi.page)
   const fatimahHomework = await waitForNotification(fatimah.page)
 
-  check('the parent of two children in the class is notified', sitiHomework.length === 1, JSON.stringify(sitiHomework))
-  check('…naming one of her own children', /Ada tugas baru untuk (Ali|Zainab)/.test(sitiHomework[0]?.body ?? ''), sitiHomework[0]?.body)
+  // Two children in this class, so two notifications — one per child.
+  // This assertion read `=== 1` until ADR-016 put the child in the dedup
+  // tag; it was encoding the collision rather than catching it.
+  const sitiClass = await waitForCount(siti.page, 2)
+  check('the parent of two children in the class is notified about both', sitiClass.length === 2, JSON.stringify(sitiClass.map((n) => n.body)))
+  check(
+    '…once for each of her own children',
+    sitiClass.some((n) => n.body === 'Ada tugas baru untuk Ali') &&
+      sitiClass.some((n) => n.body === 'Ada tugas baru untuk Zainab'),
+    JSON.stringify(sitiClass.map((n) => n.body)),
+  )
   check('the other family in the same class is notified about their own child', rudiHomework.length === 1 && rudiHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(rudiHomework))
   check('CROSS-FAMILY: that parent is told nothing about the other family’s children', !/Ali|Zainab/.test(JSON.stringify(rudiHomework)))
   check('FAMILY AUDIENCE: the 16+ student is notified too', fatimahHomework.length === 1 && fatimahHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(fatimahHomework))
-  check('DPIA R6: the assignment title is not on the lock screen', !/An-Nas|ayat/i.test(JSON.stringify([...sitiHomework, ...rudiHomework, ...fatimahHomework])))
+  check('DPIA R6: the assignment title is not on the lock screen', !/An-Nas|ayat/i.test(JSON.stringify([...sitiClass, ...rudiHomework, ...fatimahHomework])))
 
   console.log('\n4e. year-end report published (PRD Feature 6 FR-007)')
   await clearTray(siti.page)
@@ -378,6 +493,217 @@ try {
   sql(`update public.year_end_reports set status='published', published_at=now() where id='${aliReport}'`)
   const sitiReport = await waitForNotification(siti.page)
   check('a second family’s report reaches only them', sitiReport.length === 1 && sitiReport[0].body === 'Rapor akhir tahun Ali sudah siap', JSON.stringify(sitiReport))
+
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
+  console.log('\n4f. scheduled Functions — the Amsterdam gate (ADR-016)')
+  // The DST half, asserted with no subscription in play so nothing is
+  // sent to a push service. That matters: a VAPID request is signed
+  // with a JWT a push service rejects if its `exp` is more than 24h
+  // from real now, so a January instant can prove the *gate* and only
+  // an instant near today can prove a delivery. Both are below.
+  const savedSubs = [SITI, RUDI, FATIMAH_USER].map((u) => ({
+    id: u.id,
+    sub: sql(`select coalesce(push_sub::text, 'null') from public.users where id='${u.id}'`),
+  }))
+  sql(`update public.users set push_sub = null`)
+
+  const cetRun = invokeScheduled('send-murajaah-reminders', '2026-01-15T17:00:00Z')
+  check(
+    'CET date: 17:00 UTC is 18:00 in Amsterdam, and the job runs',
+    cetRun.body.skipped !== undefined && !String(cetRun.body.skipped).startsWith('not 18:00'),
+    JSON.stringify(cetRun.body),
+  )
+  const cestSameUtcHour = invokeScheduled('send-murajaah-reminders', `${today}T17:00:00Z`)
+  check(
+    'CEST date: the same 17:00 UTC is 19:00 local, and the job does not run',
+    cestSameUtcHour.body.skipped === 'not 18:00 in Europe/Amsterdam',
+    JSON.stringify(cestSameUtcHour.body),
+  )
+  const cestRun = invokeScheduled('send-murajaah-reminders', amsterdamInstant(today, 18))
+  check(
+    'CEST date: 18:00 local is an hour earlier in UTC, and the job runs there instead',
+    cestRun.body.skipped !== 'not 18:00 in Europe/Amsterdam',
+    JSON.stringify(cestRun.body),
+  )
+  check(
+    'a scheduled Function never returns a dedup tag, which would carry two ids',
+    !('tags' in cestRun.body) && !JSON.stringify(cestRun.body).includes(SITI.id),
+    JSON.stringify(cestRun.body),
+  )
+
+  for (const { id, sub } of savedSubs) {
+    if (sub !== 'null') sql(`update public.users set push_sub = $j$${sub}$j$::jsonb where id='${id}'`)
+  }
+  check(
+    'subscriptions restored for the delivery assertions',
+    sql(`select count(*) from public.users where push_sub is not null`) === '3',
+  )
+
+  console.log('\n4g. send-murajaah-reminders → real notification')
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+  // A daily target for Ali, unconfirmed today: `needsReminder` says the
+  // last chance to keep the streak is tonight.
+  assignMurajaah(ALI)
+  sql(`update public.murajaah_assignments set frequency='daily' where id='${MURAJAAH_TARGET}'`)
+  sql(`delete from public.murajaah_log where assignment_id='${MURAJAAH_TARGET}'`)
+
+  const reminder = invokeScheduled('send-murajaah-reminders', amsterdamInstant(today, 18))
+  check('the 18:00 run reports one send', reminder.body.sent === 1, JSON.stringify(reminder.body))
+  const reminded = await waitForNotification(siti.page)
+  check(
+    'Ibu Siti received the murajaah reminder',
+    reminded.length === 1 && reminded[0].body === 'Waktunya murajaah bersama Ali',
+    JSON.stringify(reminded),
+  )
+  check(
+    'DPIA R6: the surah and ayah range are not on the lock screen',
+    !/An-Nas|ayat|114/i.test(JSON.stringify(reminded)),
+  )
+  check('CROSS-FAMILY: the other family is not reminded about it', (await shown(rudi.page)).length === 0)
+
+  // Idempotency — the property the hourly cron depends on.
+  const rerun = invokeScheduled('send-murajaah-reminders', amsterdamInstant(today, 18))
+  check('a second run at the same hour still reports one send', rerun.body.sent === 1, JSON.stringify(rerun.body))
+  await new Promise((resolve) => setTimeout(resolve, 12000))
+  check(
+    'IDEMPOTENT: running twice leaves one notification, not two',
+    (await shown(siti.page)).length === 1,
+    JSON.stringify(await shown(siti.page)),
+  )
+
+  // Confirming practice takes the family out of tonight's run entirely.
+  sql(`
+    insert into public.murajaah_log (assignment_id, confirmed_by, quality, date)
+    values ('${MURAJAAH_TARGET}', '${SITI.id}', 'hafal_lancar', current_date)
+    on conflict (assignment_id, date) do nothing;
+  `)
+  const confirmed = invokeScheduled('send-murajaah-reminders', amsterdamInstant(today, 18))
+  check(
+    'a family who already practised tonight is not reminded',
+    confirmed.body.skipped === 'every target is on track',
+    JSON.stringify(confirmed.body),
+  )
+  // Deleted rather than deactivated: deactivating is the tutor's "mark
+  // memorized" action and would fire a real notification (4c).
+  sql(`delete from public.murajaah_assignments where id='${MURAJAAH_TARGET}'`)
+  await new Promise((resolve) => setTimeout(resolve, 6000))
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
+  console.log('\n4h. homework-due-reminders → real notification')
+  sql(`delete from public.assignments where class_id = '${KELAS_A}'`)
+  sql(`
+    insert into public.assignments (id, class_id, tutor_id, title, due_date)
+    values ('${DUE_TOMORROW}', '${KELAS_A}', '${AHMAD.id}', 'Menulis huruf hijaiyah', current_date + 1);
+  `)
+  // That INSERT is also the "new homework" webhook — let it land and
+  // clear it, so what follows is only the 08:00 reminder.
+  await new Promise((resolve) => setTimeout(resolve, 12000))
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
+  const nothingDue = invokeScheduled('homework-due-reminders', amsterdamInstant(addDaysStr(today, 3), 8))
+  check(
+    'a morning with nothing due tomorrow sends nothing',
+    String(nothingDue.body.skipped ?? '').startsWith('nothing due on'),
+    JSON.stringify(nothingDue.body),
+  )
+
+  const dueRun = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
+  check('the 08:00 run reports the whole class', dueRun.body.sent === 4, JSON.stringify(dueRun.body))
+  const sitiDue = await waitForCount(siti.page, 2)
+  const rudiDue = await waitForNotification(rudi.page)
+  const fatimahDue = await waitForNotification(fatimah.page)
+  check('the parent of two children in the class is reminded about both', sitiDue.length === 2, JSON.stringify(sitiDue.map((n) => n.body)))
+  check(
+    '…once for each child',
+    new Set(sitiDue.map((n) => n.tag)).size === 2 &&
+      sitiDue.some((n) => n.body === 'Tugas Ali deadline besok') &&
+      sitiDue.some((n) => n.body === 'Tugas Zainab deadline besok'),
+    JSON.stringify(sitiDue.map((n) => n.body)),
+  )
+  check('the other family is reminded about their own child', rudiDue.length === 1 && rudiDue[0].body === 'Tugas Fatimah deadline besok', JSON.stringify(rudiDue))
+  check('CROSS-FAMILY: and about nobody else’s', !/Ali|Zainab/.test(JSON.stringify(rudiDue)))
+  check('FAMILY AUDIENCE: the 16+ student is reminded too', fatimahDue.length === 1 && fatimahDue[0].body === 'Tugas Fatimah deadline besok', JSON.stringify(fatimahDue))
+  check('DPIA R6: the assignment title is not on the lock screen', !/hijaiyah|Menulis/i.test(JSON.stringify([...sitiDue, ...rudiDue, ...fatimahDue])))
+
+  const dueRerun = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
+  check('a second 08:00 run reports the same sends', dueRerun.body.sent === 4, JSON.stringify(dueRerun.body))
+  await new Promise((resolve) => setTimeout(resolve, 12000))
+  check('IDEMPOTENT: the parent of two still sees exactly two', (await shown(siti.page)).length === 2, JSON.stringify((await shown(siti.page)).map((n) => n.tag)))
+  check('IDEMPOTENT: the 16+ student still sees exactly one', (await shown(fatimah.page)).length === 1)
+
+  // A child who has marked the homework done drops out of the run.
+  sql(`
+    insert into public.assignment_status (assignment_id, student_id, status)
+    values ('${DUE_TOMORROW}', '${FATIMAH}', 'completed')
+    on conflict (assignment_id, student_id) do update set status = 'completed';
+  `)
+  const afterCompletion = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
+  check(
+    'a student who already completed it is left out',
+    afterCompletion.body.sent === 2,
+    JSON.stringify(afterCompletion.body),
+  )
+  sql(`delete from public.assignment_status where assignment_id='${DUE_TOMORROW}'`)
+  await new Promise((resolve) => setTimeout(resolve, 8000))
+  await clearTray(siti.page)
+  await clearTray(rudi.page)
+  await clearTray(fatimah.page)
+
+  console.log('\n4i. weekly-progress-digest → real notification')
+  const thisFriday = addDaysStr(mondayOf(today), 4)
+  const thursday = addDaysStr(mondayOf(today), 3)
+  const wrongDay = invokeScheduled('weekly-progress-digest', amsterdamInstant(thursday, 8))
+  check(
+    'the digest does not go out on a Thursday',
+    wrongDay.body.skipped === 'not the scheduled weekday',
+    JSON.stringify(wrongDay.body),
+  )
+  const wrongHour = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 9))
+  check(
+    'nor at 09:00 on the Friday',
+    wrongHour.body.skipped === 'not 8:00 in Europe/Amsterdam',
+    JSON.stringify(wrongHour.body),
+  )
+
+  const digest = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 8))
+  check('the Friday 08:00 run sends', digest.body.sent >= 1, JSON.stringify(digest.body))
+  const sitiDigest = await waitForNotification(siti.page)
+  check(
+    'Ibu Siti received the weekly digest',
+    sitiDigest.some((n) => n.body === 'Ringkasan mingguan Ali sudah siap'),
+    JSON.stringify(sitiDigest.map((n) => n.body)),
+  )
+  check(
+    'DPIA R6: no attendance percentage on the lock screen',
+    !/%|\d+\s*(dari|van)/.test(JSON.stringify(sitiDigest)),
+    JSON.stringify(sitiDigest.map((n) => n.body)),
+  )
+  const digestRerun = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 8))
+  const digestTrayBefore = (await shown(siti.page)).length
+  await new Promise((resolve) => setTimeout(resolve, 12000))
+  check(
+    'IDEMPOTENT: a second Friday run adds no notifications',
+    (await shown(siti.page)).length === digestTrayBefore,
+    `${digestTrayBefore} → ${(await shown(siti.page)).length}`,
+  )
+  check('…and reports the same sends', digestRerun.body.sent === digest.body.sent, JSON.stringify(digestRerun.body))
+
+  // A child with no activity at all this week is not summarised. Umar
+  // is in Kelas B, which nothing above has touched.
+  check(
+    'a quiet week is not summarised',
+    digest.body.sent < Number(sql('select count(*) from public.students where parent_id is not null')),
+    JSON.stringify(digest.body),
+  )
 
   await clearTray(siti.page)
   await clearTray(rudi.page)
@@ -449,6 +775,40 @@ const noSub = await post('notify-absence', {
   body: JSON.stringify({ record: { id: sql(`select id from public.attendance where student_id='${FATIMAH}' limit 1`) } }),
 })
 check('a valid webhook for an unsubscribed parent is a no-op 200', noSub.status === 200 && (await noSub.json()).sent === 0)
+
+// The scheduled Functions carry no secret — Netlify's scheduler cannot
+// send one — and under `netlify dev` they are ordinary endpoints. What
+// must hold is that being reachable buys nothing: outside the
+// Amsterdam hour they do nothing, they read no part of the request, and
+// they never disclose an identifier. ADR-016(d)/(e).
+for (const job of ['send-murajaah-reminders', 'homework-due-reminders', 'weekly-progress-digest']) {
+  const anonymous = await post(job, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    // Deliberately hostile: a body naming another family's child, which
+    // the Function must not so much as read.
+    body: JSON.stringify({ student_id: FATIMAH, hour: 18, force: true }),
+  })
+  const body = await anonymous.json()
+  const serialized = JSON.stringify(body)
+  check(
+    `${job}: an unauthenticated caller learns nothing — no tags, no ids`,
+    anonymous.status === 200 &&
+      !('tags' in body) &&
+      !serialized.includes(FATIMAH) &&
+      !serialized.includes(SITI.id) &&
+      !serialized.includes(RUDI.id),
+    serialized,
+  )
+  check(
+    `${job}: …and the posted body is ignored entirely`,
+    // Whatever the gate decides, it decides it from the clock. The only
+    // shapes possible are a skip or a count — never anything derived
+    // from what was posted.
+    typeof body.skipped === 'string' || typeof body.sent === 'number',
+    serialized,
+  )
+}
 
 for (const dir of profiles) rmSync(dir, { recursive: true, force: true })
 

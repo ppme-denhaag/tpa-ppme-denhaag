@@ -5,12 +5,15 @@ export type MurajaahAssignment = Tables<'murajaah_assignments'>
 export type MurajaahLog = Tables<'murajaah_log'>
 
 /** YYYY-MM-DD in the browser's local timezone (CET/CEST for NL users). */
-export function todayLocalDate(): string {
-  const d = new Date()
+export function localDate(d: Date = new Date()): string {
   const yyyy = d.getFullYear()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   const dd = String(d.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
+}
+
+export function todayLocalDate(): string {
+  return localDate()
 }
 
 export async function fetchAssignmentsForStudent(studentId: string): Promise<MurajaahAssignment[]> {

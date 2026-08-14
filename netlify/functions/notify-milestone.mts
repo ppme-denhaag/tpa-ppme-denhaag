@@ -1,7 +1,7 @@
 import { isJilidComplete, type JilidRef } from '../../src/lib/yanbua'
 import { jsonError, jsonOk } from './lib/callerAuth'
 import { amsterdamDate } from './lib/notifications'
-import { notifyStudent } from './lib/notifyStudent'
+import { notifyStudent, reportable } from './lib/notifyStudent'
 import { serviceClient, verifyWebhookSecret } from './lib/webhookAuth'
 
 /**
@@ -96,7 +96,7 @@ async function jilidMilestone(client: Client, rowId: string) {
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)
-  return jsonOk(result)
+  return jsonOk(reportable(result))
 }
 
 async function surahMemorized(client: Client, rowId: string) {
@@ -120,5 +120,5 @@ async function surahMemorized(client: Client, rowId: string) {
   })
 
   if (result.failed > 0) return jsonError('Push delivery failed', 502)
-  return jsonOk(result)
+  return jsonOk(reportable(result))
 }

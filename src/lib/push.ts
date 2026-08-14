@@ -124,8 +124,19 @@ export type SubscribeOutcome = 'subscribed' | 'permission-denied'
  * repeated registrations from one host got quietly stalled by FCM.
  * Without a bound the settings screen sits on "please wait" forever,
  * with no way for the family to tell whether it is working.
+ *
+ * Raised from 30s while verifying Part 2b: a subscribe that FCM served
+ * perfectly well took **32 seconds**, measured in isolation on an
+ * otherwise idle machine. A 30s bound turns that into "the push service
+ * is not responding" and a family who would have been subscribed is
+ * told the feature is broken — a worse failure than the one the bound
+ * exists to prevent, and one they have no reason to retry. The bound is
+ * there to distinguish *never settles* from *slow*, and only the first
+ * needs catching, so it is set well clear of how slow "slow" turns out
+ * to be. A minute of a visibly pending button, on an action the family
+ * just pressed, is recoverable; a false error is not.
  */
-const SUBSCRIBE_TIMEOUT_MS = 30_000
+const SUBSCRIBE_TIMEOUT_MS = 60_000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

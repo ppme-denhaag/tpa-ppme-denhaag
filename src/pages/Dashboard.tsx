@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ROLE_I18N_KEY } from '../lib/roleLabels'
 import { NAV_TABS } from '../components/tabs'
+import { WeeklySummary } from '../features/dashboard/WeeklySummary'
 
 const TILE_CLASS =
   'min-h-11 rounded-lg bg-white p-4 text-center font-medium text-ppme-text shadow-sm transition-colors hover:bg-ppme-bg-alt'
@@ -32,6 +33,11 @@ export function Dashboard() {
           <p className="mt-1 text-sm text-ppme-text/70">{t(ROLE_I18N_KEY[profile.role])}</p>
         )}
       </div>
+
+      {/* Where the Friday digest lands (ADR-016): the notification can
+          only say a summary is ready, so the summary lives here. Renders
+          nothing for a tutor or admin, and nothing in a quiet week. */}
+      <WeeklySummary />
 
       <div className="grid grid-cols-2 gap-3">
         {NAV_TABS.map(({ to, key }) => (

@@ -14,7 +14,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20. `@supabase/supabase-js` builds a RealtimeClient
+          # inside `createClient()`, which needs a global `WebSocket` and
+          # throws at construction without one — Node only has that
+          # unflagged from 22. Node 20 is also out of support as of April
+          # 2026. This is not a test-only constraint: every Function
+          # holding the service-role key calls `createClient`, so the
+          # deployed runtime is pinned to match in netlify.toml. Keep the
+          # two in step.
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -28,7 +36,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20. `@supabase/supabase-js` builds a RealtimeClient
+          # inside `createClient()`, which needs a global `WebSocket` and
+          # throws at construction without one — Node only has that
+          # unflagged from 22. Node 20 is also out of support as of April
+          # 2026. This is not a test-only constraint: every Function
+          # holding the service-role key calls `createClient`, so the
+          # deployed runtime is pinned to match in netlify.toml. Keep the
+          # two in step.
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium

@@ -4,6 +4,7 @@ import {
   dispatch,
   type DispatchDeps,
   type StudentAudience,
+  reportable,
   type StudentRow,
   type UserRow,
 } from '../../netlify/functions/lib/notifyStudent'
@@ -163,7 +164,7 @@ describe('dispatching to a fanned-out audience', () => {
         target({
           recipients: [
             { userId: 'parent-1', locale: 'id', subscription: SUB('a') },
-            { userId: 'student-1', locale: 'nl', subscription: SUB('b') },
+            { userId: 'self-1', locale: 'nl', subscription: SUB('b') },
           ],
         }),
       ],
@@ -177,9 +178,36 @@ describe('dispatching to a fanned-out audience', () => {
       'Er is een nieuwe opdracht voor Ali',
     ])
     expect(sent.map((s) => s.tag)).toEqual([
-      'newAssignment:parent-1:2026-03-10',
-      'newAssignment:student-1:2026-03-10',
+      'newAssignment:parent-1:student-1:2026-03-10',
+      'newAssignment:self-1:student-1:2026-03-10',
     ])
+  })
+
+  it('gives one parent two siblings two distinct tags, so neither is swallowed', async () => {
+    // ADR-016. With the child missing from the tag these two collapsed
+    // to one lock-screen notification, and the parent was told about
+    // whichever child happened to be dispatched last.
+    const sent: string[] = []
+    const d = deps({
+      send: async (_sub, payload) => {
+        sent.push(payload.tag)
+        return { status: 'sent' }
+      },
+    })
+
+    await dispatch(
+      fakeClient,
+      [
+        target({ studentId: 'ali', childFullName: 'Ali Rahman' }),
+        target({ studentId: 'zainab', childFullName: 'Zainab Rahman' }),
+      ],
+      'absence',
+      '2026-03-10',
+      d,
+    )
+
+    expect(sent).toEqual(['absence:parent-1:ali:2026-03-10', 'absence:parent-1:zainab:2026-03-10'])
+    expect(new Set(sent).size).toBe(2)
   })
 
   it('names each child correctly across a whole class', async () => {
@@ -286,5 +314,28 @@ describe('dispatching to a fanned-out audience', () => {
     const result = await dispatch(fakeClient, [target({ recipients: [] })], 'absence', '2026-03-10', d)
     expect(result).toEqual({ sent: 0, expired: 0, failed: 0, tags: [] })
     expect(d.send).not.toHaveBeenCalled()
+  })
+})
+
+describe('reportable — what a Function may put in its HTTP response', () => {
+  it('drops the tags, which carry a user id and a student id each', () => {
+    // ADR-016. The scheduled Functions carry no shared secret and
+    // answer unauthenticated HTTP under `netlify dev`, so the response
+    // body is not a place for identifiers.
+    const result = reportable({
+      sent: 2,
+      expired: 0,
+      failed: 0,
+      tags: ['absence:parent-1:ali:2026-03-10', 'absence:parent-1:zainab:2026-03-10'],
+    })
+    expect(result).toEqual({ sent: 2, expired: 0, failed: 0 })
+    expect(JSON.stringify(result)).not.toContain('parent-1')
+    expect(JSON.stringify(result)).not.toContain('ali')
+  })
+
+  it('keeps the skip reason, which is what a Netlify log is read for', () => {
+    expect(
+      reportable({ sent: 0, expired: 0, failed: 0, tags: [], skipped: 'no push subscription' }),
+    ).toEqual({ sent: 0, expired: 0, failed: 0, skipped: 'no push subscription' })
   })
 })

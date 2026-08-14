@@ -32,7 +32,14 @@ uitzetten, waarna uw abonnementsgegevens direct worden verwijderd. Een melding
 bevat alleen de **voornaam van uw kind en het soort gebeurtenis** — bijvoorbeeld
 "Ali was vandaag niet aanwezig bij TPA". U ontvangt er een bij afwezigheid, bij
 een nieuwe opdracht voor de klas, wanneer uw kind een jilid afrondt of een surah
-heeft gememoriseerd, en wanneer het jaarrapport klaar is. De reden van
+heeft gememoriseerd, en wanneer het jaarrapport klaar is. Daarnaast sturen wij
+op vaste tijden herinneringen: 's avonds als er die dag nog murajaah geoefend
+moet worden, 's ochtends als een opdracht de volgende dag af moet zijn, en op
+vrijdagochtend een bericht dat het weekoverzicht van uw kind klaarstaat. Ook
+die bevatten alleen de voornaam en het soort bericht — het weekoverzicht zelf,
+inclusief het aanwezigheidspercentage, staat in de app en niet in de melding.
+Herinneringen komen alleen wanneer er iets te doen is: oefent u op schema, dan
+krijgt u geen bericht. De reden van
 afwezigheid, cijfers,
 beoordelingen en voortgangsdetails worden nooit in een melding meegestuurd; die
 ziet u pas nadat u bent ingelogd. Dat is bewust: een melding is op een
@@ -155,7 +162,14 @@ kapan saja, yang langsung menghapus data langganan Anda. Sebuah notifikasi hanya
 memuat **nama depan anak Anda dan jenis kejadian** — misalnya "Ali tidak hadir
 hari ini di TPA". Anda menerimanya saat anak tidak hadir, saat ada tugas baru
 untuk kelasnya, saat anak menyelesaikan satu jilid atau hafal surah baru, dan
-saat rapor akhir tahun sudah siap. Alasan ketidakhadiran, nilai, penilaian, dan detail progres
+saat rapor akhir tahun sudah siap. Selain itu kami mengirim pengingat pada waktu
+tertentu: sore hari bila murajaah hari itu belum dikonfirmasi, pagi hari bila ada
+tugas yang harus selesai besok, dan Jumat pagi bila ringkasan mingguan anak Anda
+sudah siap. Semuanya juga hanya memuat nama depan dan jenis pesan — ringkasan
+mingguannya sendiri, termasuk persentase kehadiran, ada di dalam aplikasi dan
+bukan di notifikasi. Pengingat hanya dikirim bila memang ada yang perlu
+dilakukan: jika latihan sudah sesuai target, Anda tidak menerima pesan.
+Alasan ketidakhadiran, nilai, penilaian, dan detail progres
 tidak pernah dikirim dalam notifikasi; semua itu baru terlihat setelah Anda
 masuk ke aplikasi. Ini disengaja: notifikasi tampil di layar kunci, yang bisa
 dilihat siapa pun di dekat perangkat. Notifikasi dikirim melalui layanan
