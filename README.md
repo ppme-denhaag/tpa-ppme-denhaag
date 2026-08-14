@@ -167,6 +167,19 @@ All use the Netlify Functions v2 API (default export, Web-standard
 (`npm run typecheck:functions`) since `netlify/functions/` isn't a project
 reference of the root `tsconfig.json`.
 
+**The runtime is pinned to Node 22 and must not drop below it.**
+`netlify.toml` sets `NODE_VERSION = "22"` and CI's `node-version` matches.
+`@supabase/supabase-js` builds a `RealtimeClient` inside `createClient()`,
+which needs a global `WebSocket` and **throws at construction** without one
+— and Node only has that unflagged from 22. Every Function holding the
+service-role key calls `createClient`, so a runtime below 22 takes out
+every notification and every report Function at once, at the first
+request rather than at build time. Nothing in the app itself would tell
+you; it surfaced only when a unit test first called `serviceClient()` on
+CI's then-Node-20. If you ever need to run on an older runtime, pass a
+WebSocket implementation via supabase-js's `realtime.transport` option
+instead of unpinning this.
+
 The ones that hold `SUPABASE_SERVICE_ROLE_KEY` *and* have a signed-in
 caller share one authorization
 shape, extracted into `netlify/functions/lib/callerAuth.ts`: validate the
