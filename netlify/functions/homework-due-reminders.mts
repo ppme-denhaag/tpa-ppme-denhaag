@@ -1,5 +1,5 @@
 import type { Config } from '@netlify/functions'
-import { notifyStudents, reportable } from './lib/notifyStudent'
+import { notifyStudents, reportable, type NotificationContext } from './lib/notifyStudent'
 import { HOURLY, scheduledHandler } from './lib/scheduled'
 import { addDays } from '../../src/lib/murajaah'
 
@@ -40,7 +40,7 @@ export default scheduledHandler({
 
     const { data: assignments, error } = await client
       .from('assignments')
-      .select('id, class_id')
+      .select('id, class_id, title')
       .eq('due_date', tomorrow)
     if (error) throw new Error(error.message)
     if (!assignments || assignments.length === 0) {
@@ -77,12 +77,18 @@ export default scheduledHandler({
       else rosterByClass.set(student.class_id, [student.id])
     }
 
-    const due = new Set<string>()
+    // Per student, because one morning's run can owe different children
+    // different assignments — and one child more than one.
+    const dueTitles = new Map<string, string[]>()
     for (const assignment of assignments) {
       for (const studentId of rosterByClass.get(assignment.class_id) ?? []) {
-        if (!finished.has(`${assignment.id}:${studentId}`)) due.add(studentId)
+        if (finished.has(`${assignment.id}:${studentId}`)) continue
+        const titles = dueTitles.get(studentId)
+        if (titles) titles.push(assignment.title)
+        else dueTitles.set(studentId, [assignment.title])
       }
     }
+    const due = new Set(dueTitles.keys())
 
     if (due.size === 0) {
       return { ...empty, skipped: 'every student has already completed tomorrow’s homework' }
@@ -98,6 +104,14 @@ export default scheduledHandler({
         // sent", and keying it on the deadline would let one morning's
         // reminder suppress the next.
         date: today,
+        // The in-app line names the assignment. A child with more than
+        // one due tomorrow gets a count instead — the alternative is
+        // naming one of them and silently dropping the rest, which is
+        // the sibling-collision mistake in a different costume.
+        context: (studentId): NotificationContext => {
+          const titles = dueTitles.get(studentId) ?? []
+          return titles.length === 1 ? { title: titles[0] } : { count: titles.length }
+        },
       }),
     )
   },

@@ -95,6 +95,21 @@ path cannot fail the write it observes: `fn_post_webhook` is renamed out
 from under the triggers and the writes must still succeed. Total: 93
 assertions.*
 
+### 3.1 Notification centre (NC-01…NC-11, migration 012 / ADR-017)
+
+A notification is a message addressed to one named person, so the whole
+table is a single access-control question asked from every direction.
+
+- [x] NC-01/NC-02 — a parent sees exactly their own notifications; another family's are invisible rather than merely filtered by the app
+- [x] NC-03 — a recipient can mark their own read
+- [x] NC-04/NC-05 — and can change **nothing else**: rewriting `event` or `context` on their own row is refused. RLS has no column granularity, so this is a column-level GRANT (`update (read_at)`), not a policy
+- [x] NC-06 — no client role can insert a notification, even addressed to themselves. A client that could would be able to put words in the TPA's mouth on another parent's screen
+- [x] NC-07 — nor delete one: retention is central, so there is no path by which the record of what a family was told disappears early
+- [x] NC-08 — a 16+ student reads their own
+- [x] NC-09 — **an admin reads none at all**, the one place TAD ADR-014's super admin deliberately does not reach
+- [x] NC-10 — nor a tutor, including for their own class
+- [x] NC-11 — `TRUNCATE`, which RLS does **not** filter, is no longer held by `anon`/`authenticated` on any table. Found while checking the grants for this migration: it came from Supabase's own role bootstrap, and `set role authenticated; truncate public.attendance;` succeeded before migration 012 revoked it. Not reachable through PostgREST, which exposes no TRUNCATE — removed on least-privilege grounds rather than in response to a live route
+
 ## 4. Unit tests (Vitest)
 
 ### 4.1 Streak logic
@@ -175,8 +190,9 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 
 | Case | Android Chrome | iOS Safari (16.4+, installed to home screen) | Desktop Chrome |
 |---|---|---|---|
-| Permission prompt & subscribe | ☐ | ☐ | ☑ |
-| Absence push received | ☐ | ☐ | ☑ |
+| Permission prompt & subscribe | ☑ | ☐ | ☑ |
+| Notification shows the PPME mark, not a white block or Chrome's logo | ☐ | ☐ | ☑ |
+| Absence push received | ☑ | ☐ | ☑ |
 | Milestone push received | ☐ | ☐ | ☑ |
 | New-homework push received (class fan-out) | ☐ | ☐ | ☑ |
 | Report-ready push received (parent + 16+ student) | ☐ | ☐ | ☑ |
@@ -184,14 +200,30 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | Scheduled homework-due reminder at 08:00 local | ☐ | ☐ | ☑ |
 | Weekly digest, Friday 08:00 local, and the dashboard summary it links to | ☐ | ☐ | ☑ |
 | Two children absent → two notifications, one per child (ADR-016(f)) | ☐ | ☐ | ☑ |
+| Tapping a push opens the app on the right screen | ☐ | ☐ | ☑ |
+| Notification centre lists the same events, with the in-app detail | ☐ | ☐ | ☑ |
+| Bell badge shows the unread count and clears on opening the centre | ☐ | ☐ | ☑ |
+| Push switched off → centre still fills (the case the centre exists for) | ☐ | ☐ | ☑ |
 | Dedup: same event twice → one notification | ☐ | ☐ | ☑ |
 | iOS not-installed state → graceful explanation, no broken prompt | — | ☐ | — |
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
+| **Installed** PWA: notification is attributed to "TPA PPME Den Haag", not to Chrome | ☐ | ☐ | n/a |
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
 | Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
 
-**Android Chrome and iOS Safari are unverified, and are not being recorded
-as anything else.** No physical Android or iOS device is available to this
+**Two Android rows are now ticked, from a real device.** A reviewer with an
+Android phone ran the permission prompt, subscribed, and received a real
+absence push over a local HTTPS origin (a LAN cert, so the origin is a
+secure context — plain `http://<lan-ip>` is not, and neither the service
+worker nor `crypto.subtle` is available there). That run is also what
+caught the notification badge: Android masks the badge slot by its alpha
+channel, so the opaque `icon-192.png` it pointed at rendered as a white
+block, and where the browser fell back it showed Chrome's own logo. Fixed
+with a transparent silhouette (`icons/badge-96.png`); **the fix itself is
+not yet confirmed on the device**, so that row stays unticked until it is.
+
+**The rest of Android, and all of iOS Safari, are still unverified, and are
+not being recorded as anything else.** No physical Android or iOS device is available to this
 project, and both columns need one — iOS especially, since its whole point
 is behaviour that only appears after "Add to Home Screen", which cannot be
 emulated. Someone with a phone needs to run those two columns before
@@ -203,9 +235,9 @@ the platform being tested.
 **Desktop Chrome is genuinely run**, not inspected: `scripts/verify-push.mjs`
 drives three real Chromium profiles (a parent with two children in one class,
 a second family in the same class, and a 16+ student with their own account)
-against a real push service, and asserts on what each browser displayed. 104
-checks, currently all passing (63 before part 2b). Beyond the ticked rows
-above it also covers:
+against a real push service, and asserts on what each browser displayed. 130
+checks, currently all passing (63 before part 2b, 104 before part 3).
+Beyond the ticked rows above it also covers:
 
 - the subscription is stored, with exactly the three fields we use
 - **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property). Checked on every event type, and hardest on the class fan-out: one assignment notifies both families in the class, each naming only their own child
@@ -221,6 +253,9 @@ above it also covers:
 - endpoint authorization: `push-subscribe` 403s a tutor and an admin, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
 - **two children, two notifications** — a parent whose children are both absent receives one notification per child, on distinct tags. This is the regression ADR-016(f) fixed: keyed without the child, the second replaced the first and the parent was told about one of them
 - **the three scheduled Functions, driven at a chosen instant** by `scripts/invoke-scheduled.mjs`, which pins the clock from outside the process (there is deliberately no test hook inside the Function). For each: the Europe/Amsterdam gate opens at 18:00 local on a **CET** date and at 18:00 local on a **CEST** date — an hour apart in UTC — and the same 17:00 UTC that is 18:00 in winter is correctly refused as 19:00 in summer; the **second, idempotent run** reports the same sends and adds no notification; a family already on track, a morning with nothing due, and a week with no activity each send nothing; a student who has marked homework `completed` drops out of the run; the Friday digest refuses a Thursday and refuses 09:00
+- **the in-app notification centre** (ADR-017): every event above also leaves a row; every row belongs to a child of that family and no other; the centre carries the detail the lock screen may not — the jilid number, the surah, the assignment title and deadline — while the child's name is never stored on the row; a repeated scheduled run updates its row rather than adding a second; no tutor or admin is given a row at all; **and a family with push switched off is still recorded**, which is who the centre is for, with the sender reporting `recorded` separately from `sent`
+- **the centre on screen**: the list renders in the recipient's own language, names both of a parent's children and neither of the other family's, opening it clears the unread count, the TopNav bell appears for a parent and not for a tutor, and a tutor who navigates to `/notifications` directly is told plainly that they receive none rather than shown an empty list
+- **retention** (DPIA R5): `prune-notifications` deletes past the 90-day window, leaves everything inside it, reports its cutoff and count, deletes nothing on a second run, and does nothing outside its hour
 - **the scheduled Functions disclose nothing to an unauthenticated caller.** They carry no shared secret — Netlify's scheduler cannot send one — and under `netlify dev` they answer plain HTTP. Asserted: a hostile POST naming another family's child gets a response containing no dedup tags and no identifiers, and the posted body is not read at all (ADR-016(d)/(e))
 
 **One thing this could not check.** Netlify's own types describe a
@@ -232,6 +267,15 @@ local answer is the opposite — they are ordinary endpoints — which is
 why the jobs are built to be safe with no platform boundary at all.
 Someone with production access should confirm which behaviour the live
 site has.
+
+One more thing it learned, worth knowing before trusting its output: a
+`requestfailed` event is **not** the same as a failed request. The
+TopNav bell fetches its unread count on every route change, and a
+navigation while that is in flight produces `net::ERR_ABORTED` — normal
+browser behaviour, and initially reported here as a failure on every
+family's browser. The harness now separates the two and only fails on
+the rest, which is what keeps the check useful for what it exists to
+find: a 4xx the UI swallows.
 
 Two things that harness learned the hard way, both written into the README:
 Playwright's default headless shell has no push implementation at all

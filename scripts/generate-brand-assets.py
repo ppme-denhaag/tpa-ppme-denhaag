@@ -79,6 +79,31 @@ def icon(mark: Image.Image, out: Path, size: int, fraction: float) -> None:
     print(f"  {out.relative_to(ROOT)}  {size}x{size} (mark {fraction:.0%})")
 
 
+def badge(mark: Image.Image, out: Path, size: int, fraction: float) -> None:
+    """Android notification badge: a white silhouette on transparency.
+
+    The status-bar icon is **masked by its alpha channel** — Android throws
+    the colours away and redraws whatever is opaque in the system tint. So
+    a normal app icon, which is an opaque square, comes out as a solid
+    white block, and that is exactly what `icon-192.png` was producing
+    before this existed. Only the mark's own alpha is kept here, and every
+    visible pixel is forced to pure white so nothing survives except the
+    shape.
+
+    96px because Chrome asks for a badge at roughly 4x the 24dp status-bar
+    slot; anything larger is thrown away by the downscale.
+    """
+    canvas = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    side = round(size * fraction)
+    resized = mark.resize((side, side), Image.LANCZOS)
+    silhouette = Image.new("RGBA", resized.size, (255, 255, 255, 255))
+    silhouette.putalpha(resized.getchannel("A"))
+    canvas.alpha_composite(silhouette, ((size - side) // 2,) * 2)
+    canvas.save(out, optimize=True)
+    opaque = sum(1 for a in canvas.getchannel("A").getdata() if a > 8)
+    print(f"  {out.relative_to(ROOT)}  {size}x{size} silhouette, {opaque * 100 // (size * size)}% coverage")
+
+
 def pdf_logo_module(src: Image.Image, out: Path) -> None:
     """Inline the PDF header wordmark as base64 in a TypeScript module.
 
@@ -146,6 +171,9 @@ def main() -> None:
     icon(mark, ICONS / "icon-maskable-512.png", 512, 0.58)
     icon(mark, ICONS / "favicon-32.png", 32, 0.92)
     icon(mark, ICONS / "favicon-16.png", 16, 1.0)
+
+    print("notification badge:")
+    badge(mark, ICONS / "badge-96.png", 96, 0.92)
 
     print("PDF header:")
     pdf_logo_module(white, FUNCTION_LIB / "logoAsset.ts")

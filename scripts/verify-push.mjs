@@ -122,11 +122,23 @@ async function openAs(user) {
 
   const consoleErrors = []
   const failedRequests = []
+  const aborted = []
   const page = await context.newPage()
   page.on('console', (msg) => {
     if (msg.type() === 'error') consoleErrors.push(msg.text())
   })
-  page.on('requestfailed', (req) => failedRequests.push(`${req.method()} ${req.url()}`))
+  page.on('requestfailed', (req) => {
+    // `net::ERR_ABORTED` is the browser cancelling an in-flight request
+    // because the page navigated away — the TopNav bell fires its
+    // unread count on every route change, and this harness navigates
+    // constantly. That is normal browser behaviour, not a rejected
+    // request, and lumping the two together would make this check
+    // useless for finding the thing it exists to find: a 4xx the UI
+    // swallows. Recorded either way, but only the rest fail the run.
+    const reason = req.failure()?.errorText ?? 'unknown'
+    if (reason === 'net::ERR_ABORTED') aborted.push(`${req.method()} ${req.url()}`)
+    else failedRequests.push(`${req.method()} ${req.url()} (${reason})`)
+  })
   page.on('response', (res) => {
     if (res.status() >= 400) failedRequests.push(`${res.status()} ${res.url()}`)
   })
@@ -136,7 +148,7 @@ async function openAs(user) {
   ])
   await page.goto(`${ORIGIN}/settings/notifications`, { waitUntil: 'domcontentloaded' })
   await page.evaluate(() => navigator.serviceWorker.ready)
-  return { context, page, consoleErrors, failedRequests }
+  return { context, page, consoleErrors, failedRequests, aborted }
 }
 
 const shown = (page) =>
@@ -676,10 +688,11 @@ try {
 
   const digest = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 8))
   check('the Friday 08:00 run sends', digest.body.sent >= 1, JSON.stringify(digest.body))
-  const sitiDigest = await waitForNotification(siti.page)
+  const sitiDigest = await waitForCount(siti.page, 2)
   check(
-    'Ibu Siti received the weekly digest',
-    sitiDigest.some((n) => n.body === 'Ringkasan mingguan Ali sudah siap'),
+    'Ibu Siti received the weekly digest, one per child',
+    sitiDigest.some((n) => n.body === 'Ringkasan mingguan Ali sudah siap') &&
+      sitiDigest.some((n) => n.body === 'Ringkasan mingguan Zainab sudah siap'),
     JSON.stringify(sitiDigest.map((n) => n.body)),
   )
   check(
@@ -709,6 +722,158 @@ try {
   await clearTray(rudi.page)
   await clearTray(fatimah.page)
 
+  console.log('\n4j. in-app notification centre (ADR-017)')
+  // Every push above should also have left a row in the centre. The
+  // counts are asserted against the *senders'* own reported `recorded`
+  // where possible, and against the database otherwise.
+  const notifCount = (userId, extra = '') =>
+    Number(sql(`select count(*) from public.notifications where user_id='${userId}' ${extra}`))
+
+  check(
+    'the absence, milestone, homework and report events all left rows for Ibu Siti',
+    notifCount(SITI.id) >= 5,
+    `${notifCount(SITI.id)} rows`,
+  )
+  check(
+    'each row names a child of that family and nobody else',
+    sql(`select count(*) from public.notifications n
+         join public.students s on s.id = n.student_id
+         where n.user_id='${SITI.id}' and s.parent_id <> '${SITI.id}'`) === '0',
+  )
+  check(
+    'CROSS-FAMILY: the other parent’s rows are all about their own child',
+    sql(`select count(*) from public.notifications n
+         join public.students s on s.id = n.student_id
+         where n.user_id='${RUDI.id}' and s.parent_id <> '${RUDI.id}'`) === '0',
+  )
+  check(
+    'the in-app row carries the detail the lock screen may not — the jilid number',
+    sql(`select context->>'number' from public.notifications
+         where user_id='${SITI.id}' and event='jilidMilestone' limit 1`) === '1',
+    sql(`select context::text from public.notifications where user_id='${SITI.id}' and event='jilidMilestone' limit 1`),
+  )
+  check(
+    '…and the assignment title',
+    sql(`select context->>'title' from public.notifications
+         where user_id='${SITI.id}' and event='assignmentDueTomorrow' limit 1`) === 'Menulis huruf hijaiyah',
+  )
+  check(
+    'the child’s name is never stored on the row',
+    sql(`select count(*) from public.notifications where context::text ilike '%ali%' or context::text ilike '%zainab%'`) === '0',
+  )
+  check(
+    'a repeated scheduled run updates its row rather than adding one',
+    sql(`select count(*) from public.notifications
+         where user_id='${SITI.id}' and event='assignmentDueTomorrow'
+           and student_id='${ALI}' and event_date='${today}'`) === '1',
+  )
+  check(
+    'no admin or tutor was given a notification row',
+    sql(`select count(*) from public.notifications n join public.users u on u.id = n.user_id
+         where u.role in ('admin','tutor')`) === '0',
+  )
+
+  // The property the centre exists for: a family with push switched off
+  // still gets the in-app record.
+  const savedRudi = sql(`select coalesce(push_sub::text,'null') from public.users where id='${RUDI.id}'`)
+  sql(`update public.users set push_sub = null where id='${RUDI.id}'`)
+  const beforeOff = notifCount(RUDI.id)
+  sql(`delete from public.notifications where user_id='${RUDI.id}' and event='murajaahReminder'`)
+  assignMurajaah(FATIMAH)
+  sql(`update public.murajaah_assignments set frequency='daily' where id='${MURAJAAH_TARGET}'`)
+  sql(`delete from public.murajaah_log where assignment_id='${MURAJAAH_TARGET}'`)
+  const offRun = invokeScheduled('send-murajaah-reminders', amsterdamInstant(today, 18))
+  check(
+    'a family with push disabled is still recorded in the centre',
+    offRun.body.recorded >= 1 && offRun.body.sent === 0,
+    JSON.stringify(offRun.body),
+  )
+  check(
+    '…and the row is really there',
+    notifCount(RUDI.id, `and event='murajaahReminder'`) === 1,
+    `${notifCount(RUDI.id)} rows total (was ${beforeOff})`,
+  )
+  check(
+    'the sender reports recorded separately from sent',
+    offRun.body.skipped === 'no push subscription',
+    JSON.stringify(offRun.body),
+  )
+  sql(`delete from public.murajaah_assignments where id='${MURAJAAH_TARGET}'`)
+  if (savedRudi !== 'null') sql(`update public.users set push_sub = $j$${savedRudi}$j$::jsonb where id='${RUDI.id}'`)
+
+  console.log('\n4k. the centre on screen, and the bell')
+  await siti.page.goto(`${ORIGIN}/notifications`, { waitUntil: 'domcontentloaded' })
+  // The rows arrive after a round trip, so waiting for the heading is
+  // not waiting for the list — an earlier version of this read the page
+  // before any row had rendered and reported an empty centre.
+  await siti.page.locator('li').first().waitFor({ timeout: 20000 })
+  const centreText = await siti.page.locator('body').innerText()
+  check('the centre lists the absence in Indonesian', centreText.includes('Ali tidak hadir hari ini di TPA'), centreText.slice(0, 160))
+  check(
+    'the jilid number appears in the app, where R6 allows it',
+    /Jilid 1/.test(centreText),
+    centreText.slice(0, 300),
+  )
+  check('the centre names both children', /Ali/.test(centreText) && /Zainab/.test(centreText))
+  check(
+    'CROSS-FAMILY: the other family’s child is nowhere on the screen',
+    !/Fatimah/.test(centreText),
+  )
+  check(
+    'opening the centre clears the unread count',
+    sql(`select count(*) from public.notifications where user_id='${SITI.id}' and read_at is null`) === '0',
+  )
+
+  await siti.page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' })
+  const bell = siti.page.locator('header').getByRole('link', { name: /Notifikasi|Meldingen/ })
+  check('the TopNav bell is shown to a parent', (await bell.count()) === 1)
+
+  // A tutor and an admin get no bell at all.
+  const tutorCtx = await openAs(AHMAD)
+  try {
+    await tutorCtx.page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' })
+    check(
+      'no bell for a tutor — they receive none and can read none',
+      // Scoped to the header: the dashboard has its own "Notifikasi"
+      // link to the *settings* screen, which every role gets and which
+      // an unscoped selector matched.
+      (await tutorCtx.page.locator('header').getByRole('link', { name: /Notifikasi|Meldingen/ }).count()) === 0,
+    )
+    await tutorCtx.page.goto(`${ORIGIN}/notifications`, { waitUntil: 'domcontentloaded' })
+    const tutorText = await tutorCtx.page.locator('body').innerText()
+    check(
+      'a tutor visiting the centre directly is told plainly they receive none',
+      /tidak menerima notifikasi|ontvangt u geen meldingen/i.test(tutorText),
+      tutorText.slice(0, 200),
+    )
+    check('a tutor sees no family’s notification on that screen', !/tidak hadir hari ini/.test(tutorText))
+    check('no console errors (tutor, notification centre)', tutorCtx.consoleErrors.length === 0, tutorCtx.consoleErrors.join(' | '))
+  } finally {
+    await tutorCtx.context.close()
+  }
+
+  console.log('\n4l. retention (DPIA R5)')
+  sql(`
+    insert into public.notifications (user_id, student_id, event, event_date, created_at)
+    values ('${SITI.id}', '${ALI}', 'weeklyDigest', current_date - 200, now() - interval '200 days')
+    on conflict do nothing;
+  `)
+  const beforePrune = notifCount(SITI.id)
+  const pruned = invokeScheduled('prune-notifications', amsterdamInstant(today, 3))
+  check('the prune job deletes past the retention window', pruned.body.deleted === 1, JSON.stringify(pruned.body))
+  check('…and leaves everything inside it', notifCount(SITI.id) === beforePrune - 1)
+  check(
+    'the job reports its cutoff, so a DPIA review has something to read',
+    pruned.body.retentionDays === 90 && typeof pruned.body.cutoff === 'string',
+    JSON.stringify(pruned.body),
+  )
+  const pruneAgain = invokeScheduled('prune-notifications', amsterdamInstant(today, 3))
+  check('a second prune run deletes nothing', pruneAgain.body.deleted === 0, JSON.stringify(pruneAgain.body))
+  check(
+    'the prune job does nothing outside its hour',
+    String(invokeScheduled('prune-notifications', amsterdamInstant(today, 10)).body.skipped ?? '').startsWith('not 3:00'),
+  )
+
   console.log('\n5. unsubscribe → silence')
   const disable = rudi.page.getByRole('button', { name: /Meldingen uitschakelen|Matikan notifikasi/ })
   await disable.waitFor({ timeout: 15000 })
@@ -727,6 +892,7 @@ try {
   check('no console errors (Bapak Rudi)', rudi.consoleErrors.length === 0, rudi.consoleErrors.join(' | '))
   check('no console errors (Fatimah, 16+ student)', fatimah.consoleErrors.length === 0, fatimah.consoleErrors.join(' | '))
   check('no failed requests (Ibu Siti)', siti.failedRequests.length === 0, siti.failedRequests.join(' | '))
+  console.log(`       (navigation-aborted requests, not failures — Siti ${siti.aborted.length}, Rudi ${rudi.aborted.length}, Fatimah ${fatimah.aborted.length})`)
   check('no failed requests (Bapak Rudi)', rudi.failedRequests.length === 0, rudi.failedRequests.join(' | '))
   check('no failed requests (Fatimah, 16+ student)', fatimah.failedRequests.length === 0, fatimah.failedRequests.join(' | '))
 } finally {

@@ -133,6 +133,17 @@ describe('service worker: push event', () => {
     expect(sw.shown[0].options.data).toEqual({ url: '/attendance' })
   })
 
+  it('uses a transparent silhouette for the status-bar badge, not the app icon', async () => {
+    // Android masks the badge by its alpha channel and repaints it, so an
+    // opaque icon renders as a solid white block — which is what shipped
+    // until a real device showed it. The two slots must stay different
+    // assets: `icon` is the full-colour icon in the shade, `badge` is the
+    // monochrome mark for the status bar.
+    await sw.push({ title: 'x', body: 'y', tag: 't', url: '/', icon: '/icons/icon-192.png' })
+    expect(sw.shown[0].options.badge).toBe('/icons/badge-96.png')
+    expect(sw.shown[0].options.badge).not.toBe(sw.shown[0].options.icon)
+  })
+
   it('never re-alerts for a replaced notification', async () => {
     // Same tag replaces rather than stacks; renotify:false keeps the
     // replacement from buzzing the phone a second time for one event.

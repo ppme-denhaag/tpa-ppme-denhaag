@@ -4,6 +4,7 @@ import {
   dispatch,
   type DispatchDeps,
   type StudentAudience,
+  recordNotifications,
   reportable,
   type StudentRow,
   type UserRow,
@@ -96,7 +97,13 @@ describe('who receives a notification about a child', () => {
     expect(audiences.flatMap((a) => a.recipients)).toEqual([])
   })
 
-  it('skips accounts with no usable subscription', () => {
+  it('keeps accounts with no usable subscription, with nothing to push to', () => {
+    // Changed by ADR-017. These recipients used to be dropped from the
+    // audience entirely, which was right when a push was the only thing
+    // a notification could be. Now they are exactly who the in-app
+    // notification centre exists for, so they stay — carrying
+    // `subscription: null`, which is what `dispatch` filters on and
+    // `recordNotifications` deliberately ignores.
     const users: UserRow[] = [
       { ...parent('parent-1'), push_sub: null },
       { ...parent('parent-2'), push_sub: { endpoint: 'http://not-https.example' } },
@@ -107,7 +114,38 @@ describe('who receives a notification about a child', () => {
       student({ id: 's2', parent_id: 'parent-2' }),
       student({ id: 's3', parent_id: 'parent-3' }),
     ]
-    expect(buildAudiences(rows, users, 'parent').flatMap((a) => a.recipients)).toEqual([])
+    const recipients = buildAudiences(rows, users, 'parent').flatMap((a) => a.recipients)
+    expect(recipients.map((r) => r.userId)).toEqual(['parent-1', 'parent-2', 'parent-3'])
+    expect(recipients.every((r) => r.subscription === null)).toBe(true)
+  })
+
+  it('still drops a role that receives nothing, subscription or not', () => {
+    // The distinction that matters: "not reachable by push" is a
+    // delivery fact, "not a recipient" is an authorization one
+    // (ADR-015(a)). Only the second removes someone from the audience,
+    // and so from the notification centre.
+    const users: UserRow[] = [
+      { ...parent('tutor-1'), role: 'tutor', push_sub: null },
+      { ...parent('admin-1'), role: 'admin' },
+    ]
+    const rows = [
+      student({ id: 's1', parent_id: 'tutor-1' }),
+      student({ id: 's2', parent_id: 'admin-1' }),
+    ]
+    expect(buildAudiences(rows, users, 'family').flatMap((a) => a.recipients)).toEqual([])
+  })
+
+  it('mixes reachable and unreachable recipients in one family audience', () => {
+    const users: UserRow[] = [
+      parent('parent-1'),
+      { ...parent('self-1'), role: 'student', push_sub: null },
+    ]
+    const rows = [student({ parent_id: 'parent-1', user_id: 'self-1' })]
+    const [audience] = buildAudiences(rows, users, 'family')
+    expect(audience.recipients.map((r) => [r.userId, r.subscription !== null])).toEqual([
+      ['parent-1', true],
+      ['self-1', false],
+    ])
   })
 
   it('keeps a student with no reachable parent in the result, with no recipients', () => {
@@ -337,5 +375,112 @@ describe('reportable — what a Function may put in its HTTP response', () => {
     expect(
       reportable({ sent: 0, expired: 0, failed: 0, tags: [], skipped: 'no push subscription' }),
     ).toEqual({ sent: 0, expired: 0, failed: 0, skipped: 'no push subscription' })
+  })
+})
+
+describe('recordNotifications — the in-app half (ADR-017)', () => {
+  function fakeUpsertClient() {
+    const calls: { rows: unknown[]; onConflict?: string }[] = []
+    const client = {
+      from: () => ({
+        upsert: async (rows: unknown[], opts?: { onConflict?: string }) => {
+          calls.push({ rows, onConflict: opts?.onConflict })
+          return { error: null }
+        },
+      }),
+    } as unknown as Parameters<typeof recordNotifications>[0]
+    return { client, calls }
+  }
+
+  it('writes one row per recipient, including those with no subscription', () => {
+    // The property the whole notification centre rests on: it exists
+    // for the families push cannot reach, so a recipient with
+    // `subscription: null` must still get a row.
+    const { client, calls } = fakeUpsertClient()
+    return recordNotifications(
+      client,
+      [
+        target({
+          recipients: [
+            { userId: 'parent-1', locale: 'id', subscription: SUB('a') },
+            { userId: 'self-1', locale: 'nl', subscription: null },
+          ],
+        }),
+      ],
+      'reportReady',
+      '2026-03-10',
+    ).then((recorded) => {
+      expect(recorded).toBe(2)
+      expect(calls[0].rows).toEqual([
+        {
+          user_id: 'parent-1',
+          student_id: 'student-1',
+          event: 'reportReady',
+          context: {},
+          event_date: '2026-03-10',
+        },
+        {
+          user_id: 'self-1',
+          student_id: 'student-1',
+          event: 'reportReady',
+          context: {},
+          event_date: '2026-03-10',
+        },
+      ])
+    })
+  })
+
+  it('upserts on the same tuple the dedup tag uses, so a re-run cannot duplicate', async () => {
+    const { client, calls } = fakeUpsertClient()
+    await recordNotifications(client, [target()], 'murajaahReminder', '2026-03-10')
+    expect(calls[0].onConflict).toBe('user_id,student_id,event,event_date')
+  })
+
+  it('carries a constant context to every recipient', async () => {
+    const { client, calls } = fakeUpsertClient()
+    await recordNotifications(client, [target()], 'jilidMilestone', '2026-03-10', { number: 3 })
+    expect((calls[0].rows[0] as { context: unknown }).context).toEqual({ number: 3 })
+  })
+
+  it('resolves a per-student context, which one homework run needs', async () => {
+    const { client, calls } = fakeUpsertClient()
+    await recordNotifications(
+      client,
+      [
+        target({ studentId: 'ali' }),
+        target({ studentId: 'zainab' }),
+      ],
+      'assignmentDueTomorrow',
+      '2026-03-10',
+      (studentId) => (studentId === 'ali' ? { title: 'Hafalan' } : { count: 2 }),
+    )
+    expect((calls[0].rows as { student_id: string; context: unknown }[]).map((r) => [
+      r.student_id,
+      r.context,
+    ])).toEqual([
+      ['ali', { title: 'Hafalan' }],
+      ['zainab', { count: 2 }],
+    ])
+  })
+
+  it('never stores the child’s name — it is joined at read time', async () => {
+    const { client, calls } = fakeUpsertClient()
+    await recordNotifications(client, [target()], 'absence', '2026-03-10')
+    expect(JSON.stringify(calls[0].rows)).not.toContain('Ali')
+  })
+
+  it('reports 0 rather than throwing when the write fails', async () => {
+    // A family losing the in-app copy of a notification is not worth
+    // also withholding the push they would otherwise have received.
+    const client = {
+      from: () => ({ upsert: async () => ({ error: { message: 'nope' } }) }),
+    } as unknown as Parameters<typeof recordNotifications>[0]
+    await expect(recordNotifications(client, [target()], 'absence', '2026-03-10')).resolves.toBe(0)
+  })
+
+  it('writes nothing when there is nobody to tell', async () => {
+    const { client, calls } = fakeUpsertClient()
+    expect(await recordNotifications(client, [target({ recipients: [] })], 'absence', '2026-03-10')).toBe(0)
+    expect(calls).toEqual([])
   })
 })

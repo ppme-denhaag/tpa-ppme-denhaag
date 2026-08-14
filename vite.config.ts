@@ -18,6 +18,15 @@ export default defineConfig({
         background_color: '#F8F9FA',
         display: 'standalone',
         start_url: '/',
+        // `id`, not vite-plugin-pwa's default of `en`. This is the
+        // language the OS labels the installed app in, and it was the
+        // one place claiming English — `index.html` says `id` and
+        // i18n's `fallbackLng` is `id`. It matters more than it looks
+        // once the app is installed: an Android WebAPK takes its name,
+        // icon and language from this manifest, and that WebAPK is what
+        // makes a notification read "TPA PPME Den Haag" instead of
+        // "Chrome" in the notification shade.
+        lang: 'id',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

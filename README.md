@@ -33,7 +33,7 @@ npm run build                  # production build
 
 ## Database
 
-Migrations live in `supabase/migrations/` (001–011, applied in order). The
+Migrations live in `supabase/migrations/` (001–012, applied in order). The
 project is already linked (`supabase/config.toml` + `supabase link`); to apply
 a new migration:
 
@@ -106,9 +106,15 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 ## RLS automated test suite
 
 `supabase/tests/database/rls.test.sql` implements all 27 cases from
-test-plan.md §3 (RLS-01…RLS-27) plus WH-01…WH-12 for the notification
-webhooks in migrations 009 and 010, as 93 pgTAP assertions, using the
-standard fixture set from §2. The WH cases assert each trigger fires on
+test-plan.md §3 (RLS-01…RLS-27), plus WH-01…WH-12 for the notification
+webhooks in migrations 009 and 010, plus NC-01…NC-11 for the notification
+centre in migration 012 — 104 pgTAP assertions, using the standard
+fixture set from §2. The NC cases assert that only the addressee reads a
+notification, that **no client role can create or delete one at all**,
+that a recipient may write `read_at` and nothing else (a column-level
+GRANT, since RLS has no column granularity), that neither admin nor tutor
+reads any, and that `TRUNCATE` — which RLS does not filter — is no longer
+held by `anon`/`authenticated` on any table. The WH cases assert each trigger fires on
 exactly its own event and nothing else (a re-saved roster, a re-activated
 murajaah target and a re-published report must all notify nobody), that
 they are silent when unconfigured, that the body carries the row id and
@@ -161,6 +167,7 @@ against the live project in that window and appeared broken.
 | `send-murajaah-reminders.mts` | **Scheduled**, hourly, acting in the 18:00 Europe/Amsterdam hour (PRD FR-006). Reminds a family only on the last day their target's `frequency` can still be met — see `needsReminder` in `src/lib/murajaah.ts` |
 | `homework-due-reminders.mts` | **Scheduled**, hourly, acting at 08:00 Europe/Amsterdam (PRD FR-005). Assignments due *tomorrow*, across each class roster, skipping students who already marked it `completed` |
 | `weekly-progress-digest.mts` | **Scheduled**, hourly, acting at 08:00 on a Friday in Europe/Amsterdam. Parents of any child with activity this week; the summary itself is on the dashboard, because DPIA R6 will not have an attendance figure on a lock screen |
+| `prune-notifications.mts` | **Scheduled**, hourly, acting at 03:00 Europe/Amsterdam. Deletes notification-centre rows past 90 days — DPIA R5. Its own job rather than folded into the weekly digest, because retention is an obligation and the digest is a courtesy |
 
 All use the Netlify Functions v2 API (default export, Web-standard
 `Request`/`Response`) and are typechecked separately from the main app
@@ -221,7 +228,8 @@ the service worker shows it.
 
 Still deferred: the four **scheduled** notifications (daily Murajaah
 reminder, homework due tomorrow, weekly digest, streak resets) are
-ADR-015 part 2b, and the in-app notification centre is part 3.
+ADR-015 part 2b, and the in-app notification centre is part 3 (built,
+TAD ADR-017).
 
 The client never calls any of these. Every trigger is a database webhook,
 so a notification fires for a tutor write, an admin write (ADR-014) and
@@ -398,6 +406,33 @@ Two consequences worth knowing before you change one of these:
   the clock and calls the handler in process. There is deliberately no
   test hook inside the Function for this.
 
+### The notification centre
+
+Every notification any sender produces also writes a row to
+`public.notifications` (migration 012), which the bell in the top nav
+opens at `/notifications`. Three things about it are easy to get wrong
+if you change it:
+
+- **Rows are written whether or not the family has push enabled.** The
+  centre exists mainly *for* the families push cannot reach, so
+  recording happens at the audience level and only the push half filters
+  on having a subscription. `recorded` and `sent` are reported
+  separately and `recorded` is normally larger; that is not a
+  discrepancy.
+- **Nothing about presentation is stored** — no ordering key, no
+  category, no rendered sentence. A row holds `event` plus a `context`
+  object and the screen builds the text at read time from the i18n copy.
+  This is deliberate: the screen has never been design-reviewed (PRD
+  §71), so the schema is built to survive whatever a review decides.
+  Keep it that way, and put display concerns in the component.
+- **Admin can read none of them.** The one place ADR-014's super admin
+  stops (ADR-017(d)). There is no admin policy on the table and NC-09
+  asserts it stays that way.
+
+The client's only write is `read_at`, and that is a column-level GRANT
+rather than a convention — `update (read_at)` is all `authenticated`
+holds, so a recipient cannot rewrite an event on their own row.
+
 ## Roles
 
 | Role | What it can do |
@@ -439,6 +474,24 @@ Two things not to undo:
 - **The square icons carry the globe mark alone**, cropped out of the
   artwork — letterboxing a 1.93:1 wordmark into a square is what made the
   previous icon set unreadable at 48px. Never stretch the wordmark square.
+- **A notification says "Chrome" until the app is installed.** Android
+  attributes a web push to whichever app delivered it, and there is no API
+  for a site to override that — the payload cannot change it. It changes on
+  its own once the PWA is *installed*: Chrome mints a WebAPK from the
+  manifest, and that WebAPK owns its notifications, so the shade shows the
+  app's own name and icon. This only works on a **publicly reachable HTTPS
+  origin**, because Google's WebAPK service has to fetch the manifest and
+  icons itself — on a LAN address behind a private CA, "Add to Home Screen"
+  degrades to a plain shortcut and the attribution stays Chrome. So this is
+  only testable on a real deploy, never on the local review stack.
+- **The notification badge is a transparent silhouette, not an icon.**
+  `public/icons/badge-96.png` is what Android draws in the status bar, and
+  Android *masks it by its alpha channel* — colours are discarded and
+  whatever is opaque is repainted in the system tint. Pointing that slot at
+  `icon-192.png`, which is an opaque square, renders a plain white block;
+  leaving it unset makes the browser fall back to Chrome's own logo. Both
+  were true on a real phone until it was tested on one. Regenerate it with
+  the brand script like every other asset, and keep it monochrome.
 - **The PDF header logo is inlined as base64, not shipped as a file.** A
   bundled Netlify Function resolves runtime file paths differently under
   `netlify dev` than on deployed Netlify, and that difference would only ever

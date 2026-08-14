@@ -180,11 +180,14 @@
   "notifications": {
     "title": "Notifikasi",
     "absence": "{{name}} tidak hadir hari ini di TPA",
-    "newAssignment": "Tugas baru: {{title}} — deadline {{date}}",
-    "assignmentDueTomorrow": "Pengingat: Tugas {{title}} deadline besok",
+    "newAssignment": "Tugas baru untuk {{name}}: {{title}} — deadline {{date}}",
+    "assignmentDueTomorrow": "Pengingat: tugas {{title}} untuk {{name}} deadline besok",
     "jilidMilestone": "Alhamdulillah! {{name}} telah menyelesaikan Jilid {{number}}",
     "surahMemorized": "Alhamdulillah! {{name}} telah hafal Surah {{surah}}",
     "murajaahReminder": "Waktunya murajaah bersama {{name}}",
+    "assignmentDueTomorrowMany": "Pengingat: {{count}} tugas {{name}} deadline besok",
+    "reportReady": "Rapor akhir tahun {{name}} sudah siap dibuka",
+    "weeklyDigest": "Ringkasan mingguan {{name}} sudah siap",
     "empty": "Belum ada notifikasi",
     "push": {
       "absence": "{{name}} tidak hadir hari ini di TPA",

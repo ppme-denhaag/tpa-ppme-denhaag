@@ -854,6 +854,88 @@ paths:
         '405': { description: Method other than POST }
         '502': { description: The push service rejected the send }
 
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: The signed-in user's own notification centre (BUILT, TAD ADR-017)
+      description: |
+        PostgREST, not a Function. RLS (`notifications_own_read`, migration 012)
+        restricts every row to `user_id = auth.uid()`, so this endpoint takes no
+        user parameter and cannot be pointed at anyone else — including by an
+        admin, who reads none at all (ADR-017(d), asserted as NC-09).
+
+        Rows store the **event**, not a rendered sentence: `event` plus a
+        `context` object, with the child's name joined through `student_id`.
+        The screen builds the text at read time from the i18n copy, so the same
+        notification reads in Dutch or Indonesian depending on who is looking,
+        and a reworded string reaches rows already written.
+
+        `POST` and `DELETE` are not available to any client role — the write
+        grants are revoked in migration 012. Rows are created only by the
+        notification Functions under the service-role key, and removed only by
+        `prune-notifications`.
+      parameters:
+        - name: select
+          in: query
+          schema: { type: string, default: '*, students(full_name)' }
+        - name: order
+          in: query
+          schema: { type: string, default: 'created_at.desc' }
+        - name: read_at
+          in: query
+          description: '`is.null` for the unread count behind the TopNav badge'
+          schema: { type: string }
+      responses:
+        '200':
+          description: This user's notifications, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+    patch:
+      tags: [notifications]
+      summary: Mark notifications read — `read_at` only
+      description: |
+        The only write any client role can perform on this table, and that is
+        enforced by a column-level GRANT rather than by convention: migration
+        012 revokes the blanket UPDATE and grants `update (read_at)` alone.
+        A recipient cannot rewrite `event` or `context` on their own rows and
+        make the app render something that never happened (NC-04, NC-05).
+      responses:
+        '204': { description: Updated }
+        '403': { description: Any column other than read_at }
+
+  /prune-notifications:
+    post:
+      tags: [functions]
+      summary: Notification retention — SCHEDULED (BUILT, TAD ADR-017)
+      description: |
+        Netlify Scheduled Function, cron `0 * * * *`, acting only in the 03:00
+        hour in Europe/Amsterdam. Same authorization shape as the other
+        scheduled jobs — it reads nothing from the request.
+
+        Deletes notification-centre rows older than 90 days. This is DPIA risk
+        **R5** ("data kept longer than needed"): the notification centre is the
+        first table in this project that grows because time passed rather than
+        because someone recorded something, so it is the first that needs a
+        retention job at all.
+      responses:
+        '200':
+          description: |
+            `{ deleted, cutoff, retentionDays }`, or a `skipped` reason outside
+            the scheduled hour.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: integer }
+                  cutoff: { type: string, format: date }
+                  retentionDays: { type: integer, example: 90 }
+                  skipped: { type: string }
+        '500': { description: Missing Supabase service credentials, or the job failed }
+
   /send-murajaah-reminders:
     post:
       tags: [functions]
@@ -1137,6 +1219,53 @@ components:
       description: RLS policy denied the operation (PostgREST returns 403 or an empty result)
 
   schemas:
+    Notification:
+      type: object
+      description: |
+        One in-app notification: this recipient was told this thing about this
+        child on this day. Deliberately carries nothing about presentation —
+        no ordering key, no category, no rendered string — so the notification
+        centre's design can change without a migration (TAD ADR-017(a)).
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid, description: FK → users.id (the recipient) }
+        student_id: { type: string, format: uuid, description: FK → students.id (who it is about) }
+        event: { $ref: '#/components/schemas/NotificationEvent' }
+        context:
+          type: object
+          description: >-
+            What the in-app copy interpolates beyond the child's name — the
+            jilid number, the surah, the assignment title and its due date.
+            Scalars only. The child's **name is not here**: it is joined
+            through student_id, so a corrected name corrects every past
+            notification.
+          additionalProperties: { oneOf: [{ type: string }, { type: number }] }
+        event_date:
+          type: string
+          format: date
+          description: >-
+            The family's own Europe/Amsterdam calendar date, supplied by the
+            sender. With user_id, student_id and event it forms the unique key
+            — the same tuple as the push dedup tag, which is what makes an
+            hourly scheduled Function safe to re-run.
+        created_at: { type: string, format: date-time }
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: The only column a client may write.
+    NotificationEvent:
+      type: string
+      description: Matches `NOTIFICATION_EVENTS` and the `notification_event` Postgres enum exactly.
+      enum:
+        - absence
+        - newAssignment
+        - assignmentDueTomorrow
+        - jilidMilestone
+        - surahMemorized
+        - murajaahReminder
+        - reportReady
+        - weeklyDigest
     NotifyResult:
       type: object
       description: |

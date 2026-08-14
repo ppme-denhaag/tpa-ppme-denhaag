@@ -50,6 +50,16 @@ versleutelde inhoud van de melding en het technische adres van uw toestel.
 Eén account ontvangt meldingen op één toestel; zet u ze aan op een tweede
 toestel, dan verhuizen ze daarheen.
 
+**Meldingen in de app.** Elke melding wordt ook bewaard in een lijst in de
+app zelf, die u opent via het belletje bovenin. Die lijst werkt ook als u
+push-meldingen hebt uitgezet — u mist dan niets, u ziet het alleen pas
+wanneer u de app opent. In de app staat meer dan op uw vergrendelscherm
+kan: welk jilid uw kind heeft afgerond, welke surah, welke opdracht en
+wanneer die af moet zijn. Dat kan daar veilig, omdat u eerst bent
+ingelogd. Alleen u ziet uw eigen lijst: andere ouders, docenten en ook de
+beheerder kunnen die niet inzien. Meldingen ouder dan **90 dagen worden
+automatisch verwijderd**.
+
 Wij verwerken **geen** bijzondere persoonsgegevens in de zin van art. 9 AVG. Deelname aan
 TPA-onderwijs impliceert weliswaar een religieuze context, maar de app registreert
 uitsluitend onderwijsvoortgang; het IT-team beoordeelt in de DPIA of aanvullende
@@ -177,6 +187,17 @@ notifikasi peramban Anda sendiri (pada Chrome layanan tersebut milik Google, di
 luar UE) — layanan itu menerima isi notifikasi dalam bentuk terenkripsi beserta
 alamat teknis perangkat Anda. Satu akun menerima notifikasi di satu perangkat;
 jika Anda mengaktifkannya di perangkat kedua, notifikasi berpindah ke sana.
+
+**Notifikasi di dalam aplikasi.** Setiap notifikasi juga tersimpan dalam
+daftar di dalam aplikasi, yang Anda buka lewat ikon lonceng di bagian atas.
+Daftar itu tetap berjalan meskipun Anda menonaktifkan notifikasi push —
+Anda tidak kehilangan apa pun, hanya baru melihatnya saat membuka
+aplikasi. Di dalam aplikasi ditampilkan lebih banyak daripada yang boleh
+tampil di layar kunci: jilid apa yang diselesaikan anak Anda, surah apa,
+tugas apa dan kapan tenggatnya. Itu aman karena Anda sudah masuk lebih
+dulu. Hanya Anda yang melihat daftar Anda sendiri: orang tua lain, ustadz,
+dan bahkan admin tidak dapat membukanya. Notifikasi yang berumur lebih
+dari **90 hari dihapus otomatis**.
 
 Kami **tidak** memproses data pribadi kategori khusus sesuai Pasal 9 GDPR. Meskipun
 pendidikan TPA berlangsung dalam konteks keagamaan, aplikasi hanya mencatat progres
