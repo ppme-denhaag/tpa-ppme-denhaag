@@ -84,18 +84,20 @@ export function render(template: EmailTemplate, vars: TemplateVars): EmailTempla
  * and a table-free single column because that is what survives Gmail,
  * Outlook and Apple Mail alike.
  *
- * The logo is deliberately *not* embedded: an image in a transactional
- * email is blocked by default in most clients, and a wordmark set in
- * text always renders. The PDF header made the opposite choice for the
- * opposite reason (`logoAsset.ts`).
+ * The logo is a hosted PNG (`{{app_url}}/logo-white.png`, the same file
+ * `public/logo-white.png` builds to), not embedded as a data URI: Gmail
+ * strips `data:` image sources outright, so an inlined logo would never
+ * render even for readers who allow images. The `alt` text is the
+ * wordmark, so a reader who blocks remote images — the default in most
+ * clients — still sees the name instead of a blank box.
  */
-function layout(bodyHtml: string, ctaLabel: string): string {
+function layout(bodyHtml: string, ctaLabel: string, installNote: string): string {
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f8f9fa;">
     <div style="max-width:560px;margin:0 auto;padding:24px 16px;font-family:'Open Sans',Arial,sans-serif;color:#333333;line-height:1.6;">
       <div style="background:#0d50a0;color:#ffffff;padding:16px 20px;border-radius:8px 8px 0 0;">
-        <div style="font-size:18px;font-weight:bold;">TPA PPME Den Haag</div>
+        <img src="{{app_url}}/logo-white.png" width="160" height="83" alt="TPA PPME Den Haag" style="display:block;border:0;max-width:160px;height:auto;">
       </div>
       <div style="background:#ffffff;padding:20px;border-radius:0 0 8px 8px;">
         ${bodyHtml}
@@ -105,11 +107,27 @@ function layout(bodyHtml: string, ctaLabel: string): string {
         <p style="font-size:12px;color:#666666;text-align:center;margin-top:4px;">{{app_url}}</p>
       </div>
       <p style="font-size:12px;color:#666666;text-align:center;margin-top:16px;">
+        ${installNote}
+      </p>
+      <p style="font-size:12px;color:#666666;text-align:center;margin-top:8px;">
         PPME Den Haag &middot; Taman Pendidikan Al-Qur'an
       </p>
     </div>
   </body>
 </html>`
+}
+
+/**
+ * A one-line nudge to install the PWA, matching the reasoning behind the
+ * "Add to Home Screen" gate already shown in the notification settings
+ * page (`NotificationSettingsPage.tsx`, `iosInstallTitle`/`iosInstallBody`
+ * in the locale files) — iOS Web Push only works once installed, and this
+ * is the first message a new account sees, so it is the earliest place to
+ * say so.
+ */
+const INSTALL_NOTE: Record<Locale, string> = {
+  id: 'Tips: tambahkan aplikasi ini ke Layar Utama ponsel Anda (menu Bagikan di Safari untuk iPhone/iPad, atau menu browser di Android) agar mudah diakses dan dapat menerima notifikasi.',
+  nl: 'Tip: voeg deze app toe aan het beginscherm van je telefoon (deelmenu in Safari op iPhone/iPad, of het browsermenu op Android) voor snelle toegang en meldingen.',
 }
 
 /**
@@ -135,6 +153,7 @@ export const INVITATION: Record<UserRole, Record<Locale, EmailTemplate>> = {
          <p>Silakan masuk menggunakan akun Google dengan alamat email ini
             (<strong>{{email}}</strong>), yang telah kami daftarkan.</p>`,
         'Buka aplikasi TPA',
+        INSTALL_NOTE.id,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -163,6 +182,7 @@ Pengurus TPA PPME Den Haag`,
          <p>U kunt inloggen met uw Google-account op dit e-mailadres
             (<strong>{{email}}</strong>), dat wij al voor u hebben geregistreerd.</p>`,
         'Open de TPA-app',
+        INSTALL_NOTE.nl,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -194,6 +214,7 @@ Bestuur TPA PPME Den Haag`,
          <p>Silakan masuk menggunakan akun Google dengan alamat email ini
             (<strong>{{email}}</strong>).</p>`,
         'Buka aplikasi TPA',
+        INSTALL_NOTE.id,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -221,6 +242,7 @@ Pengurus TPA PPME Den Haag`,
          <p>Je kunt inloggen met je Google-account op dit e-mailadres
             (<strong>{{email}}</strong>).</p>`,
         'Open de TPA-app',
+        INSTALL_NOTE.nl,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -252,6 +274,7 @@ Bestuur TPA PPME Den Haag`,
          <p>Silakan masuk menggunakan akun Google dengan alamat email ini
             (<strong>{{email}}</strong>), yang telah kami daftarkan.</p>`,
         'Buka aplikasi TPA',
+        INSTALL_NOTE.id,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -282,6 +305,7 @@ Pengurus TPA PPME Den Haag`,
          <p>U kunt inloggen met uw Google-account op dit e-mailadres
             (<strong>{{email}}</strong>), dat wij al voor u hebben geregistreerd.</p>`,
         'Open de TPA-app',
+        INSTALL_NOTE.nl,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -315,6 +339,7 @@ Bestuur TPA PPME Den Haag`,
          <p>Silakan masuk menggunakan akun Google dengan alamat email ini
             (<strong>{{email}}</strong>), yang telah kami daftarkan.</p>`,
         'Buka aplikasi TPA',
+        INSTALL_NOTE.id,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
@@ -343,6 +368,7 @@ Pengurus TPA PPME Den Haag`,
          <p>U kunt inloggen met uw Google-account op dit e-mailadres
             (<strong>{{email}}</strong>), dat wij al voor u hebben geregistreerd.</p>`,
         'Open de TPA-app',
+        INSTALL_NOTE.nl,
       ),
       text: `Assalamu'alaikum warahmatullahi wabarakatuh,
 
