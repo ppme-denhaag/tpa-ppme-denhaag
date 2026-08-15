@@ -1932,12 +1932,22 @@ reset role;
 -- been tested at all: the ustadzah who teaches the class her own son sits
 -- in. When the two halves overlap, the union stops being a union — the
 -- tutor grant already contains the child — and three assertions above
--- inevitably invert. RLS-36 and RLS-37 are those inversions, stated
--- explicitly so that behaviour is a decision on the record rather than
--- an accident nobody had looked at. **They are characterisation, not
--- endorsement**: RLS-37 in particular pins the fact that a student
--- assistant assigned to their own class can record their own progress,
--- which is a product question for PPME and not something RLS can answer.
+-- inevitably invert. RLS-36 and RLS-37 are those inversions, and PPME
+-- has since answered both — in opposite directions, which is the reason
+-- they are worth reading together.
+--
+-- **RLS-36 is a decision: a tutor may record for their own child, and
+-- write that child's year-end report** (ADR-024). At a small TPA an
+-- ustadz or ustadzah teaches their own children, and a rule against it
+-- would be a rule against how the school runs.
+--
+-- **RLS-37 was a defect**: a santri assigned to their own class could
+-- grade themselves, contradicting a boundary ADR-020 had already stated
+-- in prose. Migration 013 (ADR-023) closes it. The two look structurally
+-- identical and are different in kind — one is a person assessing their
+-- own work, the other a teacher assessing a pupil who happens to be
+-- theirs — which is why `fn_my_recordable_students()` excludes the
+-- caller's own record and never their children.
 --
 -- The rest of the block fills the empty cells of the capability lattice.
 -- `deriveCapabilities` is four independent booleans — admin, tutor,
@@ -2111,9 +2121,15 @@ insert into _tap_log(line) select is(
 -- does not ask who the child belongs to.
 --
 -- Whether an ustadzah should be the one recording her own son's
--- progress is a question about conflict of interest, not about RLS —
--- and no ADR has answered it. This assertion exists so the answer is
--- known and deliberate rather than discovered later in production.
+-- progress is a question about conflict of interest, not about RLS.
+-- **PPME has answered it: she may** (ADR-024). At a school of ~200 with
+-- a handful of volunteer teachers, an ustadz or ustadzah teaches their
+-- own children, and a rule against it would be a rule against the way
+-- the TPA runs. So this assertion pins a decision rather than
+-- characterising an accident — and the refusal two assertions below,
+-- for the same parent's other child in a class they do not teach, is
+-- what keeps it a decision about *teaching* rather than about
+-- parenthood.
 insert into _tap_log(line) select lives_ok(
   $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
      values ('d0000000-0000-0000-0000-00000000000b', 'b0000000-0000-0000-0000-000000000006', 1, 5, 'lancar') $$,
@@ -2138,6 +2154,13 @@ insert into _tap_log(line) select lives_ok(
 -- the overlapping child. A draft is meant to be invisible to parents;
 -- for this child the account is also the class's tutor, and
 -- `yer_tutor_rw` has no published-only clause.
+--
+-- ADR-024(b) includes this deliberately. Narrowing `yer_tutor_rw` to
+-- exclude the caller's own children — the shape ADR-023 used for their
+-- own *record* — was offered to PPME and declined: for this child that
+-- account is the teacher, and writing the report is part of teaching
+-- them. RLS-16 is unchanged and still correct for every parent who does
+-- not teach the class, which is every parent the app has today.
 insert into _tap_log(line) select is(
   (select count(*) from public.year_end_reports
    where student_id = 'd0000000-0000-0000-0000-00000000000b' and status = 'draft'),

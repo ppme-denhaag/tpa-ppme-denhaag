@@ -80,10 +80,20 @@ values
   --   Ustadzah Aminah — role 'tutor', teaches Kelas A, her own son Yusuf
   --     is in Kelas B. Every page routes her to the *tutor* views, so
   --     she is the check that the tutor side is untouched.
-  --   Bapak Hasan — role 'parent', teaches Kelas B, his own daughter
-  --     Khadijah is in Kelas A. Every page routes him to the *family*
-  --     views, which is where the unfiltered "my children" query used to
-  --     hand him Kelas B's whole roster in the ChildPicker.
+  --   Bapak Hasan — role 'parent', teaches Kelas B **and Kelas A**, and
+  --     his own daughter Khadijah is in Kelas A. Every page routes him to
+  --     the *family* views, which is where the unfiltered "my children"
+  --     query used to hand him Kelas B's whole roster in the ChildPicker.
+  --     Kelas B is the disjoint half; Kelas A makes him the **overlap
+  --     tutor-parent** of RLS-36 — a tutor of the class his own child
+  --     sits in. Unlike Aisyah's, his overlap is *not* closed by
+  --     migration 013: he can record Khadijah's progress and write her
+  --     year-end report, seeing it in draft, through the tutor grant.
+  --     That is PPME's decision (ADR-024) and not an oversight — at a
+  --     small TPA a teacher teaches their own children. He is the account
+  --     to sign in as when a change touches the report editor or a
+  --     "drafts are invisible to parents" assumption, because for him
+  --     that assumption does not hold.
   --   Ustadzah Laila — role 'admin', teaches Kelas A, her own daughter
   --     Salma is in Kelas B: all three relationships at once, the shape
   --     RLS-34 asserts. She is the one to click through when a change
@@ -92,19 +102,48 @@ values
   --     hands her every class (ADR-014) while `fn_my_classes()` holds
   --     only Kelas A.
   --   Aisyah — role 'student', a 16+ self-login santri enrolled in
-  --     Kelas A who *assists* in Kelas B (ADR-020). The combination the
-  --     phrase "students are read-only" was hiding: read-only is what
-  --     you get when you hold no write-granting relationship, and she
-  --     holds one. She may record for Kelas B and not for herself.
+  --     Kelas A who *assists* in Kelas B **and in Kelas A** (ADR-020,
+  --     ADR-023). The combination the phrase "students are read-only"
+  --     was hiding: read-only is what you get when you hold no
+  --     write-granting relationship, and she holds one. Kelas B is the
+  --     disjoint half — a class she teaches and does not sit in. Kelas A
+  --     is the **overlap**, and the reason it was added: assisting the
+  --     group you already attend is the likely arrangement, and it is
+  --     the one that put her own record inside her own tutor grant.
+  --     Until migration 013 that let her grade herself. She is now the
+  --     account to click through for ADR-023: her class picker offers
+  --     both classes, the Kelas A roster contains her own name, and
+  --     recording progress against that row must fail while recording
+  --     against any classmate succeeds. Her attendance row is the
+  --     documented exception (ADR-023(c)).
   ('d1000000-0000-0000-0000-000000000001', 'ustadzah.aminah@dev.local', 'Ustadzah Aminah', 'tutor', 'id'),
   ('d1000000-0000-0000-0000-000000000002', 'bapak.hasan@dev.local', 'Bapak Hasan', 'parent', 'id'),
   ('d1000000-0000-0000-0000-000000000003', 'ustadzah.laila@dev.local', 'Ustadzah Laila', 'admin', 'id'),
   ('d1000000-0000-0000-0000-000000000004', 'aisyah@dev.local', 'Aisyah', 'student', 'id');
 
+-- The two overlap personas are seeded by naming an existing account in an
+-- existing class, so this fixture gains **no rows** for them: no student,
+-- no class, no session. That is deliberate. `scripts/verify-push.mjs`
+-- asserts exact roster sizes and class fan-out counts, and it has twice
+-- been broken by fixture rows added for an unrelated reason — so the
+-- overlap is expressed as two extra uuids in `tutor_ids`, which changes
+-- no count, no audience (a tutor is never a notification recipient) and
+-- nothing the harness reads.
 insert into public.classes (id, name, schedule, tutor_ids)
 values
-  ('a4000000-0000-0000-0000-000000000001', 'Kelas A', 'Sabtu 10:00-12:00', array['a1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000003']::uuid[]),
-  ('a4000000-0000-0000-0000-000000000002', 'Kelas B', 'Minggu 09:00-11:00', array['a1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000001', 'd1000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000004']::uuid[]);
+  ('a4000000-0000-0000-0000-000000000001', 'Kelas A', 'Sabtu 10:00-12:00', array[
+    'a1000000-0000-0000-0000-000000000001',   -- Ustadz Ahmad
+    'd1000000-0000-0000-0000-000000000001',   -- Ustadzah Aminah (her own son is in Kelas B)
+    'd1000000-0000-0000-0000-000000000003',   -- Ustadzah Laila, admin (her own daughter is in Kelas B)
+    'd1000000-0000-0000-0000-000000000002',   -- Bapak Hasan — OVERLAP: his own daughter Khadijah is in this class (RLS-36)
+    'd1000000-0000-0000-0000-000000000004'    -- Aisyah — OVERLAP: her own 16+ record is in this class (RLS-37, ADR-023)
+  ]::uuid[]),
+  ('a4000000-0000-0000-0000-000000000002', 'Kelas B', 'Minggu 09:00-11:00', array[
+    'a1000000-0000-0000-0000-000000000001',   -- Ustadz Ahmad
+    'b1000000-0000-0000-0000-000000000001',   -- Ustadz Baru
+    'd1000000-0000-0000-0000-000000000002',   -- Bapak Hasan (the disjoint half: he teaches here, his child is in Kelas A)
+    'd1000000-0000-0000-0000-000000000004'    -- Aisyah (the disjoint half: she teaches here, she sits in Kelas A)
+  ]::uuid[]);
 
 insert into public.students (id, parent_id, user_id, full_name, class_id, date_of_birth)
 values
