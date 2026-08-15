@@ -536,15 +536,39 @@ Siti (three children) still sees the picker, still inside a card of its
 own. The card now belongs to `ChildPicker`, so the component's own
 `null` takes its chrome with it.
 
-**Last run: the child-picker fix, 208/217.** The nine failures are all
-in §4h `homework-due-reminders`, where live Web Push delivery reports
-`{"sent":0,"failed":5,"recorded":7}` — the notification rows are written
-correctly and the sends to the push service fail. **This is not caused by
-the change under test and is not accepted as a limitation:** it was
-reproduced on unmodified `main` by stashing the change, rebuilding and
-re-running (181/191 there, the same cluster plus one further flake in
-§4g, which passed on the re-run). It is an open item to be diagnosed on
-its own, not a documented gap.
+**The harness used to fail after 20:00, and the reason was its own
+clock.** `scripts/invoke-scheduled.mjs` pins `Date` globally so the
+Europe/Amsterdam gate can be driven to any hour — and `web-push` reads
+the same `new Date()` to stamp the `exp` of the VAPID JWT it signs every
+request with. A run pinned to 08:00 therefore signed a token that had
+expired at 20:00, and every push in that job came back `403 Received
+unexpected response code`. The suite was green before ~20:00 Amsterdam
+and nine checks red after it, with nothing about the code different:
+§4g's 18:00 job passed in the same run where §4h's 08:00 job failed,
+which is the shape of the bug seen from outside.
+
+It was invisible for two compounding reasons. The scheduled Functions
+run in their own node process rather than through `netlify dev`, so
+`dispatch`'s `console.error('notify: push failed', …)` never reached the
+dev-server log — and `invokeScheduled` passes `stdio: ['ignore', 'pipe',
+'ignore']`, which discards that process's stderr. The counts said
+`failed: 5` and the reason was thrown away. Running
+`node scripts/invoke-scheduled.mjs homework-due-reminders <instant>`
+by hand is what surfaced it.
+
+`getVapidHeaders` already takes an explicit expiration and `web-push`
+simply never passes one, so the harness now fills it in from the **real**
+clock, bounded by what `validateExpiration` accepts against the pinned
+one (strictly less than pinned + 24h). The fix is entirely on the
+harness side: the Functions gain no test hook, and production still
+signs with the ordinary default — which is the property the top of
+`invoke-scheduled.mjs` exists to protect.
+
+**Last run: the VAPID clock fix, 217/217.** One run in four has been
+seen to lose §4m's two `tutor-parent` delivery assertions to a genuine
+FCM flake — a real Chromium registering with a real push service, which
+the section's own comment already treats as a shared resource. Re-run
+before reading anything into it.
 
 **Previous run: ADR-025, 191/191** (158 + 33 new).
 **And before that: after ADR-024 (`main` at the dev-fixture overlap personas),
