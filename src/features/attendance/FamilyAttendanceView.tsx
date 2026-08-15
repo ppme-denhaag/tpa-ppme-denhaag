@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { useViewScope } from '../../context/ViewScopeContext'
+import { isSelfRecord } from '../../lib/capabilities'
 import { ChildPicker } from '../../components/ChildPicker'
 import { computeAttendanceRate } from '../../lib/attendance'
 import { getErrorMessage } from '../../lib/errors'
@@ -24,6 +26,7 @@ const STATUS_BADGE: Record<AttendanceHistoryRow['status'], string> = {
 export function FamilyAttendanceView() {
   const { t, i18n } = useTranslation()
   const { students, loading: studentsLoading } = useMyStudents()
+  const { selfStudentId } = useViewScope()
 
   const [studentId, setStudentId] = useState<string | null>(null)
   const [history, setHistory] = useState<AttendanceHistoryRow[]>([])
@@ -72,11 +75,35 @@ export function FamilyAttendanceView() {
     [i18n.language],
   )
 
+  const selectedName = useMemo(
+    () => students.find((s) => s.id === studentId)?.full_name,
+    [students, studentId],
+  )
+
+  /**
+   * "Ali's attendance" for a parent, "my attendance" for the 16+ santri
+   * looking at their own record.
+   *
+   * The question is about the *student on screen*, not about the
+   * account: `AttendancePage` used to answer it once for the whole
+   * family scope and always said "mine", so Ibu Siti read "Kehadiranku"
+   * above Ali's record. `isSelfRecord` is the same per-student predicate
+   * the other five family views use (ADR-025(c)) and is correct for the
+   * account that is both a parent and a santri — their own row is
+   * theirs, their children's are not.
+   */
+  const title =
+    !isSelfRecord(studentId, selfStudentId) && selectedName
+      ? t('attendance.childTitle', { name: selectedName })
+      : t('attendance.myTitle')
+
   if (studentsLoading) return <p className="text-ppme-text/60">{t('common.loading')}</p>
   if (students.length === 0) return <p className="text-ppme-text/60">{t('common.empty')}</p>
 
   return (
     <div className="space-y-4">
+      <h1 className="text-lg font-bold text-ppme-primary">{title}</h1>
+
       <ChildPicker students={students} value={studentId} onChange={setStudentId} />
 
       {/*

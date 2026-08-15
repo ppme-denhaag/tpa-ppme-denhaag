@@ -54,6 +54,7 @@
   "attendance": {
     "title": "Aanwezigheid",
     "myTitle": "Mijn aanwezigheid",
+    "childTitle": "Aanwezigheid {{name}}",
     "history": "Aanwezigheidsgeschiedenis",
     "present": "Aanwezig",
     "absent": "Afwezig",
