@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ROLE_I18N_KEY } from '../../lib/roleLabels'
 import type { DirectoryUser, AdminClass } from './api'
 
 interface ClassFormProps {
@@ -56,7 +57,7 @@ export function ClassForm({ initial, tutors, saving, onSave, onCancel }: ClassFo
                   onChange={() => toggleTutor(tutor.id)}
                   className="h-4 w-4"
                 />
-                {tutor.full_name}
+                {`${tutor.full_name} · ${t(ROLE_I18N_KEY[tutor.role])}`}
               </label>
             ))}
           </div>

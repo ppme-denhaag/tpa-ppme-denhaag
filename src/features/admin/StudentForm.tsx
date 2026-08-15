@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ROLE_I18N_KEY } from '../../lib/roleLabels'
 import type { AdminClass, DirectoryUser } from './api'
 
 interface StudentFormProps {
@@ -60,9 +61,15 @@ export function StudentForm({ classes, parents, unlinkedAccounts, saving, onSave
           <option value={NONE} disabled>
             {parents.length === 0 ? t('admin.noParents') : '—'}
           </option>
+          {/*
+            The role is shown, not used to filter — the list already
+            holds tutors and admins as well as parents (ADR-028), and an
+            admin choosing between two people of the same name is better
+            off seeing which one teaches. It is a label, not a boundary.
+          */}
           {parents.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.full_name}
+              {`${p.full_name} · ${t(ROLE_I18N_KEY[p.role])}`}
             </option>
           ))}
         </select>

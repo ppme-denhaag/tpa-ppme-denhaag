@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdminSectionNav } from '../../components/AdminSectionNav'
 import { getErrorMessage } from '../../lib/errors'
-import { createClass, fetchAllClasses, fetchUsersByRole, updateClass, type AdminClass, type DirectoryUser } from './api'
+import { createClass, fetchAllClasses, fetchUsersForLink, updateClass, type AdminClass, type DirectoryUser } from './api'
+import { TUTOR_LINK_ROLES } from '../../lib/enrolmentLinks'
 import { ClassForm } from './ClassForm'
 
 export function ClassesPage() {
@@ -18,7 +19,10 @@ export function ClassesPage() {
   function load() {
     setLoading(true)
     setError(null)
-    Promise.all([fetchAllClasses(), fetchUsersByRole('tutor')])
+    // Not just `role = 'tutor'`: an admin teaches (ADR-014) and a 16+
+    // santri may assist the class they attend (ADR-020, RLS-35), which
+    // until now no admin screen could set up (ADR-028).
+    Promise.all([fetchAllClasses(), fetchUsersForLink(TUTOR_LINK_ROLES)])
       .then(([classData, tutorData]) => {
         setClasses(classData)
         setTutors(tutorData)

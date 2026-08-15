@@ -59,13 +59,34 @@ export interface DirectoryUser {
   id: string
   full_name: string
   email: string
+  /**
+   * Carried so the picker can *show* it. The role no longer decides
+   * whether an account may be linked — see `src/lib/enrolmentLinks.ts`
+   * — but an admin choosing between two people called Fatimah is better
+   * off knowing which one already teaches.
+   */
+  role: UserRole
 }
 
-export async function fetchUsersByRole(role: UserRole): Promise<DirectoryUser[]> {
+/**
+ * The accounts an admin may be offered for an enrolment link.
+ *
+ * Takes a list rather than a single role because both links accept
+ * several: a tutor or an admin may be a child's parent (ADR-024), and a
+ * 16+ santri may tutor (ADR-020). `in` is one round trip and uses the
+ * same index `eq` did.
+ *
+ * The lists themselves live in `src/lib/enrolmentLinks.ts`, not here:
+ * coverage is scoped to `src/lib/**`, so a rule written in this file
+ * would be invisible to the gate — the reasoning that put
+ * `canReceiveNotifications` in a library (ADR-022(c)) and `viewScope`
+ * in another (ADR-025(b)).
+ */
+export async function fetchUsersForLink(roles: readonly UserRole[]): Promise<DirectoryUser[]> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, full_name, email')
-    .eq('role', role)
+    .select('id, full_name, email, role')
+    .in('role', roles as UserRole[])
     .order('full_name')
   if (error) throw error
   return data ?? []
@@ -115,7 +136,7 @@ export async function fetchAllStudents(): Promise<AdminStudent[]> {
 /** role=student users not yet linked as any student's 16+ self-login account. */
 export async function fetchUnlinkedStudentAccounts(): Promise<DirectoryUser[]> {
   const [{ data: studentUsers, error: usersError }, { data: linked, error: linkedError }] = await Promise.all([
-    supabase.from('users').select('id, full_name, email').eq('role', 'student').order('full_name'),
+    supabase.from('users').select('id, full_name, email, role').eq('role', 'student').order('full_name'),
     supabase.from('students').select('user_id').not('user_id', 'is', null),
   ])
   if (usersError) throw usersError
