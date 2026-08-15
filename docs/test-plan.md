@@ -32,6 +32,7 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 - P1 has 2 children in Class A; P2 has 1 child in Class B; P3 has 1 child (16+, user_id set) in Class B
 - Sessions, attendance, assignments, and progress rows for each child
 - **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach. TAP (`users.role = 'admin'`) is the same shape again with a third relationship on top — admin *and* tutor of Class C *and* parent of a child in Class D — used by RLS-34. SA (`users.role = 'student'`) is a 16+ self-login student enrolled in Class D who tutors Class C, used by RLS-35; the two halves are deliberately disjoint classes, so no assertion about one can pass through the other
+- **Six more, for the combinations the list above leaves open** (used by RLS-36…RLS-41 and NC-17/NC-18). Every dual-role persona above deliberately puts the two halves in *different* classes, which is what makes the union provable — and means the most ordinary arrangement at a small TPA, the ustadzah who teaches the class her own child sits in, was never covered. Class E and Class F carry that set: **OV** (`role = 'parent'`) teaches Class E, has one child in Class E and a second in Class D, so one account has two children on opposite sides of its own tutor grant; **OSA** (`role = 'student'`) has their own 16+ record in Class E and tutors Class E, the student assistant assigned to their own class; **AP** (`role = 'admin'`) is a parent in Class E and named in no `tutor_ids` anywhere, the plain admin-parent that NC-14's TAP is not; **AT** (`role = 'admin'`) teaches Class E and is nobody's parent; **MC** (`role = 'tutor'`) teaches Class E *and* Class F, the only tutor in the suite holding more than one class; **NONE** (`role = 'tutor'`) holds no relationship of any kind, the state every account passes through between `invite-user` and enrolment
 - These rows are created inside the RLS suite itself, after RLS-14 and the NC cases, because those assert exact fixture row counts. `supabase/dev-fixture.sql` seeds the browser-facing equivalents (Ustadzah Aminah, Bapak Hasan, and the triple-role Ustadzah Laila) for manual walkthroughs
 
 ## 3. RLS test suite (highest priority)
@@ -75,6 +76,12 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-33 | The dual-role rows widen nobody: TP sees none of the four original fixture students, P1 and T1 see none of the dual-role students, S16 still sees exactly one student row (their own), anon still sees 0 |
 | RLS-35 | **The student assistant** — `users.role = 'student'`, their own 16+ record in Class D, a tutor of Class C (ADR-020). Ground truth: role really is `student`, `fn_my_student_id()` set, `fn_my_classes()` exactly Class C, not an admin. They see their own record plus the roster they teach — and **none of their own classmates in Class D**, since being enrolled somewhere was never a grant. They **can** record Yanbu'a, set a murajaah target and correct attendance for the class they teach, which is the decision this case pins; they **cannot** record progress for their own record, nor touch a class they do not teach (a filtered UPDATE is silent, so that one is asserted both from inside the session and from outside RLS) |
 | RLS-34 | **The triple-role person** — `users.role = 'admin'`, tutor of one class, parent of a child in another. All four capabilities are derived independently and none excludes another: `fn_is_admin()` true, `fn_my_classes()` exactly the one class they are named in, `fn_my_children()` exactly their own child, `fn_my_student_id()` null. **And the one boundary the rest of the block does not have:** with `admin` in the union, RLS-28's "nothing more" and RLS-31/RLS-32's "not a promotion" stop holding — they see all four original fixture students, *can* record Yanbu'a for their own child, *can* confirm home practice for a student they teach, and *do* see their own child's draft report, each one the mirror of a refusal above. What keeps an admin out of the parent-only actions is application-layer (ADR-014(c), RLS-25). They still widen nobody: TP cannot see their child, anon still sees 0 |
+| RLS-36 | **The overlap** — a tutor of the class their own child is in (OV), with a second child in a class they do not teach. Ground truth first: `role = 'parent'`, not an admin, `fn_my_classes()` exactly Class E, `fn_my_children()` exactly their two children. They see the Class E roster and both children **each exactly once** — two grants reaching one row is not two rows. Then the inversions, and they are per child, not per person: they **can** record Yanbu'a for the child in the class they teach (RLS-31 refused this, because there the child was elsewhere) and **cannot** for their other child; they **do** see the taught child's draft year-end report (the mirror of RLS-32, the sharpest form of the overlap) and **do not** see the other child's draft, while seeing that child's published report. The parent half is intact throughout: they still confirm home practice for the non-taught child. Class F stays invisible |
+| RLS-37 | **The student assistant assigned to their own class** (OSA) — the likely arrangement, since a 16+ santri assists the group they already attend. This is the case that found the defect ADR-020 had only described: with their own record inside the class they teach, the tutor grant let them grade their own Yanbu'a and Quran, set their own memorization target, author their own year-end report and read that draft about themselves. Migration 013 closes all five, and this case is what asserts it — each refusal stated alongside the write it does **not** take away (recording for a classmate) and the read that survives (a published report). Two halves are stated rather than fixed: `attendance` stays reachable, deliberately, because the register is one upsert of the whole roster and refusing one row would stop them marking anybody (ADR-023(c)); and they do see all of their own classmates, through the tutor grant rather than through enrolment. Ends with the regression the migration could most easily have caused — `fn_my_student_id()` is null for an ordinary tutor, and the `<>` spelling of this rule would have refused every tutor write in the school |
+| RLS-38 | **The plain admin-parent** (AP) — admin, a parent, and a tutor of nothing. Every admin-parent assertion before this one was made against TAP, who also holds a tutor relationship, so this is the first case where any grant an admin-parent has must be `fn_is_admin()` or parenthood and nothing else. `fn_my_classes()` is empty while the grant covers the school — the disagreement `useMyClasses` resolves on the admin branch (ADR-014) — and they record against a class they are not named in |
+| RLS-39 | **The admin who teaches, and is nobody's parent** (AT) — the mirror of RLS-24. There, an admin-recorded row's `tutor_id` is in no class's `tutor_ids`; here the same id **is** in the array. `tutor_id` means "who recorded this" in both directions, and cannot be read as "an admin did" any more than as "a tutor of the class did" |
+| RLS-40 | **A tutor of two classes** (MC) — the only one in the suite. `fn_my_classes()` returns a set, which every tutor policy's `in (select …)` had never been given, and the two rosters come back unioned and bounded: the Class D sibling of a child on one of those rosters is still invisible |
+| RLS-41 | **The account that holds nothing** (NONE) — a `users` row, a valid JWT, and four false booleans. Reads 0 students, 0 classes (all four OR-ed branches of `classes_read` unsatisfied), 0 attendance; writes nothing, though `users.role` says `tutor`. The application-layer mirror is `NO_CAPABILITIES`, asserted in `tests/unit/capabilities.test.ts` |
 
 **Gate: all RLS tests green in CI is a merge requirement for any migration change, and a launch requirement before real data entry (DPIA risk R1).**
 
@@ -105,6 +112,33 @@ does not gate assisting on it, and a case differing only in
 `date_of_birth` would assert nothing. 53 assertions, taking the file to
 157.*
 
+*RLS-36…RLS-41 close the combination space rather than adding a feature.
+Two axes had gone unvaried. The first is **which class**: every dual-role
+fixture above deliberately separates the tutor half from the parent half,
+which is what makes the union provable and also means the commonest
+arrangement at a small TPA — teaching the class your own child is in —
+had never been asserted at all. When the halves overlap the union stops
+being a union, and three assertions above invert; RLS-36 and RLS-37 are
+those inversions, stated so the behaviour is on the record rather than
+discovered in production. RLS-36 is characterisation: whether an
+ustadzah should record her own son's progress is a conflict-of-interest
+question no ADR has answered, and the tests record what the database does
+rather than what anybody decided. RLS-37 was characterisation for about an
+hour — a santri who could grade their own work contradicted the boundary
+ADR-020 states in prose, so it became a defect rather than a question, and
+migration 013 (ADR-023) closes it. RLS-37 now asserts the new rule and the
+one half of it deliberately left open. The
+second axis is the **empty cells of the capability lattice**: four
+independent booleans have sixteen combinations, of which six were covered.
+RLS-38…RLS-41 add the four that can really occur — admin+parent with no
+class, admin+tutor with no child, a tutor of more than one class, and the
+account that holds nothing at all. The remaining cells (an admin who is
+their own 16+ student, and the three-and-four-way combinations built on
+it) are not asserted here because they cannot occur, and a fixture for
+them would assert nothing about the product; the derivation is swept
+exhaustively at the application layer instead, in
+`tests/unit/capabilities.test.ts`. 69 assertions, taking the file to 227.*
+
 *WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
 webhook). They are not RLS assertions, but they belong to the same "what
 does the database do on its own" suite: the trigger fires on every
@@ -130,7 +164,7 @@ path cannot fail the write it observes: `fn_post_webhook` is renamed out
 from under the triggers and the writes must still succeed. Total: 93
 assertions.*
 
-### 3.1 Notification centre (NC-01…NC-16, migration 012 / ADR-017, ADR-022)
+### 3.1 Notification centre (NC-01…NC-18, migration 012 / ADR-017, ADR-022)
 
 A notification is a message addressed to one named person, so the whole
 table is a single access-control question asked from every direction.
@@ -161,7 +195,16 @@ satisfying either half alone is possible and useless.
 - [x] NC-15 — a **student assistant** reads the notification about their own record and none about the class they teach: ADR-020 granted a write, never an inbox
 - [x] NC-16 — nobody's inbox widened. The ordinary parent of a child taught by four co-tutors still reads exactly one, the original fixture's parent is unaffected, and `anon` still reads zero
 
-*Total after these: 171 pgTAP assertions (157 before).*
+**NC-17…NC-18 — the same question where the two halves of ADR-022 point
+at the same child.** NC-12 states them against a tutor-parent whose child
+is in somebody else's class, so "tell a parent about their own child" and
+"never tell a tutor about their class" can be satisfied separately. In the
+overlap they are one child, and only the first may win.
+
+- [x] NC-17 — the **overlap parent** reads about both their own children and nothing else; about the overlapping child **exactly once**, though both halves of the rule have something to say about that child; and nothing addressed to the family of a child they teach — asserted alongside reading that same child's `students` row without difficulty, so the refusal is the notification policy and not a missing row
+- [x] NC-18 — an account holding **no relationship at all** reads no notifications, though rows exist and it is signed in. The other end of the rule `canReceiveNotifications` answers false for and `push-subscribe` refuses to store an endpoint for; `anon` still reads zero after every row the block added
+
+*Total after these: 227 pgTAP assertions (171 before).*
 
 ## 4. Unit tests (Vitest)
 
@@ -240,8 +283,8 @@ Also tested alongside it:
 - `tests/unit/push.test.ts` (10) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter
 - `tests/unit/pushServiceWorker.test.ts` (8) — `public/push-sw.js` loaded into a VM and driven with the browser's own event shapes: it renders the payload, never re-alerts on a replaced notification, still shows *something* when the payload is missing or unparseable (otherwise Android substitutes its own "site updated in the background" notice), and routes a click to an already-open tab rather than opening a second one
 - `tests/unit/pushCapability.test.ts` (13) — platform detection, including the iOS branch this project cannot verify on hardware (see §6)
-- `tests/unit/notificationRecipients.test.ts` (14) — the recipient rule on its own (ADR-022): the predicate, the derivation from a set of student rows, and the query `push-subscribe` asks. A tutor with no child of their own is not a recipient even when the children they teach are among the rows they can read; a 16+ santri is a recipient through their own record and is not thereby a parent of themselves; and a failed lookup throws rather than reporting "not a recipient", because a swallowed error there 403s a real parent and looks exactly like the rule working
-- `tests/unit/notifyStudent.test.ts` (28) — **who receives what**, the highest-risk logic in the feature. A two-family class roster must resolve each child to their own parent and no one else; the 16+ student is added only for a "family" audience; an account with no usable subscription stays in the audience with nothing to push to, without dropping the rest of the roster. Since ADR-022 the cases that matter most are the dual-role ones: a **tutor-parent** and an **admin-parent** are recipients for their own child, a **tutor is never a recipient for a child in the class they teach**, and both hold at once for the same account in the same audience. `UserRow` no longer carries a role at all, so those cases cannot regress without the data coming back first Plus the fan-out dispatch: one payload per recipient in that recipient's own locale, a dead subscription cleared without costing anyone else their notification, a failed send not mistaken for an expired one, and delivery bounded to a fixed concurrency — none of which can be produced on demand against a real push service, which is why they are injected here rather than left to the live run
+- `tests/unit/notificationRecipients.test.ts` (20) — the recipient rule on its own (ADR-022): the predicate, the derivation from a set of student rows, and the query `push-subscribe` asks. A tutor with no child of their own is not a recipient even when the children they teach are among the rows they can read; a 16+ santri is a recipient through their own record and is not thereby a parent of themselves; and a failed lookup throws rather than reporting "not a recipient", because a swallowed error there 403s a real parent and looks exactly like the rule working
+- `tests/unit/notifyStudent.test.ts` (30) — **who receives what**, the highest-risk logic in the feature. A two-family class roster must resolve each child to their own parent and no one else; the 16+ student is added only for a "family" audience; an account with no usable subscription stays in the audience with nothing to push to, without dropping the rest of the roster. Since ADR-022 the cases that matter most are the dual-role ones: a **tutor-parent** and an **admin-parent** are recipients for their own child, a **tutor is never a recipient for a child in the class they teach**, and both hold at once for the same account in the same audience. `UserRow` no longer carries a role at all, so those cases cannot regress without the data coming back first Plus the fan-out dispatch: one payload per recipient in that recipient's own locale, a dead subscription cleared without costing anyone else their notification, a failed send not mistaken for an expired one, and delivery bounded to a fixed concurrency — none of which can be produced on demand against a real push service, which is why they are injected here rather than left to the live run
 
 ### 4.4 Year-end report generation
 - `generate-year-end-drafts` computes `attendance_present/absent/late` and `attendance_rate` that exactly match a hand-computed value from fixture attendance rows for the academic year window
@@ -272,6 +315,47 @@ the broken version.
 - [x] `fetchFamilyLinks` applies the relationship filter, selects both link columns, and rethrows a Postgrest error instead of reporting an empty family (a swallowed error here is indistinguishable on screen from "you have no children")
 - [x] `fetchTutorClassCount` asks whether the caller is in `tutor_ids`, counting without fetching rows — not "how many classes RLS returns", which for a parent is their children's classes and for an admin is all of them
 - [x] `fetchTaughtClasses` filters on `tutor_ids` for a tutor and returns **every** class for an admin, who is in no `tutor_ids` array and would otherwise get an empty picker on every recording screen
+- [x] **All sixteen combinations**, swept rather than selected. The cases above are the ones somebody thought to name; four independent booleans have sixteen, and the claim ADR-019 rests on is that none of them implies, suppresses, or substitutes for another. Each cell is built from the relationship that is allowed to produce it, and for every non-admin cell `users.role` is set to something the capabilities must not echo — so a future short-circuit ("an admin obviously isn't a parent", "a student can't be a tutor") fails here rather than on a family's screen. The cells that cannot occur in the database are still asserted here, because the derivation is a pure function and nothing about it knows they are unlikely
+- [x] …and the two family booleans are never read out of each other's row: a santri whose own record is misread as parenthood gets a ChildPicker over themselves, and a parent whose child has a self-login gets a santri's screens
+- [x] …and the overlap (pgTAP RLS-36) stays one boolean: two grants reaching the same student row, or three rows reaching one parent, is not a different answer from one
+- [x] `fetchCapabilities`, the wrapper the app actually calls and the one thing nothing reached: the two relationship queries are issued **together** rather than in sequence (two round trips on the critical path of the first screen a family sees, on the connection they are most likely to have), the role passes through without implying anything else, and a failure in **either** query rejects rather than resolving into a smaller capability set — a swallowed error there is indistinguishable from "this person is nobody", which is a family locked out of their own child's screens with no error to explain it
+
+### 4.6 Access control and delivery inside the Functions
+
+The three modules that decide who may make a Function act, and what
+happens to what it sends. Every Function in this project holds the
+service-role key, which bypasses RLS entirely — so for the duration of a
+request these are the access control, and the database will not catch a
+mistake made here.
+
+- `tests/unit/functionAuth.test.ts` (17) — `authenticateCaller` proves a **person**: the token is validated against GoTrue and the role is then read from `public.users`, never taken from the JWT, and the id filtered on is the one GoTrue returned rather than anything the request supplied. The service-role client is **not built at all** for a request whose token failed, which is the ordering the two-step shape exists for. A valid token with no profile row is 403 and not 401 (a real state: between an accepted invitation and a completed registration), a failed profile read is 500 rather than degrading into a plausible "not an admin", and a missing environment variable refuses every request. `verifyWebhookSecret` proves a **channel**: a wrong secret of the *same* length is refused by the digest rather than by the length check, a different length does not throw (which would surface as a 500 and leak the expected length), and every wrong shape returns the identical body. Unset, it fails closed — an open endpoint here can address any family in the TPA
+- `tests/unit/notifySend.test.ts` (13) — `notifyStudents`, the sequence all six senders share and the piece both existing notification suites reach past. The in-app row is written **before** the push, asserted as an ordering and not a count: a crash between them must not leave a family with a lock-screen notice and nothing to open. The four outcomes a Netlify log shows are distinguished — no such student, no recipient account, no push subscription, and a real send — because this feature's failures are silent and "nothing happened" otherwise looks like "nothing was supposed to happen". Plus `sendPush`: a 404/410 means *throw the subscription away* and anything else means *keep it*, and getting that backwards either drops a working subscription on a transient error or burns a request on a dead one forever
+- `tests/unit/pushClient.test.ts` (21) — the browser half, previously uncovered because it imports the Supabase singleton and touches four browser APIs. `subscriptionState` is keyed on what the **server** holds, so a browser that kept its subscription object after a sender cleared `users.push_sub` reads as off rather than showing "notifications are on" to a family who can never receive another; a failed read is off for the same reason. `subscribe` stores server-side before reporting success, sends the caller's JWT (so `push-subscribe` can apply ADR-022), reuses an existing browser subscription rather than minting a second, treats a declined permission as an outcome rather than an error, and gives up after 60s on a push service that never answers — observed for real with FCM, and set well clear of the 32s a successful subscribe once took. `unsubscribe` clears the server first, and leaves the browser alone if that fails
+- `tests/unit/weeklyActivity.test.ts` (10) — `fetchWeeklyActivity`, behind both the dashboard card and the Friday digest. The timezone narrowing is the point: an entry made at 00:30 Monday in Amsterdam is 23:30 Sunday in UTC, so the range asked of Postgres is deliberately a day wide on each side and the decision is made in the family's own timezone afterwards. Also that home-practice logs are attributed through `murajaah_assignments` to the right child (the one count that can silently land on a sibling), that a week with no sessions issues no attendance query, and that a row for a child that was not asked about is dropped — the digest runs on the service-role client, so its own filtering is the only thing keeping one family's numbers out of another's summary
+- `tests/unit/roster.test.ts` (3), `tests/unit/supabaseClient.test.ts` (3) — the class roster filters on `class_id` rather than leaning on RLS to scope it, which since ADR-019 is what keeps a tutor-parent's own child out of the register they are marking; and the browser client's guard clause names both variables and the file to copy, because the person reading it is setting the project up for the first time
+
+### 4.7 Coverage
+
+`npm run test:coverage` (v8, configured in `vitest.config.ts`) reports on
+`src/lib/**` and `netlify/functions/lib/**` — the logic modules this suite
+is for. Components are exercised by Playwright and by
+`scripts/verify-push.mjs` against a real browser, so including them would
+report a number about the wrong thing; the generated
+`src/lib/database.types.ts` is excluded because there is no behaviour in
+it.
+
+Coverage is a way of finding untested decisions, not a target. It is
+quoted here because the gaps it found were not obscure: `authenticateCaller`
+was at 9% of lines and `verifyWebhookSecret` at 35%, which is to say the
+two functions that decide who may operate the service-role key were the
+least tested code in the repository.
+
+| | Before | After |
+|---|---|---|
+| Statements | 67.6% | 97.3% |
+| Branches | 58.1% | 90.8% |
+| Lines | 71.0% | 98.9% |
+| Unit tests | 246 | 346 |
 
 ## 5. E2E flows (Playwright)
 

@@ -165,6 +165,60 @@ describe('who receives a notification about a child', () => {
     expect(audiences[1].recipients.map((r) => r.userId)).not.toContain('tutor-parent-1')
   })
 
+  it('tells them exactly once when their own child is IN the class they teach', () => {
+    // The overlap, and the most likely arrangement of the two at a small
+    // TPA: the ustadzah teaching the group her own son sits in. Every
+    // other dual-role case in this project — the fixtures, the pgTAP
+    // block, the live harness — deliberately puts the two halves in
+    // different classes so that the union can be proven, so this is the
+    // configuration none of them covers.
+    //
+    // The two halves of ADR-022 now point at the same child: "tell a
+    // parent about their own child" and "never tell a tutor about a
+    // child in their class". The first must win, once. It does, and not
+    // because either rule was special-cased — the pairing is keyed on
+    // the child's own `parent_id`, so the class this notification is
+    // fanning out over never enters the derivation at all.
+    const roster = [
+      student({ id: 'own-child', full_name: 'Yusuf', parent_id: 'tutor-parent-1' }),
+      student({ id: 'classmate-a', full_name: 'Ali', parent_id: 'parent-2' }),
+      student({ id: 'classmate-b', full_name: 'Zainab', parent_id: 'parent-3' }),
+    ]
+    const audiences = buildAudiences(
+      roster,
+      [account('tutor-parent-1'), account('parent-2'), account('parent-3')],
+      'family',
+    )
+
+    const forTutorParent = audiences.flatMap((a) =>
+      a.recipients.filter((r) => r.userId === 'tutor-parent-1').map(() => a.studentId),
+    )
+    expect(forTutorParent).toEqual(['own-child'])
+    // …and the rest of the roster is untouched by their being the tutor
+    // of it: each classmate still resolves to their own parent alone.
+    expect(audiences[1].recipients.map((r) => r.userId)).toEqual(['parent-2'])
+    expect(audiences[2].recipients.map((r) => r.userId)).toEqual(['parent-3'])
+  })
+
+  it('tells a student assistant about their own record and not their classmates’', () => {
+    // The same overlap one row further along (pgTAP RLS-37): a 16+ santri
+    // who assists the class they are enrolled in. At the database that
+    // arrangement hands them a *write* over their own record; here it
+    // hands them nothing extra at all, because the audience is built from
+    // `user_id` and `parent_id` and neither says anything about who
+    // teaches.
+    const audiences = buildAudiences(
+      [
+        student({ id: 'sa-own', full_name: 'Aisyah', parent_id: 'parent-4', user_id: 'sa-1' }),
+        student({ id: 'classmate', full_name: 'Ali', parent_id: 'parent-2' }),
+      ],
+      [account('sa-1'), account('parent-4'), account('parent-2')],
+      'family',
+    )
+    expect(audiences[0].recipients.map((r) => r.userId)).toEqual(['parent-4', 'sa-1'])
+    expect(audiences[1].recipients.map((r) => r.userId)).toEqual(['parent-2'])
+  })
+
   it('keeps accounts with no usable subscription, with nothing to push to', () => {
     // Changed by ADR-017. These recipients used to be dropped from the
     // audience entirely, which was right when a push was the only thing

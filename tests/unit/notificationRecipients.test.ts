@@ -121,8 +121,81 @@ describe('who that makes a recipient, by the relationships they hold', () => {
 
   it('an account with no student row at all is not a recipient', () => {
     // A newly invited tutor or admin, and the state every account passes
-    // through between `invite-user` and enrolment.
+    // through between `invite-user` and enrolment. pgTAP NC-18 is the
+    // same account at the database: rows exist, and it reads none.
     expect(yes(TUTOR_ONLY, [])).toBe(false)
+  })
+
+  it('holds both relationships at once without either standing in for the other', () => {
+    // Two booleans have four states and the predicate is an `or`, so the
+    // both-true state is the one that can never be reached by a test that
+    // sets them one at a time — `isParentOfAnyone` alone already
+    // short-circuits it. A santri old enough for their own login whose
+    // younger sibling is enrolled under their name is the shape; it is
+    // rare, and it is the cell an exhaustive sweep exists to cover.
+    const own = link({ parent_id: OTHER_PARENT, user_id: STUDENT16 })
+    const sibling = link({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', parent_id: STUDENT16 })
+    expect(familyRelationships(STUDENT16, [own, sibling])).toEqual({
+      isParentOfAnyone: true,
+      isSelfStudent: true,
+    })
+    expect(yes(STUDENT16, [own, sibling])).toBe(true)
+  })
+
+  it('answers the same for the same relationships however many rows carry them', () => {
+    // The overlap case (pgTAP RLS-36) reaches one student row by two
+    // grants, and a parent of three children reaches three rows by one.
+    // Neither is a different answer: the predicate is over relationships,
+    // and `some` is not a count.
+    const three = [
+      link({ parent_id: TUTOR_PARENT }),
+      link({ id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', parent_id: TUTOR_PARENT }),
+      link({ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', parent_id: TUTOR_PARENT }),
+    ]
+    expect(familyRelationships(TUTOR_PARENT, three)).toEqual({
+      isParentOfAnyone: true,
+      isSelfStudent: false,
+    })
+  })
+})
+
+/**
+ * All four states of the predicate, swept.
+ *
+ * `canReceiveNotifications` is the single gate in front of push
+ * subscription storage, the settings toggle, the bell, the centre and
+ * the audience builder, so the cost of a wrong cell is either a family
+ * hearing nothing (the ADR-022 bug) or an account being offered a screen
+ * it has no rows for. Four cells is small enough to state exhaustively,
+ * which is the only way to say "and nothing else" about a boolean rule.
+ */
+describe('every state of the recipient predicate', () => {
+  const cells: Array<[boolean, boolean, boolean]> = [
+    // parent, self, expected
+    [false, false, false],
+    [true, false, true],
+    [false, true, true],
+    [true, true, true],
+  ]
+
+  it.each(cells)(
+    'isParentOfAnyone=%s isSelfStudent=%s → %s',
+    (isParentOfAnyone, isSelfStudent, expected) => {
+      expect(canReceiveNotifications({ isParentOfAnyone, isSelfStudent })).toBe(expected)
+    },
+  )
+
+  it('consults nothing but those two fields', () => {
+    // The predicate is deliberately dependency-free so the browser bundle
+    // and `netlify/functions/` can share one copy. This asserts the other
+    // half of that: extra fields on the value — a `Capabilities` carries
+    // two more — cannot change the answer, so the settings screen and
+    // `push-subscribe` cannot reach different conclusions about one
+    // account.
+    const relationships = { isParentOfAnyone: false, isSelfStudent: false }
+    const withTutorAndAdmin = { ...relationships, isTutorOfAnyClass: true, isAdmin: true }
+    expect(canReceiveNotifications(withTutorAndAdmin)).toBe(false)
+    expect(canReceiveNotifications({ ...withTutorAndAdmin, isParentOfAnyone: true })).toBe(true)
   })
 })
 
