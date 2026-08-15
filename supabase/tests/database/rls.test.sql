@@ -9,8 +9,35 @@
 --   1 child (16+, user_id set) in Class B.
 --
 -- Runs entirely inside one transaction that is rolled back at the end
--- (see ROLLBACK at the bottom), so it never leaves fixture data behind
--- — safe to run against `--linked` (the live project) or `--local`.
+-- (see ROLLBACK at the bottom), so it never leaves fixture data behind.
+--
+--   supabase test db --local supabase/tests/database
+--
+-- **Local and CI only.** This header used to say the suite was "safe to
+-- run against `--linked` (the live project) or `--local`", and neither
+-- half of that was right.
+--
+-- It does not run there: migration 006 installs pgTAP into the
+-- `extensions` schema, and the transient login role a linked run
+-- connects as cannot resolve functions in it, so the script dies on
+-- `select no_plan()` before a single assertion. Setting `search_path`
+-- does not help — the role lacks schema USAGE, not the name.
+--
+-- And it should not run there. This file inserts fixture parents,
+-- children, classes and notifications, plus rows in `auth.users`.
+-- Rolling them back makes that survivable, not appropriate: test-plan
+-- §2 gives production "smoke tests post-deploy" and states the rule "no
+-- real student data in any test environment, ever", whose converse is
+-- what applies here. Granting the linked role rights on `extensions`
+-- would be a standing widening of production access to enable something
+-- §2 already rules out.
+--
+-- What to run against production instead is `supabase db diff --linked
+-- --schema public`, which is read-only, writes nothing, and answers the
+-- question a linked run was reaching for: does the deployed schema still
+-- match the migrations these assertions were proven against. See
+-- test-plan §2. For behaviour on real hosted infrastructure, use a
+-- Supabase branch — §2's E2E environment — never the live project.
 --
 -- Connects as the `postgres` role (table owner), which is exempt from
 -- RLS by default — used only for fixture setup. Every assertion below

@@ -179,12 +179,33 @@ back at the end, so it never leaves data behind. CI runs it against a
 fresh local Postgres (Docker, via the Supabase CLI) built from
 `supabase/migrations` — see the `rls` job in `.github/workflows/test.yml`.
 
-To run it yourself against the live linked project (also transactionally
-rolled back, safe to repeat):
+To run it yourself:
 
 ```bash
-supabase db query --linked -f supabase/tests/database/rls.test.sql
+supabase test db --local supabase/tests/database
 ```
+
+**Local and CI only — not the live project.** This section used to
+document `supabase db query --linked -f …`, which is neither a command
+the CLI has nor something to point at production: the suite inserts
+fixture families and `auth.users` rows, and test-plan §2 gives production
+smoke tests only. It would not run there in any case — migration 006
+installs pgTAP into the `extensions` schema, and the role a linked run
+connects as cannot resolve functions in it.
+
+The production check is read-only and writes nothing:
+
+```bash
+supabase db diff --linked --schema public
+```
+
+Empty means the deployed schema still matches the migrations these
+assertions were proven against — which is also how a policy edited by
+hand in the Supabase dashboard would surface. Expect one class of false
+positive: a wall of `REVOKE MAINTAIN, REFERENCES …` lines is a Postgres
+17 privilege baseline mismatch between the shadow database and the
+remote, not drift. Real drift shows up as `CREATE`/`DROP`/`ALTER POLICY`,
+function bodies, or table DDL.
 
 **While building this suite, it surfaced a critical bug**: migrations
 002/003/005 defined RLS policies but never granted the underlying

@@ -21,9 +21,41 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 |---|---|---|
 | Local (Supabase CLI) | Unit + RLS tests, migration validation (`supabase db reset` must run 001→004 cleanly) | Synthetic fixtures only |
 | Netlify Preview + Supabase branch/staging project | E2E per PR | Synthetic fixtures only |
-| Production | Smoke tests post-deploy | Real data — **never** used in tests |
+| Production | Smoke tests post-deploy + a read-only schema check (below) | Real data — **never** used in tests |
 
-**Rule: no real student data in any test environment, ever.**
+**Rule: no real student data in any test environment, ever.** The
+converse binds too, and had been left implicit: **no test fixtures in the
+real-data environment.** The RLS suite inserts fixture families, classes
+and `auth.users` rows, so it belongs on `--local`, in CI, or on a
+Supabase branch — never on the linked project, whatever the rollback
+guarantees. Its header claimed the opposite until ADR-023's follow-up;
+that claim was never true in either sense (pgTAP lives in the
+`extensions` schema, which a linked run's login role cannot resolve, so
+the suite died on `no_plan()` before its first assertion).
+
+**The post-deploy schema check.** What a production run was reaching for
+— *does the deployed schema still match the migrations the suite was
+proven against?* — has a read-only answer that writes nothing:
+
+```bash
+supabase db diff --linked --schema public
+```
+
+Run it after any `supabase db push`. Empty means production matches, and
+it is also how a policy edited by hand in the Supabase dashboard would
+surface, which migration history alone cannot show. One class of false
+positive to expect: a block of `REVOKE MAINTAIN, REFERENCES …` /
+`ALTER DEFAULT PRIVILEGES …` lines is a Postgres 17 privilege baseline
+mismatch between the shadow database and the remote, not drift — real
+drift appears as `CREATE`/`DROP`/`ALTER POLICY`, changed function bodies,
+or table DDL. First run, immediately after migration 013 was applied to
+the linked project: clean apart from that noise, with all five ADR-023
+policies and `fn_my_recordable_students()` present and identical to the
+migration.
+
+This pairs with, and does not replace, the suite itself: the diff proves
+the deployed schema is the same *text*, and the 227 assertions prove that
+text *behaves*, against a Postgres built from the identical migrations.
 
 ### Standard fixture set (used by RLS + E2E suites)
 
