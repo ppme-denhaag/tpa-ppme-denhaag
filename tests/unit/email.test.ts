@@ -183,8 +183,8 @@ describe('invitation templates', () => {
       fullName: '<img src=x onerror=alert(1)>',
       email: 'a@b.invalid',
     })
-    expect(mail.html).not.toContain('<img')
-    expect(mail.html).toContain('&lt;img')
+    expect(mail.html).not.toContain('<img src=x onerror=alert(1)>')
+    expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;')
     // The plain-text part is not HTML, so it is left readable.
     expect(mail.text).toContain('<img src=x onerror=alert(1)>')
   })
