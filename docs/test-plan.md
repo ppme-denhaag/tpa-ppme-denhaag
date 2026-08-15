@@ -466,7 +466,20 @@ second family in the same class, a 16+ student with their own account, and —
 since ADR-022 — a tutor whose own child attends and an admin whose own child
 attends) against a real push service, and asserts on what each browser
 displayed. 158 checks, currently all passing (63 before part 2b, 104 before
-part 3, 130 before ADR-022). Beyond the ticked rows above it also covers:
+part 3, 130 before ADR-022).
+
+**Last run: after ADR-024 (`main` at the dev-fixture overlap personas),
+158/158.** Re-run specifically to close the gap ADR-023's and ADR-024's
+pull requests both declared: neither could exercise this harness, so each
+argued from the shape of its change that the harness was unaffected —
+ADR-023 touched only policies, and the overlap personas were seeded by
+adding a uuid to `tutor_ids` rather than a row, precisely so no roster
+size or fan-out count would move. The argument was right, and it is now a
+green run rather than an argument. The re-run also exercises the five
+narrowed policies from migration 013 through the real recording paths,
+since the harness records progress as tutors throughout.
+
+Beyond the ticked rows above it also covers:
 
 - the subscription is stored, with exactly the three fields we use
 - **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property). Checked on every event type, and hardest on the class fan-out: one assignment notifies both families in the class, each naming only their own child
