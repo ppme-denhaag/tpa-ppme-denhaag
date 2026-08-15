@@ -54,7 +54,7 @@ policies and `fn_my_recordable_students()` present and identical to the
 migration.
 
 This pairs with, and does not replace, the suite itself: the diff proves
-the deployed schema is the same *text*, and the 227 assertions prove that
+the deployed schema is the same *text*, and the 231 assertions prove that
 text *behaves*, against a Postgres built from the identical migrations.
 
 ### Standard fixture set (used by RLS + E2E suites)
@@ -242,6 +242,29 @@ overlap they are one child, and only the first may win.
 - [x] NC-18 — an account holding **no relationship at all** reads no notifications, though rows exist and it is signed in. The other end of the rule `canReceiveNotifications` answers false for and `push-subscribe` refuses to store an endpoint for; `anon` still reads zero after every row the block added
 
 *Total after these: 227 pgTAP assertions (171 before).*
+
+### 3.2 Schema privileges (RLS-42, ADR-027)
+
+Everything above asks what a role may *see*. These four ask what it may
+*make* — a separate gate in Postgres, and the one without 42 policies
+watching it.
+
+- [x] RLS-42 — `anon` holds no CREATE on the `public` schema, and neither does `authenticated`. `ALL ON SCHEMA public` (USAGE **and** CREATE) was granted to both at project provisioning, asked for by no migration in this repo, and found only by running `supabase db diff --linked --schema public` against Frankfurt. `anon` is the role behind the key that ships inside the app bundle; `authenticated` is every signed-in parent
+- [x] …and USAGE survives for both, which migration 007 grants and PostgREST needs to resolve any table at all. Asserted because "we revoked too much" and "we revoked nothing" fail identically — with no rows and no error — in a migration that only revokes
+- [x] `service_role` is asserted in neither direction, deliberately: migration 014 does not touch it, so whether it holds CREATE depends on which Supabase image provisioned the database rather than on anything here. Frankfurt grants it; a fresh `supabase start` does not
+
+**The migration is a no-op on a fresh local stack**, because current
+Supabase images no longer grant `ALL ON SCHEMA public` to the client
+roles — there is nothing local to revoke, and `supabase db reset` shows
+no change. Its effect lands when it reaches Frankfurt. That the
+statements do what they claim was therefore confirmed separately, by
+reproducing production's grants on a local stack and running them:
+`anon`/`authenticated` go from CREATE to no CREATE with USAGE intact,
+and an anonymous PostgREST read still answers `200 []` rather than a
+permission error. The assertions earn their place regardless — they now
+fail if a future migration re-grants CREATE to either role.
+
+*Total after these: 231 pgTAP assertions (227 before).*
 
 ## 4. Unit tests (Vitest)
 

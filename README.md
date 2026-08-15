@@ -146,7 +146,7 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 `supabase/tests/database/rls.test.sql` implements all 41 cases from
 test-plan.md §3 (RLS-01…RLS-41), plus WH-01…WH-12 for the notification
 webhooks in migrations 009 and 010, plus NC-01…NC-18 for the notification
-centre in migration 012 — 227 pgTAP assertions, using the standard
+centre in migration 012 — 231 pgTAP assertions, using the standard
 fixture set from §2. RLS-36…RLS-41 and NC-17/NC-18 close the combination
 space rather than adding a feature: every dual-role persona before them
 deliberately kept the tutor half and the parent half in different
