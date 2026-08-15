@@ -90,11 +90,22 @@ De meeste leerlingen zijn jonger dan 16 jaar. Voor hen geldt:
 - Er wordt **geen** eigen account aangemaakt; alle toegang loopt via het account van de ouder/verzorger.
 - De ouder/verzorger geeft bij inschrijving toestemming voor de verwerking van de gegevens van het kind.
 
-Leerlingen van 16 jaar en ouder kunnen — met medeweten van de ouder — een eigen
-account koppelen met toegang tot hun eigen gegevens, die zij zelf niet kunnen
-wijzigen. De koppeling met het ouderaccount blijft altijd bestaan. Helpt een leerling
-van 16+ daarnaast mee met een klas, dan gelden voor díe klas dezelfde rechten als
-voor elke andere begeleider — voor de eigen gegevens verandert er niets.
+Inloggen gaat uitsluitend met een Google-account. **Wij hanteren daarbij geen eigen
+leeftijdsgrens**: welke minimumleeftijd geldt voor een eigen Google-account bepaalt
+Google, volgens de wettelijke leeftijd voor digitale toestemming in het land van de
+gebruiker. Voor Nederland ligt die grens bovenaan de Europese bandbreedte, en in de
+praktijk betekent dit dat jongere leerlingen geen eigen account hebben. De
+geboortedatum die wij van een leerling bewaren, gebruiken wij hiervoor niet.
+
+Leerlingen die wél een eigen account hebben, kunnen dat — met medeweten van de ouder
+— aan hun leerlingdossier laten koppelen. Zij zien dan hun eigen gegevens en kunnen
+die niet zelf wijzigen. De koppeling met het ouderaccount blijft altijd bestaan.
+
+Helpt een oudere leerling mee met een jongere klas, dan gelden voor díe klas dezelfde
+rechten als voor elke andere begeleider: hij of zij kan aanwezigheid en voortgang van
+die klas vastleggen. Voor de eigen gegevens verandert er niets. Meehelpen kent geen
+leeftijdsgrens; wie meehelpt wordt door de beheerder aan een klas toegewezen, en dat
+is dus een bewuste keuze en geen automatisme.
 
 ### 5. Wie binnen PPME kan welke gegevens zien?
 
@@ -249,9 +260,20 @@ Sebagian besar santri berusia di bawah 16 tahun. Bagi mereka:
 - Orang tua/wali memberikan persetujuan saat pendaftaran untuk pemrosesan data anak.
 
 Santri berusia 16 tahun ke atas dapat — dengan sepengetahuan orang tua — menautkan
-akun sendiri untuk melihat data mereka sendiri, tanpa dapat mengubahnya. Bila santri
-16+ juga membantu mengajar sebuah kelas, untuk kelas itu berlaku hak yang sama seperti
-pengajar lain; untuk datanya sendiri tidak ada yang berubah. Tautan dengan akun orang
+akun sendiri untuk melihat data mereka sendiri, tanpa dapat mengubahnya.
+
+Login hanya dapat dilakukan dengan akun Google. **Kami tidak menetapkan batas usia
+sendiri**: batas usia minimum untuk memiliki akun Google ditentukan oleh Google,
+mengikuti usia persetujuan digital di negara masing-masing pengguna. Untuk Belanda
+batas itu berada di ujung atas rentang Eropa, sehingga dalam praktiknya santri yang
+lebih muda tidak memiliki akun sendiri. Tanggal lahir yang kami simpan tidak kami
+gunakan untuk keperluan ini.
+
+Bila santri yang lebih besar ikut membantu kelas yang lebih kecil, untuk kelas itu
+berlaku hak yang sama seperti pengajar lain: ia dapat mencatat kehadiran dan progres
+kelas tersebut. Untuk datanya sendiri tidak ada yang berubah. Membantu mengajar tidak
+dibatasi usia; siapa yang membantu ditetapkan oleh admin melalui penugasan ke sebuah
+kelas, jadi hal itu selalu merupakan keputusan yang disengaja. Tautan dengan akun orang
 tua tetap ada.
 
 ### 5. Siapa saja di dalam PPME yang dapat melihat data apa?

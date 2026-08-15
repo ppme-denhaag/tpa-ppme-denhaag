@@ -99,7 +99,11 @@ only one of these cases prompted by a product decision rather than a
 proof obligation: PPME decided a student assistant should be able to
 record (ADR-020), and it turned out the database had always allowed it,
 because "16+ students are read-only" described a relationship nobody had
-combined with another. 53 assertions, taking the file to 157.*
+combined with another. Note that **no case varies the assistant's age**,
+and deliberately so (ADR-021): the schema has no concept of age, PPME
+does not gate assisting on it, and a case differing only in
+`date_of_birth` would assert nothing. 53 assertions, taking the file to
+157.*
 
 *WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
 webhook). They are not RLS assertions, but they belong to the same "what

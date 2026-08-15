@@ -155,7 +155,7 @@ parent) to show the model is n-ary rather than merely dual, and to mark
 where the pattern stops: `fn_is_admin()` is an unconditional `ALL`, so
 once admin is in the union the "nothing more" property no longer holds
 and each of RLS-31/RLS-32's refusals becomes an allowance. RLS-35 covers
-the student assistant (ADR-020): a 16+ student who also tutors may
+the student assistant (ADR-020): a student with their own login who also tutors may
 record for the class they teach, and still not for their own record —
 no policy tests for the `student` role anywhere, so "students are
 read-only" only ever described a student who taught nothing. Like the
@@ -526,7 +526,7 @@ holds, so a recipient cannot rewrite an event on their own row.
 |---|---|
 | `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
 | `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
-| `student` (16+) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like |
+| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
 | `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
 
 Admin's access has always been granted at the database layer — every table

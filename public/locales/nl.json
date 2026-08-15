@@ -323,7 +323,8 @@
     "studentClass": "Klas",
     "studentParent": "Ouder",
     "studentDob": "Geboortedatum",
-    "linkSelfLogin": "Koppel zelfstandig account (16+)",
+    "hasOwnLogin": "Eigen account",
+    "linkSelfLogin": "Koppel zelfstandig account",
     "linkSelfLoginNone": "Geen",
     "noParents": "Nog geen ouders geregistreerd",
     "hubSubtitle": "Gebruikersregistraties, klassen en leerlinggegevens"
