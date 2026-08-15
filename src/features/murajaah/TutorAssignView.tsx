@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
-import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
+import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
+import { useViewScope } from '../../context/ViewScopeContext'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
 import { FREQUENCY_OPTIONS, FREQUENCY_LABEL_KEY } from '../../lib/murajaah'
@@ -27,6 +28,7 @@ export function TutorAssignView() {
   const { t } = useTranslation()
   const { profile } = useAuth()
   const { classes, loading: classesLoading } = useMyClasses()
+  const { selfStudentId } = useViewScope()
 
   const [classId, setClassId] = useState<string | null>(null)
   const [roster, setRoster] = useState<RosterStudent[]>([])
@@ -62,7 +64,7 @@ export function TutorAssignView() {
     if (!classId) return
     let active = true
     setRosterLoading(true)
-    fetchClassRoster(classId)
+    fetchRecordableRoster(classId, selfStudentId)
       .then((data) => {
         if (active) setRoster(data)
       })
@@ -75,7 +77,7 @@ export function TutorAssignView() {
     return () => {
       active = false
     }
-  }, [classId])
+  }, [classId, selfStudentId])
 
   const currentAyahCount = surahs.find((s) => s.surah_num === surahNum)?.ayah_count ?? 286
 

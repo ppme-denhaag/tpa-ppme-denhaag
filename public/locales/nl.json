@@ -69,7 +69,8 @@
     "semesterRate": "Aanwezigheid dit semester",
     "attendanceRate": "Aanwezigheid",
     "submitted": "Aanwezigheid succesvol verstuurd",
-    "confirmSubmit": "Aanwezigheid versturen voor {{count}} leerlingen?"
+    "confirmSubmit": "Aanwezigheid versturen voor {{count}} leerlingen?",
+    "ownRowNotEditable": "Je eigen aanwezigheid wordt genoteerd door een andere begeleider of de beheerder."
   },
   "assignments": {
     "title": "Opdrachten",
@@ -230,6 +231,13 @@
     "orangTua": "Ouder",
     "santri": "Leerling",
     "admin": "Beheerder"
+  },
+  "scope": {
+    "label": "Weergave",
+    "myClass": "Mijn klas",
+    "myChild": "Mijn kind",
+    "myself": "Mijzelf",
+    "myFamily": "Mijn gezin"
   },
   "days": {
     "mon": "Ma",

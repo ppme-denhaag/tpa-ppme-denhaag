@@ -60,6 +60,12 @@ const ZAINAB = 'a5000000-0000-0000-0000-000000000002' // Ibu Siti's second child
 const FATIMAH = 'a5000000-0000-0000-0000-000000000003' // Bapak Rudi's child, Kelas A, 16+ self-login
 const YUSUF = 'a5000000-0000-0000-0000-000000000005' // Ustadzah Aminah's own child, Kelas B
 const SALMA = 'a5000000-0000-0000-0000-000000000007' // Ustadzah Laila's own child, Kelas B
+// The two overlap personas (ADR-023, ADR-024) and the disjoint
+// tutor-parent, for the scope-switch gates in section 9.
+const HASAN = { id: 'd1000000-0000-0000-0000-000000000002', email: 'bapak.hasan@dev.local' }
+const AISYAH_USER = { id: 'd1000000-0000-0000-0000-000000000004', email: 'aisyah@dev.local' }
+const KHADIJAH = 'a5000000-0000-0000-0000-000000000006' // Bapak Hasan's own child, Kelas A
+const AISYAH = 'a5000000-0000-0000-0000-000000000008' // the assistant's own record, Kelas A
 const KELAS_A = 'a4000000-0000-0000-0000-000000000001'
 const MURAJAAH_TARGET = 'a7000000-0000-0000-0000-0000000000e1'
 const DUE_TOMORROW = 'a8000000-0000-0000-0000-0000000000e1'
@@ -1267,6 +1273,102 @@ for (const job of ['send-murajaah-reminders', 'homework-due-reminders', 'weekly-
     typeof body.skipped === 'string' || typeof body.sent === 'number',
     serialized,
   )
+}
+
+
+// The gates ADR-025 introduces, asserted against the rendered app for
+// the same reason section 7 is: a switch that appears for the wrong
+// person shows them a screen that is not theirs, and no unit test over
+// `viewScope.ts` can prove the component consulted it.
+console.log('\n9. view scope (ADR-025)')
+{
+  const switchGroup = (page) => page.getByRole('group', { name: /Tampilan|Weergave/ })
+
+  // Nobody who is one thing may be offered a second. This is the whole
+  // regression bar of ADR-025, and it is asserted for each of the four
+  // single-relationship personas rather than argued from the lattice.
+  for (const [label, user] of [
+    ['pure parent', SITI],
+    ['pure tutor', AHMAD],
+    ['16+ santri', FATIMAH_USER],
+    ['pure admin', ADMIN],
+  ]) {
+    const ctx = await openAs(user)
+    try {
+      await ctx.page.goto(`${ORIGIN}/attendance`, { waitUntil: 'networkidle' })
+      await ctx.page.waitForTimeout(1500)
+      check(`${label}: no scope switch is rendered`, (await switchGroup(ctx.page).count()) === 0)
+      check(`${label}: no failed requests on the register`, ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+    } finally {
+      await ctx.context.close()
+    }
+  }
+
+  // …and everybody who is two things gets one, labelled by subject.
+  // The label assertion is the one that keeps PRD §70 honest: a control
+  // captioned "Ustadz"/"Orang Tua" would be the switcher that note
+  // rejects, whatever the code underneath it derives.
+  for (const [label, user, expected] of [
+    ['tutor-parent (disjoint)', AMINAH, ['Kelas saya', 'Anak saya']],
+    ['tutor-parent (overlap)', HASAN, ['Kelas saya', 'Anak saya']],
+    ['admin + tutor + parent', LAILA, ['Kelas saya', 'Anak saya']],
+    ['student assistant', AISYAH_USER, ['Kelas saya', 'Saya']],
+  ]) {
+    const ctx = await openAs(user)
+    try {
+      await ctx.page.goto(`${ORIGIN}/attendance`, { waitUntil: 'networkidle' })
+      await ctx.page.waitForTimeout(1500)
+      const options = await switchGroup(ctx.page).first().getByRole('button').allInnerTexts()
+      check(`${label}: is offered both scopes`, options.length === 2, options.join(' | '))
+      check(`${label}: labelled by subject, not by role`, options.join('|') === expected.join('|'), options.join(' | '))
+      check(`${label}: defaults to the class scope`, (await ctx.page.locator('h1').first().innerText()) === 'Kehadiran')
+      check(`${label}: no failed requests`, ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+    } finally {
+      await ctx.context.close()
+    }
+  }
+
+  // ADR-023(c), closed. The assistant now reaches the register for the
+  // class she is enrolled in — which is what this PR changed — and the
+  // upsert must leave her own row out while writing every classmate's.
+  // Asserted by taking the register for real and reading the table,
+  // because the whole failure mode is a payload that looks right.
+  const before = sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${AISYAH}'`)
+  const ctx = await openAs(AISYAH_USER)
+  try {
+    await ctx.page.goto(`${ORIGIN}/attendance`, { waitUntil: 'networkidle' })
+    await ctx.page.waitForTimeout(2000)
+    const body = await ctx.page.locator('main').innerText()
+    check('assistant: her own row is shown on the register, not hidden', body.includes('Aisyah'))
+    check('assistant: and captioned as somebody else\'s to fill in', body.includes('Kehadiranmu sendiri dicatat oleh ustadz lain atau admin.'))
+
+    await ctx.page.getByRole('button', { name: /^Kirim Kehadiran$/ }).click()
+    await ctx.page.getByRole('button', { name: /^Konfirmasi$/ }).click()
+    await ctx.page.getByText('Kehadiran berhasil dikirim').waitFor({ timeout: 15000 })
+
+    check('assistant: the register saves rather than failing the whole class', true)
+    check(
+      'assistant: her own attendance row is not written',
+      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${AISYAH}'`) === before,
+    )
+    check(
+      'assistant: every classmate is written, including a tutor-parent’s own child (ADR-024)',
+      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${KHADIJAH}'`) === '1',
+    )
+    check('assistant: no failed requests taking the register', ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+
+    // The evaluative screens go further: her own name is off the roster
+    // entirely, mirroring `fn_my_recordable_students()` rather than
+    // showing her a row every save would refuse.
+    await ctx.page.goto(`${ORIGIN}/yanbua`, { waitUntil: 'networkidle' })
+    await ctx.page.waitForTimeout(2000)
+    const yanbua = await ctx.page.locator('main').innerText()
+    check('assistant: her own name is off the Yanbu’a roster she teaches', !yanbua.includes('Aisyah'))
+    check('assistant: her classmates are still on it', yanbua.includes('Ali') && yanbua.includes('Zainab'))
+    check('assistant: no failed requests on a recording screen', ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+  } finally {
+    await ctx.context.close()
+  }
 }
 
 for (const dir of profiles) rmSync(dir, { recursive: true, force: true })

@@ -1,4 +1,4 @@
-import { useAuth } from '../../context/AuthContext'
+import { useViewScope } from '../../context/ViewScopeContext'
 import { TutorAssignmentsView } from './TutorAssignmentsView'
 import { FamilyAssignmentsView } from './FamilyAssignmentsView'
 
@@ -8,13 +8,15 @@ import { FamilyAssignmentsView } from './FamilyAssignmentsView'
 // child's name) or a 16+ student (assignments.myTitle) — not known
 // until a child is picked.
 //
-// Admin gets the tutor view (ADR-014) — same reasoning as
-// AttendancePage/YanbuaPage: the class-picker shape needs no new query
-// for admin, while FamilyAssignmentsView's "my children" query would
-// return every student in the TPA (`students_admin_all` has no
-// `parent_id` predicate).
+// Which view renders is `useViewScope`, not `profile.role` (ADR-025).
+// For an admin the answer is unchanged — `isAdmin` grants the class
+// scope, and admin has no family scope unless their own child is
+// enrolled, in which case the switch offers it and defaults to the
+// class shape. For a tutor-parent both scopes exist and the person
+// chooses; for everyone holding one relationship `availableScopes` has
+// a single member and this line resolves to exactly what it resolved to
+// before.
 export function AssignmentsPage() {
-  const { profile } = useAuth()
-  const isManager = profile?.role === 'tutor' || profile?.role === 'admin'
-  return isManager ? <TutorAssignmentsView /> : <FamilyAssignmentsView />
+  const { scope } = useViewScope()
+  return scope === 'class' ? <TutorAssignmentsView /> : <FamilyAssignmentsView />
 }

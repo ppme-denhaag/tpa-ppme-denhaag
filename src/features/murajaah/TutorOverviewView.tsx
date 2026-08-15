@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
-import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
+import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
+import { useViewScope } from '../../context/ViewScopeContext'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
 import { isStreakCurrent, startOfWeekLocalDate } from '../../lib/murajaah'
@@ -25,6 +26,7 @@ import {
 export function TutorOverviewView() {
   const { t } = useTranslation()
   const { classes, loading: classesLoading } = useMyClasses()
+  const { selfStudentId } = useViewScope()
 
   const [classId, setClassId] = useState<string | null>(null)
   const [roster, setRoster] = useState<RosterStudent[]>([])
@@ -52,7 +54,7 @@ export function TutorOverviewView() {
 
     async function load() {
       try {
-        const rosterData = await fetchClassRoster(classId!)
+        const rosterData = await fetchRecordableRoster(classId!, selfStudentId)
         if (!active) return
         setRoster(rosterData)
 
@@ -77,7 +79,7 @@ export function TutorOverviewView() {
     return () => {
       active = false
     }
-  }, [classId])
+  }, [classId, selfStudentId])
 
   const today = todayLocalDate()
   const assignmentsByStudent = useMemo(() => {

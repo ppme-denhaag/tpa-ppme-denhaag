@@ -355,7 +355,38 @@ the broken version.
 - [x] **All sixteen combinations**, swept rather than selected. The cases above are the ones somebody thought to name; four independent booleans have sixteen, and the claim ADR-019 rests on is that none of them implies, suppresses, or substitutes for another. Each cell is built from the relationship that is allowed to produce it, and for every non-admin cell `users.role` is set to something the capabilities must not echo — so a future short-circuit ("an admin obviously isn't a parent", "a student can't be a tutor") fails here rather than on a family's screen. The cells that cannot occur in the database are still asserted here, because the derivation is a pure function and nothing about it knows they are unlikely
 - [x] …and the two family booleans are never read out of each other's row: a santri whose own record is misread as parenthood gets a ChildPicker over themselves, and a parent whose child has a self-login gets a santri's screens
 - [x] …and the overlap (pgTAP RLS-36) stays one boolean: two grants reaching the same student row, or three rows reaching one parent, is not a different answer from one
-- [x] `fetchCapabilities`, the wrapper the app actually calls and the one thing nothing reached: the two relationship queries are issued **together** rather than in sequence (two round trips on the critical path of the first screen a family sees, on the connection they are most likely to have), the role passes through without implying anything else, and a failure in **either** query rejects rather than resolving into a smaller capability set — a swallowed error there is indistinguishable from "this person is nobody", which is a family locked out of their own child's screens with no error to explain it
+- [x] `fetchViewerRelationships`, the wrapper the app actually calls and the one thing nothing reached: the two relationship queries are issued **together** rather than in sequence (two round trips on the critical path of the first screen a family sees, on the connection they are most likely to have), the role passes through without implying anything else, and a failure in **either** query rejects rather than resolving into a smaller capability set — a swallowed error there is indistinguishable from "this person is nobody", which is a family locked out of their own child's screens with no error to explain it
+
+### 4.5b View scope selection (TAD ADR-025)
+
+Implemented in `tests/unit/viewScope.test.ts`, against
+`src/lib/viewScope.ts`. The decision about *which* of the two shapes a
+screen renders lives in a library rather than in the six `.tsx` files
+that used to make it, for the reason §4.7 gives: coverage is scoped to
+`src/lib/**`, so a selection rule written inside a component is
+invisible to the gate. The components render the result and decide
+nothing.
+
+- [x] **All sixteen capability combinations against all four roles — sixty-four cells**, swept rather than selected, for the reason §4.5 sweeps its own lattice. The property is conditional and a hand-picked list cannot show it: `users.role` may decide the four cells where the person holds no relationship at all, and must be ignored in the other sixty. Each non-empty cell is additionally resolved under **every** role, asserting the answer does not move — which is the claim, since for most of those cells the role column says the opposite of the relationships
+- [x] `scopeFallbackForRole` reproduces the pre-ADR-025 expression (`role === 'tutor' || role === 'admin'`) verbatim. This is the branch that keeps an invited-but-unassigned tutor on the screens they have today; a purely capability-derived answer would move them to the family views and take those screens away (the case §4.5 already flags as making the swap a behaviour change rather than a refactor)
+- [x] `canSwitchScope` is false for each of the four single-relationship personas, false for an account holding **no** relationship, and false when two capabilities point at the *same* scope — an admin who also teaches has two capabilities and one scope, and counting capabilities instead of scopes would have shown them a control with one button
+- [x] …and true for the disjoint tutor-parent, the overlap tutor-parent, the triple-role admin and the student assistant
+- [x] `resolveScope` honours a remembered scope only while the relationship behind it survives: an ustadzah removed from her last class falls back to the family shape rather than being stranded on an empty class picker
+- [x] `scopeLabelKey` can only ever return a key in the `scope.` namespace, asserted against the full set of `roles.` keys. This is what keeps PRD §70 honest in the test suite: a caption naming a role would be the switcher that note rejects, whatever the code beneath it derives. The family label follows the relationship — "my child" for a parent, "myself" for a 16+ self-login, and a neutral "my family" for the account that is both, whose picker holds their children *and* their own record
+- [x] `scopeAppliesTo` covers every entry in `NAV_TABS` plus `/reports`, pinned against the tab set rather than restated, so adding a two-shaped screen without teaching the switch about it fails here; and stays off the dashboard, the notification screens and `/admin/*`, where a family half does not exist
+- [x] `capabilityLabelKeys` renders exactly the label that was there before for every single-relationship account and for the not-yet-assigned tutor, and lists all of them in a fixed order for a multi-role one. The dashboard line was the most visible place the app still asserted a person is one thing
+
+### 4.5c The recordable roster (TAD ADR-023(c), closed by ADR-025)
+
+Implemented in `tests/unit/roster.test.ts`, against `src/lib/roster.ts` —
+the app-side mirror of `fn_my_recordable_students()`.
+
+- [x] `recordableStudents` subtracts the caller's **own** `students` record and nothing else
+- [x] …and **never** a tutor-parent's own child. ADR-024(c) warns that the two overlaps look structurally identical and are different in kind; a tidy-up that merged them would forbid the ordinary arrangement at a small TPA, on screens rather than in policies, where no RLS test would catch it
+- [x] …and is a no-op whenever `selfStudentId` is null, which is every account in the TPA but one
+- [x] `selfStudentId` reads `user_id` rather than `parent_id`, so it is null for a parent however many children they have — reading the wrong column would return a *child's* id and make the register silently stop submitting that child's row
+- [x] `isSelfRecord` is false for a null student id, because the family screens render before the ChildPicker has a value and "nothing selected" is not "this is me"
+- [x] `fetchRecordableRoster` applies the predicate to what the query returned, and rethrows rather than reporting a short roster
 
 ### 4.6 Access control and delivery inside the Functions
 
@@ -387,12 +418,18 @@ was at 9% of lines and `verifyWebhookSecret` at 35%, which is to say the
 two functions that decide who may operate the service-role key were the
 least tested code in the repository.
 
-| | Before | After |
-|---|---|---|
-| Statements | 67.6% | 97.3% |
-| Branches | 58.1% | 90.8% |
-| Lines | 71.0% | 98.9% |
-| Unit tests | 246 | 346 |
+| | Before | After ADR-019…ADR-024 | After ADR-025 |
+|---|---|---|---|
+| Statements | 67.6% | 97.3% | 97.5% |
+| Branches | 58.1% | 90.8% | 91.7% |
+| Lines | 71.0% | 98.9% | 99.0% |
+| Unit tests | 246 | 346 | 447 |
+
+ADR-025 moved coverage up rather than down, which is the point of
+putting the view-selection decision in `src/lib/viewScope.ts` instead of
+in the six components that used to make it: a rule written inside a
+`.tsx` would have left the gate reporting the same number about strictly
+more untested logic.
 
 ## 5. E2E flows (Playwright)
 
@@ -465,10 +502,26 @@ drives real Chromium profiles (a parent with two children in one class, a
 second family in the same class, a 16+ student with their own account, and —
 since ADR-022 — a tutor whose own child attends and an admin whose own child
 attends) against a real push service, and asserts on what each browser
-displayed. 158 checks, currently all passing (63 before part 2b, 104 before
-part 3, 130 before ADR-022).
+displayed. 191 checks, currently all passing (63 before part 2b, 104 before
+part 3, 130 before ADR-022, 158 before ADR-025).
 
-**Last run: after ADR-024 (`main` at the dev-fixture overlap personas),
+**Section 9 is ADR-025's, and it is here rather than in Playwright for
+the reason section 7 is:** a scope switch that renders for the wrong
+person shows them a screen that is not theirs, and no unit test over
+`viewScope.ts` can prove a component consulted it. It asserts that each
+of the four single-relationship personas gets **no** control at all —
+the whole regression bar of that change — that each of the four
+multi-relationship personas gets one captioned by subject rather than by
+role (which is what keeps PRD §70 honest against a future edit), and
+that the student assistant can take the register for the class she is
+enrolled in: the save succeeds, her own attendance row is **not** in the
+table afterwards, and a tutor-parent's own child's row is (ADR-024).
+That last group is the live half of closing ADR-023(c), asserted against
+the database rather than against a payload, because a payload that looks
+right is the entire failure mode.
+
+**Last run: ADR-025, 191/191** (158 + 33 new).
+**Previous run: after ADR-024 (`main` at the dev-fixture overlap personas),
 158/158.** Re-run specifically to close the gap ADR-023's and ADR-024's
 pull requests both declared: neither could exercise this harness, so each
 argued from the shape of its change that the harness was unaffected —

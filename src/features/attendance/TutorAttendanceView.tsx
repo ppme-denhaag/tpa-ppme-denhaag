@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
+import { useViewScope } from '../../context/ViewScopeContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import type { Database, TablesInsert } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
+import { isRecordableStudent, recordableStudents } from '../../lib/roster'
 import {
   fetchAttendanceForSession,
   fetchClassRoster,
@@ -23,9 +25,40 @@ interface RowState {
   reason: string
 }
 
+/**
+ * The class register — and the one screen where a student assistant's
+ * own row stays visible while being left out of what is submitted
+ * (TAD ADR-023(c), closed by ADR-025).
+ *
+ * ── Why the fix is here and not in a policy ─────────────────────────
+ * `submitAttendance` upserts the whole roster in a single statement, so
+ * a policy refusing one row refuses the save for the entire class —
+ * Aisyah could no longer mark *anybody*, which is a worse failure than
+ * the hole. ADR-023 therefore left `attendance` out of
+ * `fn_my_recordable_students()` deliberately and recorded the gap as
+ * accepted residual risk (DPIA R7), on the stated grounds that no
+ * screen routed an assistant to a register in the first place. This PR
+ * is what removes that mitigation, so it is this PR's to close.
+ *
+ * ── Who marks the assistant present ─────────────────────────────────
+ * A co-tutor, or an admin. The reason that is an answer rather than a
+ * hope is ADR-014: an admin holds the class shape on *every* class
+ * (`useMyClasses`'s admin branch), so there is always at least one
+ * account that can complete her row even on a class with no second
+ * tutor. Her row is shown rather than hidden precisely so this is
+ * visible — she can see whether she was marked, and anyone else opening
+ * the register sees a row still to fill.
+ *
+ * The exclusion is `recordableStudents`, the same predicate the five
+ * other recording screens filter their rosters with, and it subtracts
+ * her own record only — never a tutor-parent's children, who stay on
+ * the register and are marked by their parent in the ordinary way
+ * (ADR-024, and ADR-024(c) on why the two must not be collapsed).
+ */
 export function TutorAttendanceView() {
   const { t, i18n } = useTranslation()
   const { profile } = useAuth()
+  const { selfStudentId } = useViewScope()
   const { classes, loading: classesLoading } = useMyClasses()
 
   const [classId, setClassId] = useState<string | null>(null)
@@ -86,6 +119,15 @@ export function TutorAttendanceView() {
     }
   }, [classId, profile])
 
+  // The rows this register may write. Identical to `roster` for every
+  // account in the TPA except a student assistant looking at the class
+  // she is herself enrolled in — `selfStudentId` is null for everyone
+  // else, and the predicate is a plain inequality.
+  const submittable = useMemo(
+    () => recordableStudents(roster, selfStudentId),
+    [roster, selfStudentId],
+  )
+
   const todayLabel = useMemo(() => {
     const date = new Date(`${todayLocalDate()}T00:00:00`)
     return new Intl.DateTimeFormat(i18n.language === 'nl' ? 'nl-NL' : 'id-ID', {
@@ -113,7 +155,7 @@ export function TutorAttendanceView() {
     setSubmitting(true)
     setError(null)
     try {
-      const payload: TablesInsert<'attendance'>[] = roster.map((student) => ({
+      const payload: TablesInsert<'attendance'>[] = submittable.map((student) => ({
         session_id: sessionId,
         student_id: student.id,
         status: rows[student.id]?.status ?? 'present',
@@ -154,6 +196,31 @@ export function TutorAttendanceView() {
         <div className="space-y-2">
           {roster.map((student) => {
             const row = rows[student.id] ?? { status: 'present', reason: '' }
+
+            // The assistant's own row: shown, so she can see whether
+            // somebody has marked her and so the next tutor to open the
+            // register sees it waiting, but not hers to set. The status
+            // rendered is whatever is already stored for her today,
+            // which is `present` before anyone has recorded anything —
+            // the same default every other row starts from, and the
+            // reason the caption says who fills it in rather than
+            // letting the chip read as a claim.
+            if (!isRecordableStudent(student.id, selfStudentId)) {
+              return (
+                <div key={student.id} className="rounded-lg bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-ppme-text">{student.full_name}</span>
+                    <span className="rounded-md bg-ppme-bg-alt px-3 py-2 text-xs font-semibold text-ppme-text/60">
+                      {t(`attendance.${row.status}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 border-t border-black/5 pt-2 text-xs text-ppme-text/60">
+                    {t('attendance.ownRowNotEditable')}
+                  </p>
+                </div>
+              )
+            }
+
             return (
               <div key={student.id} className="rounded-lg bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
@@ -211,7 +278,7 @@ export function TutorAttendanceView() {
         </div>
       )}
 
-      {roster.length > 0 && !loading && (
+      {submittable.length > 0 && !loading && (
         <div className="space-y-2">
           {submitted && (
             <p className="rounded-lg bg-ppme-success/10 p-3 text-sm text-ppme-success">
@@ -221,7 +288,11 @@ export function TutorAttendanceView() {
           {confirming ? (
             <div className="rounded-lg bg-white p-4 shadow-sm">
               <p className="text-sm text-ppme-text">
-                {t('attendance.confirmSubmit', { count: roster.length })}
+                {/* The number actually being written, which is the
+                    roster minus the assistant's own row — a confirm
+                    dialog that overstates by one is how somebody learns
+                    they were counted when they were not. */}
+                {t('attendance.confirmSubmit', { count: submittable.length })}
               </p>
               <div className="mt-3 flex gap-2">
                 <button

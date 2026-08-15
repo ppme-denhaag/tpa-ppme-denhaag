@@ -32,10 +32,11 @@ export const FIXTURE_USERS: FixtureUser[] = [
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
   { id: 'c1000000-0000-0000-0000-000000000001', label: 'Admin Dev (Admin)' },
   // Dual-role (TAD ADR-019) — one person, two relationships. Listed
-  // last because they are the awkward cases, not the common ones: the
-  // label spells out both halves because which screens they land on is
-  // decided by `users.role`, and that is exactly what makes them worth
-  // clicking through.
+  // last because they are the awkward cases, not the common ones. The
+  // label spells out both halves because each of them now gets a scope
+  // switch (ADR-025) and lands on the class shape: what is worth
+  // clicking through is that the *other* half is one tap away and
+  // returns exactly their own child, never their class.
   {
     id: 'd1000000-0000-0000-0000-000000000001',
     label: 'Ustadzah Aminah (Tutor Kelas A + parent of Yusuf in Kelas B)',
@@ -52,10 +53,12 @@ export const FIXTURE_USERS: FixtureUser[] = [
     id: 'd1000000-0000-0000-0000-000000000003',
     label: 'Ustadzah Laila (Admin + tutor of Kelas A + parent of Salma in Kelas B)',
   },
-  // The student assistant (TAD ADR-020). Her `users.role` is 'student',
-  // so every page routes her to the family views today — the tutor
-  // screens she is entitled to are unreachable until role switching
-  // lands. Signing in as her is how that gap stays visible.
+  // The student assistant (TAD ADR-020, ADR-023). Her `users.role` is
+  // 'student' and she now lands on the *class* scope regardless, which
+  // is the gap ADR-020(d) recorded and ADR-025 closed. Signing in as
+  // her is how the exclusion stays honest: her own name is off the
+  // roster on the five evaluative screens, and on the attendance
+  // register it is shown but not submitted.
   {
     id: 'd1000000-0000-0000-0000-000000000004',
     label: 'Aisyah (Santri 16+ in Kelas A + assists in Kelas B)',

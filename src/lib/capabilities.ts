@@ -217,14 +217,69 @@ export function deriveCapabilities(input: {
   }
 }
 
-export async function fetchCapabilities(
+/**
+ * The caller's **own** `students` record, when they are a 16+ santri
+ * with a self-login — the app-side reading of `fn_my_student_id()`.
+ *
+ * Carried beside the capabilities rather than folded into them because
+ * it is an id, not a permission: `isSelfStudent` answers "may this
+ * person be shown the family screens", and this answers "which single
+ * row on a class roster is theirs". The recording screens need the
+ * second question answered to keep ADR-023's exclusion (`roster.ts`),
+ * and a boolean cannot answer it.
+ *
+ * Null for everybody else, which is every account in the TPA today
+ * except Aisyah's — and `isRecordableStudent` is a plain inequality, so
+ * null costs those accounts nothing.
+ */
+export function selfStudentId(
+  userId: string,
+  familyLinks: readonly Pick<FamilyLink, 'id' | 'user_id'>[],
+): string | null {
+  return familyLinks.find((student) => student.user_id === userId)?.id ?? null
+}
+
+/**
+ * Whether a student a screen is currently showing *is* the viewer.
+ *
+ * The family screens used to ask this as `profile.role === 'parent'`,
+ * which is a question about the account and not about the student in
+ * front of them. It gave the right answer for every account that could
+ * exist before ADR-025 and the wrong one immediately afterwards: an
+ * ustadzah whose `users.role` says `tutor` reaching her own son's
+ * screens would have been shown "my progress" about him and refused the
+ * control to confirm his home practice — a refusal the database does
+ * not make (RLS-19; ADR-019 asserts a tutor-parent *can* confirm for
+ * their own child and cannot for a pupil).
+ *
+ * Asked per student instead, one comparison answers it for every
+ * combination, including the account that is both a parent and a 16+
+ * santri: their own row is theirs, their children's rows are not.
+ */
+export function isSelfRecord(studentId: string | null, selfStudentId: string | null): boolean {
+  return studentId !== null && studentId === selfStudentId
+}
+
+/**
+ * Everything the screens derive from the two relationship queries: what
+ * this person may be offered, and which roster row is their own.
+ */
+export interface ViewerRelationships {
+  capabilities: Capabilities
+  selfStudentId: string | null
+}
+
+export async function fetchViewerRelationships(
   client: SupabaseClient<Database>,
   userId: string,
   role: UserRole | null,
-): Promise<Capabilities> {
+): Promise<ViewerRelationships> {
   const [familyLinks, tutorClassCount] = await Promise.all([
     fetchFamilyLinks(client, userId),
     fetchTutorClassCount(client, userId),
   ])
-  return deriveCapabilities({ userId, role, familyLinks, tutorClassCount })
+  return {
+    capabilities: deriveCapabilities({ userId, role, familyLinks, tutorClassCount }),
+    selfStudentId: selfStudentId(userId, familyLinks),
+  }
 }

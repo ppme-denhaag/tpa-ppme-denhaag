@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
-import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
+import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
+import { useViewScope } from '../../context/ViewScopeContext'
 import type { Database } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
 import { isJilidComplete, nextJilid, type JilidRef } from '../../lib/yanbua'
@@ -23,6 +24,7 @@ export function TutorYanbuaView() {
   const { t } = useTranslation()
   const { profile } = useAuth()
   const { classes, loading: classesLoading } = useMyClasses()
+  const { selfStudentId } = useViewScope()
 
   const [classId, setClassId] = useState<string | null>(null)
   const [roster, setRoster] = useState<RosterStudent[]>([])
@@ -55,7 +57,7 @@ export function TutorYanbuaView() {
     if (!classId) return
     let active = true
     setRosterLoading(true)
-    fetchClassRoster(classId)
+    fetchRecordableRoster(classId, selfStudentId)
       .then((data) => {
         if (active) setRoster(data)
       })
@@ -68,7 +70,7 @@ export function TutorYanbuaView() {
     return () => {
       active = false
     }
-  }, [classId])
+  }, [classId, selfStudentId])
 
   const currentPageCount = useMemo(
     () => jilidRefs.find((r) => r.jilid === jilid)?.page_count ?? 44,

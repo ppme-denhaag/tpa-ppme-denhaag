@@ -69,7 +69,8 @@
     "semesterRate": "Kehadiran semester ini",
     "attendanceRate": "Kehadiran",
     "submitted": "Kehadiran berhasil dikirim",
-    "confirmSubmit": "Kirim kehadiran untuk {{count}} santri?"
+    "confirmSubmit": "Kirim kehadiran untuk {{count}} santri?",
+    "ownRowNotEditable": "Kehadiranmu sendiri dicatat oleh ustadz lain atau admin."
   },
   "assignments": {
     "title": "Tugas",
@@ -230,6 +231,13 @@
     "orangTua": "Orang Tua",
     "santri": "Santri",
     "admin": "Admin"
+  },
+  "scope": {
+    "label": "Tampilan",
+    "myClass": "Kelas saya",
+    "myChild": "Anak saya",
+    "myself": "Saya",
+    "myFamily": "Keluarga saya"
   },
   "days": {
     "mon": "Sn",

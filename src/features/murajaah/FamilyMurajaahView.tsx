@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { useViewScope } from '../../context/ViewScopeContext'
+import { isSelfRecord } from '../../lib/capabilities'
 import { ChildPicker } from '../../components/ChildPicker'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
@@ -26,6 +28,7 @@ type MurajaahQuality = Database['public']['Enums']['murajaah_quality']
 export function FamilyMurajaahView() {
   const { t, i18n } = useTranslation()
   const { profile } = useAuth()
+  const { selfStudentId } = useViewScope()
   const { students, loading: studentsLoading } = useMyStudents()
 
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -97,13 +100,25 @@ export function FamilyMurajaahView() {
     [i18n.language],
   )
 
-  // Only parents can confirm home practice (RLS `mlog_parent_insert`
-  // requires confirmed_by = auth.uid() AND the assignment's student to be
-  // in fn_my_children(), which is parent_id-scoped) — a 16+ self-login
-  // student viewing their own record has no write policy here, matching
-  // the PRD's "parent confirms" design (the point is a parent verifying
-  // practice happened at home, not self-report).
-  const canConfirm = profile?.role === 'parent'
+  // Only a *parent of this child* can confirm home practice, and that is
+  // a question about the selected student rather than about the account
+  // (ADR-025). RLS says exactly that: `mlog_parent_insert` requires
+  // `confirmed_by = auth.uid()` AND the assignment's student to be in
+  // `fn_my_children()`, which is `parent_id`-scoped. A 16+ self-login
+  // santri looking at their own record has no write policy here at all,
+  // matching the PRD's "parent confirms" design — the point is a parent
+  // verifying practice happened at home, not self-report.
+  //
+  // It used to read `profile?.role === 'parent'`, which agreed with the
+  // policy for every account that could exist before the scope switch
+  // and disagreed the moment one could hold both relationships:
+  // Ustadzah Aminah's role column says `tutor`, `fn_my_children()`
+  // holds her son Yusuf, and she would have been shown his screens with
+  // the confirm control missing and nothing to explain why. RLS-19 and
+  // ADR-019 both have her able to confirm for her own child and unable
+  // to for a pupil — the row this control writes is the first half, and
+  // the second half is not reachable from a family screen at all.
+  const canConfirm = !isSelfRecord(studentId, selfStudentId)
 
   async function handleConfirm(assignment: MurajaahAssignment) {
     if (!profile) return
@@ -129,7 +144,7 @@ export function FamilyMurajaahView() {
     [students, studentId],
   )
   const title =
-    profile?.role === 'parent' && selectedName
+    !isSelfRecord(studentId, selfStudentId) && selectedName
       ? t('murajaah.childTitle', { name: selectedName })
       : t('murajaah.myTitle')
 

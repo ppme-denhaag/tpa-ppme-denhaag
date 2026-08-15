@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../context/AuthContext'
+import { useViewScope } from '../../context/ViewScopeContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { hasFamilyScope } from '../../lib/viewScope'
 import { supabase } from '../../lib/supabase'
 import { getErrorMessage } from '../../lib/errors'
 import { startOfWeekLocalDate } from '../../lib/murajaah'
@@ -40,14 +41,22 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 export function WeeklySummary() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
+  const { capabilities } = useViewScope()
   const { students, loading: studentsLoading } = useMyStudents()
 
   const [activity, setActivity] = useState<Map<string, WeeklyActivity>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const isFamily = profile?.role === 'parent' || profile?.role === 'student'
+  // A relationship, not a role (ADR-025). This gate used to read
+  // `role === 'parent' || role === 'student'`, which meant the one
+  // person most likely to want the card — an ustadzah whose own child
+  // attends — never saw it, and got the Friday notification saying a
+  // summary was ready with nothing behind it. ADR-019(d) recorded that
+  // as a known consequence to close here. It stays independent of the
+  // scope switch: this is the dashboard, and the card is about their own
+  // children whichever shape the six feature screens are currently in.
+  const isFamily = hasFamilyScope(capabilities)
 
   useEffect(() => {
     if (!isFamily || studentsLoading) return
