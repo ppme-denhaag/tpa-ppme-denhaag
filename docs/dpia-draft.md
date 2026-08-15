@@ -46,14 +46,18 @@ organization warrants a documented assessment.
 
   **One person may hold more than one of these positions** — a tutor whose own child
   attends, an administrator who also teaches — and the access that results is the
-  union of what each position grants, never more (TAD ADR-019). This is not a new
+  union of what each position grants, never more — except where one of those
+  positions is `admin`, whose access is unconditional by design and therefore
+  absorbs the others (TAD ADR-019). This is not a new
   state of affairs: the policies have always been written against the relationship a
   person holds (parent of this child, tutor of this class) rather than against a
   role label, so nothing about it depends on the application asking the right
   question. It is now asserted directly in the test suite (test-plan.md §3,
-  RLS-28…RLS-33), including that each half keeps its own limits — a tutor-parent
+  RLS-28…RLS-34), including that each half keeps its own limits — a tutor-parent
   cannot record progress for their own child, and cannot see their own child's
-  unpublished report merely because they teach someone else's.
+  unpublished report merely because they teach someone else's — and including
+  the admin exception above, which is asserted in the same explicit terms rather
+  than left as an unstated consequence.
 
   This is assessed as proportionate for a ~200-student community programme with a
   handful of volunteer administrators: someone has to be able to cover a session for

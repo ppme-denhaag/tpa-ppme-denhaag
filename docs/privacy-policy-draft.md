@@ -117,11 +117,13 @@ geschreven kan het aan het gezin vrijgeven.
 
 Iemand kan meer dan één rol tegelijk hebben — een docent van wie het eigen kind ook
 op de TPA zit, of een beheerder die daarnaast lesgeeft. Zo iemand krijgt precies de
-optelsom van beide rollen en niets daarbuiten: als docent de eigen klas, als ouder
-het eigen kind. De grenzen van elke rol blijven op hun eigen helft gelden —
-lesgeven geeft bijvoorbeeld geen toegang tot een nog niet vrijgegeven jaarrapport
-van het eigen kind, en ouder zijn geeft geen recht om voortgang van de eigen klas
-namens het eigen kind vast te leggen.
+optelsom van de rollen die hij of zij heeft en niets daarbuiten: als docent de eigen
+klas, als ouder het eigen kind. De grenzen van elke rol blijven daarbij op hun eigen
+helft gelden — lesgeven geeft bijvoorbeeld geen toegang tot een nog niet vrijgegeven
+jaarrapport van het eigen kind, en het ouderschap geeft geen recht om voortgang vast
+te leggen voor de leerlingen van de eigen klas. Is een van die rollen beheerder, dan
+geldt de bredere toegang uit de vorige alinea: die is niet aan een klas of een kind
+gebonden en gaat dus verder dan de optelsom van de overige rollen.
 
 Het aantal beheerdersaccounts wordt bewust klein gehouden en elk account staat op
 naam. Vragen over wie op enig moment beheerder is, kunt u stellen via
@@ -271,11 +273,14 @@ ustadz penulis rapor yang dapat menerbitkannya kepada keluarga.
 
 Satu orang dapat memegang lebih dari satu peran sekaligus — ustadz yang anaknya
 sendiri juga mengaji di TPA, atau admin yang ikut mengajar. Aksesnya adalah
-gabungan dari kedua peran itu dan tidak lebih: sebagai ustadz ia melihat kelas yang
-diampu, sebagai orang tua ia melihat anaknya sendiri. Batasan tiap peran tetap
-berlaku di bagiannya masing-masing — mengajar, misalnya, tidak memberi akses ke
-rapor anaknya sendiri yang belum diterbitkan, dan menjadi orang tua tidak memberi
-hak mencatat progres kelas atas nama anaknya sendiri.
+gabungan dari peran-peran yang ia pegang dan tidak lebih: sebagai ustadz ia melihat
+kelas yang diampu, sebagai orang tua ia melihat anaknya sendiri. Batasan tiap peran
+tetap berlaku di bagiannya masing-masing — mengajar, misalnya, tidak memberi akses ke
+rapor anaknya sendiri yang belum diterbitkan, dan menjadi orang tua tidak memberi hak
+mencatat progres santri di kelas yang ia ampu. Bila salah satu perannya adalah admin,
+berlaku akses yang lebih luas seperti dijelaskan pada paragraf sebelumnya: akses itu
+tidak terikat pada kelas atau anak tertentu, sehingga melampaui gabungan peran-peran
+lainnya.
 
 Jumlah akun admin sengaja dijaga tetap sedikit dan setiap akun atas nama perorangan.
 Pertanyaan mengenai siapa saja yang menjadi admin dapat diajukan ke

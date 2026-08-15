@@ -1429,6 +1429,124 @@ insert into _tap_log(line) select is(
   'RLS-33: anon still sees 0 students after the dual-role rows exist');
 reset role;
 
+-- ======================================================================
+-- RLS-34 — the triple-role person: admin *and* tutor *and* parent
+--
+-- Two relationships was the shape ADR-019 was written for, but nothing
+-- in the schema caps the number at two, and the capability derivation is
+-- four independent booleans rather than a pair. This case exists so that
+-- "the model is n-ary" is a tested claim rather than an inference from
+-- the absence of a constraint.
+--
+-- It also marks the one boundary the rest of this block does not: for
+-- everybody above, the union is bounded by the relationships they hold.
+-- Add `admin` to the union and that stops being true — `fn_is_admin()`
+-- is an unconditional `ALL` on every table (ADR-014), so it swallows both
+-- other grants whole. **RLS-28's "nothing more" and RLS-31/RLS-32's "the
+-- union is not a promotion" do not survive an admin in the mix, and the
+-- assertions below are deliberately the mirror image of those.** The
+-- restraint that keeps an admin out of the parent-only actions is
+-- application-layer, exactly as RLS-25 records for home practice.
+--
+-- Placed after RLS-33 rather than beside RLS-28 because it adds a fifth
+-- student and a fourth tutor to Class C, which RLS-28's and RLS-29's
+-- exact-set assertions would otherwise have to account for.
+-- ======================================================================
+
+-- TAP — users.role 'admin', tutor of Class C, parent of a child in Class D.
+insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at)
+values ('b0000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', 'tap@test.local', '', now(), '{}', '{}', false, false, now(), now());
+
+insert into public.users (id, email, full_name, role, locale)
+values ('b0000000-0000-0000-0000-000000000004', 'tap@test.local', 'Tutor-Parent-Admin (role=admin)', 'admin', 'id');
+
+update public.classes
+   set tutor_ids = tutor_ids || 'b0000000-0000-0000-0000-000000000004'::uuid
+ where id = 'c0000000-0000-0000-0000-00000000000c';
+
+-- Their own child sits in Class D, which they do not teach — the same
+-- shape as TP and TT, so the comparison with RLS-31/RLS-32 is like for like.
+insert into public.students (id, parent_id, user_id, full_name, class_id, date_of_birth)
+values ('d0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000004', null, 'TAP Kid', 'c0000000-0000-0000-0000-00000000000d', '2016-08-01');
+
+insert into public.murajaah_assignments (id, student_id, tutor_id, surah_num, ayah_from, ayah_to, frequency)
+values ('f0000000-0000-0000-0000-000000000009', 'd0000000-0000-0000-0000-000000000009', '70000000-0000-0000-0000-000000000002', 1, 1, 3, 'daily');
+
+-- A draft on their own child, authored by that child's actual tutor —
+-- the row RLS-32 proved a non-admin tutor-parent cannot see.
+insert into public.year_end_reports (student_id, academic_year, tutor_id, status)
+values ('d0000000-0000-0000-0000-000000000009', '2025/2026', '70000000-0000-0000-0000-000000000002', 'draft');
+
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000004';
+
+-- ---- the three relationships coexist, each still derived its own way.
+-- This is the ground truth the application's capability derivation
+-- mirrors: `isAdmin` from the role column because fn_is_admin() reads it,
+-- the other two from relationships, and no pair of them exclusive.
+insert into _tap_log(line) select is(
+  public.fn_is_admin(), true,
+  'RLS-34: the triple-role user is an admin — the one grant that comes from users.role'
+);
+insert into _tap_log(line) select set_eq(
+  'select public.fn_my_classes()',
+  array['c0000000-0000-0000-0000-00000000000c']::uuid[],
+  'RLS-34: …and a tutor of exactly the one class they are named in — being admin does not enlarge the *relationship*, only the grant'
+);
+insert into _tap_log(line) select set_eq(
+  'select public.fn_my_children()',
+  array['d0000000-0000-0000-0000-000000000009']::uuid[],
+  'RLS-34: …and the parent of exactly their own child'
+);
+insert into _tap_log(line) select ok(
+  public.fn_my_student_id() is null,
+  'RLS-34: …and not a 16+ self-login student — the fourth capability is independently false'
+);
+
+-- ---- reads: the union collapses, and that is the point of the case.
+-- The mirror of RLS-33's first assertion, where TP sees none of these.
+insert into _tap_log(line) select is(
+  (select count(*) from public.students
+   where id in ('d0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000002',
+                'd0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000004')),
+  4::bigint,
+  'RLS-34: they see all four original fixture students — children they neither teach nor parent. With admin in the union, "nothing more" no longer holds'
+);
+
+-- ---- writes: each of RLS-31/RLS-32's refusals, now allowed.
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+     values ('d0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000004', 1, 3, 'lancar') $$,
+  'RLS-34: they CAN record Yanbu''a for their own child, which RLS-31 refused a non-admin tutor-parent — yanbua_admin_all outranks the parent half being read-only'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.murajaah_log (assignment_id, confirmed_by, quality, date)
+     values ('f0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000004', 'hafal_lancar', current_date) $$,
+  'RLS-34: …and CAN confirm home practice for a student in their class, which RLS-31 refused. The parent-only rule for confirmations is application-layer (ADR-014(c), RLS-25), not RLS'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.year_end_reports
+   where student_id = 'd0000000-0000-0000-0000-000000000009' and status = 'draft'),
+  1::bigint,
+  'RLS-34: …and DO see their own child''s draft report, which RLS-32 refused. yer_admin_all has no published-only clause'
+);
+
+-- ---- and they widen nobody: the extra relationships are theirs alone.
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000001';   -- TP
+insert into _tap_log(line) select is(
+  (select count(*) from public.students where id = 'd0000000-0000-0000-0000-000000000009'),
+  0::bigint,
+  'RLS-34: TP still cannot see the admin''s child — sharing a class with an admin grants nothing'
+);
+set local role anon;
+set local request.jwt.claim.sub to '';
+set local request.jwt.claim.role to 'anon';
+insert into _tap_log(line) select is(
+  (select count(*) from public.students), 0::bigint,
+  'RLS-34: anon still sees 0 students after the triple-role rows exist');
+reset role;
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();

@@ -31,8 +31,8 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 - 2 classes: Class A (tutor T1), Class B (tutor T2)
 - P1 has 2 children in Class A; P2 has 1 child in Class B; P3 has 1 child (16+, user_id set) in Class B
 - Sessions, attendance, assignments, and progress rows for each child
-- **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach
-- These rows are created inside the RLS suite itself, after RLS-14 and the NC cases, because those assert exact fixture row counts. `supabase/dev-fixture.sql` seeds the browser-facing equivalents (Ustadzah Aminah, Bapak Hasan) for manual walkthroughs
+- **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach. TAP (`users.role = 'admin'`) is the same shape again with a third relationship on top — admin *and* tutor of Class C *and* parent of a child in Class D — used by RLS-34
+- These rows are created inside the RLS suite itself, after RLS-14 and the NC cases, because those assert exact fixture row counts. `supabase/dev-fixture.sql` seeds the browser-facing equivalents (Ustadzah Aminah, Bapak Hasan, and the triple-role Ustadzah Laila) for manual walkthroughs
 
 ## 3. RLS test suite (highest priority)
 
@@ -73,6 +73,7 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-31 | **The union is not a promotion.** TP records Yanbu'a for a student in the class they teach → allowed; for their own child → rejected (the parent half is read-only). TP confirms home practice for their own child → allowed; for a student in their class → rejected (teaching does not grant a parent's confirmation) |
 | RLS-32 | `year_end_reports`, the sharpest form of the same rule: TP sees the draft for a student they teach, still cannot see the draft for their **own** child, does see their own child's published report, and sees none of the classmate's at any status |
 | RLS-33 | The dual-role rows widen nobody: TP sees none of the four original fixture students, P1 and T1 see none of the dual-role students, S16 still sees exactly one student row (their own), anon still sees 0 |
+| RLS-34 | **The triple-role person** — `users.role = 'admin'`, tutor of one class, parent of a child in another. All four capabilities are derived independently and none excludes another: `fn_is_admin()` true, `fn_my_classes()` exactly the one class they are named in, `fn_my_children()` exactly their own child, `fn_my_student_id()` null. **And the one boundary the rest of the block does not have:** with `admin` in the union, RLS-28's "nothing more" and RLS-31/RLS-32's "not a promotion" stop holding — they see all four original fixture students, *can* record Yanbu'a for their own child, *can* confirm home practice for a student they teach, and *do* see their own child's draft report, each one the mirror of a refusal above. What keeps an admin out of the parent-only actions is application-layer (ADR-014(c), RLS-25). They still widen nobody: TP cannot see their child, anon still sees 0 |
 
 **Gate: all RLS tests green in CI is a merge requirement for any migration change, and a launch requirement before real data entry (DPIA risk R1).**
 
@@ -87,8 +88,13 @@ the assumption the whole dual-role change rests on, and would have
 changed all of it had it been wrong. They are worth reading in pairs:
 RLS-28 and RLS-29 are the same person with opposite `users.role` values
 and identical results, and RLS-31 and RLS-32 are the two places the
-union deliberately does **not** widen. 29 assertions, taking the file to
-133.*
+union deliberately does **not** widen. RLS-34 was added afterwards, to
+answer "is this dual-role only, or n-ary?" — the derivation is four
+independent booleans and nothing caps the count at two, but that was an
+inference from the absence of a constraint until this case asserted it.
+It is also the one place in the block where the union is *not* bounded
+by the relationships held, and it says so. 39 assertions, taking the
+file to 143.*
 
 *WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
 webhook). They are not RLS assertions, but they belong to the same "what

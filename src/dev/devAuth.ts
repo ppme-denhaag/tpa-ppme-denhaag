@@ -44,6 +44,14 @@ export const FIXTURE_USERS: FixtureUser[] = [
     id: 'd1000000-0000-0000-0000-000000000002',
     label: 'Bapak Hasan (Parent of Khadijah in Kelas A + tutor of Kelas B)',
   },
+  // Three relationships at once. Worth clicking through whenever a query
+  // grows an admin branch: for her the admin grant and the tutor
+  // relationship disagree, and only one of them is the right answer for
+  // a given screen.
+  {
+    id: 'd1000000-0000-0000-0000-000000000003',
+    label: 'Ustadzah Laila (Admin + tutor of Kelas A + parent of Salma in Kelas B)',
+  },
 ]
 
 function base64UrlFromBytes(bytes: ArrayBuffer): string {
