@@ -120,9 +120,18 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 
 ## 7. Testing & Monitoring
 
-- [x] Vitest unit tests for streak/mastery/notification logic — all three covered. Notifications: payload building in both locales, R6 content limits, dedup tags including the sibling case, DST/local-time helpers, subscription validation, rate limiting, the service worker's own push/click handlers, platform capability detection, recipient derivation + fan-out dispatch, and that no Function response can carry an identifier. Streaks: every frequency, the missed-period reset, the mid-week assignment, both 2026 DST switchovers and a year boundary. Plus the scheduled-Function gate itself, on a CET and a CEST date. Capability derivation was added later with ADR-019 (test-plan §4.5): what a person can do derived from their relationships, including the dual-role case and the student assistant, and half of it asserting what the *queries* ask rather than what they return, since the bug it fixes was a query asking wider than the screen meant. 230 unit tests
+- [x] Vitest unit tests for streak/mastery/notification logic — all three covered. Notifications: payload building in both locales, R6 content limits, dedup tags including the sibling case, DST/local-time helpers, subscription validation, rate limiting, the service worker's own push/click handlers, platform capability detection, recipient derivation + fan-out dispatch, and that no Function response can carry an identifier. Streaks: every frequency, the missed-period reset, the mid-week assignment, both 2026 DST switchovers and a year boundary. Plus the scheduled-Function gate itself, on a CET and a CEST date. Capability derivation was added later with ADR-019 (test-plan §4.5): what a person can do derived from their relationships, including the dual-role case and the student assistant, and half of it asserting what the *queries* ask rather than what they return, since the bug it fixes was a query asking wider than the screen meant. The
+suite was then swept for what it had never reached rather than for what
+was newly written: all sixteen capability combinations instead of the six
+somebody had named, the orchestration every notification sender shares,
+the browser-side subscribe/unsubscribe flow, the weekly-activity query's
+timezone narrowing, and — the two that mattered most — `authenticateCaller`
+and `verifyWebhookSecret`, which decide who may operate the service-role
+key and were at 9% and 35% of lines respectively. 346 unit tests, and
+`npm run test:coverage` to re-measure (97.3% of statements over
+`src/lib` + `netlify/functions/lib`, up from 67.6%)
 - [ ] Playwright E2E covering the 5 primary flows: attendance, homework, Yanbu'a, Al-Quran, Murajaah. Note for whoever picks this up: the CI `e2e` job runs against a bare dev server with no Supabase, which is why the suite is still the sign-in scaffold. The notification flow is instead verified by `scripts/verify-push.mjs`, which needs Docker + a loaded fixture + `netlify dev` and so cannot run in that job either — it is run by hand and its results are recorded in test-plan §6
-- [x] RLS policy tests automated in CI — 171 pgTAP assertions (RLS-01…RLS-35, WH-01…WH-12, NC-01…NC-16), up from 104. NC-12…NC-16 (ADR-022) ask the notification-centre question of the same multi-relationship people: a tutor-parent and an admin-parent read their own child's notifications and nobody else's, a student assistant reads none for the class they teach, and the ordinary parent is unaffected. RLS-28…RLS-34 cover people who hold more than one relationship (ADR-019): that someone who is both a tutor of one class and the parent of a child in another gets the union of the two grants and **nothing more**, identically whichever of the two values their `users.role` happens to hold, and that the union is not a promotion — they cannot record progress for their own child, cannot confirm home practice for a student they teach, and cannot see their own child's draft report. RLS-34 extends that to three relationships at once (admin + tutor + parent) and records where the pattern stops: an admin's grant is unconditional, so it swallows the other two and the "nothing more" property does not survive it. RLS-35 covers the student assistant (ADR-020) — a 16+ student who also tutors may record for the class they teach, which the database has always allowed because no policy tests for the `student` role at all. The NC cases cover the notification centre: cross-family invisibility, that no client role can insert or delete a notification at all, that a recipient can write `read_at` and nothing else, that neither admin nor tutor reads any, and that `TRUNCATE` — which RLS does not filter — is no longer held by `anon`/`authenticated` on any table
+- [x] RLS policy tests automated in CI — 227 pgTAP assertions (RLS-01…RLS-41, WH-01…WH-12, NC-01…NC-18), up from 104. RLS-36…RLS-41 and NC-17/NC-18 close the combination space rather than adding a feature. Two axes had gone unvaried: **which class** (every dual-role fixture deliberately separates the tutor half from the parent half, so the commonest arrangement at a small TPA — teaching the class your own child is in — had never been asserted at all), and the **empty cells of the capability lattice** (four independent booleans have sixteen combinations; six were covered). The overlap cases surfaced two behaviours nobody had decided. One is now fixed: a student assistant assigned to their own class could grade their own Yanbu'a and Quran, set their own memorization target, mark their own homework verified, author their own year-end report and read that draft — the boundary ADR-020 states in prose and never enforced. Migration 013 (ADR-023) closes all five by relationship rather than by role; `attendance` is deliberately left, because the register is one upsert of the whole roster and refusing one row would stop the assistant marking anybody (ADR-023(c), asserted in RLS-37 rather than assumed closed). The other is still open and characterised rather than changed: a tutor of the class their own child is in *can* record that child's progress and *can* see that child's draft year-end report — a conflict-of-interest question for PPME, not a defect. NC-12…NC-16 (ADR-022) ask the notification-centre question of the same multi-relationship people: a tutor-parent and an admin-parent read their own child's notifications and nobody else's, a student assistant reads none for the class they teach, and the ordinary parent is unaffected. RLS-28…RLS-34 cover people who hold more than one relationship (ADR-019): that someone who is both a tutor of one class and the parent of a child in another gets the union of the two grants and **nothing more**, identically whichever of the two values their `users.role` happens to hold, and that the union is not a promotion — they cannot record progress for their own child, cannot confirm home practice for a student they teach, and cannot see their own child's draft report. RLS-34 extends that to three relationships at once (admin + tutor + parent) and records where the pattern stops: an admin's grant is unconditional, so it swallows the other two and the "nothing more" property does not survive it. RLS-35 covers the student assistant (ADR-020) — a 16+ student who also tutors may record for the class they teach, which the database has always allowed because no policy tests for the `student` role at all. The NC cases cover the notification centre: cross-family invisibility, that no client role can insert or delete a notification at all, that a recipient can write `read_at` and nothing else, that neither admin nor tutor reads any, and that `TRUNCATE` — which RLS does not filter — is no longer held by `anon`/`authenticated` on any table
 - [ ] Netlify Analytics + Supabase Dashboard monitoring wired up; define who's alerted on scheduled function failures (silent otherwise). **More urgent again after part 2b**, which added three jobs that run 72 times a day between them and that nobody would notice failing: a family who stops getting reminders has no way to tell that from a quiet week. A failure is also *silent by design* elsewhere — `fn_notify_absence` swallows its own errors so a notification problem can never fail a tutor's attendance save, and pg_net delivers asynchronously. The scheduled jobs return their counts in the response body and a 500 with the message on failure, both of which land in Netlify's function log; `net._http_response` in Postgres is the other place to look (see README). Nobody is alerted by either today
 
 ## 8. Still Open — Resolve in Parallel, Non-Blocking
@@ -393,3 +402,43 @@ cannot be valid unless the harness happens to run on a Thursday or
 Friday. Both now hold on any day. What is still **not** done is the
 screen access from ADR-020 — routing follows `users.role`, and that is
 the third change.
+
+**Test-coverage sweep after PR 2.** With the three-way split's second
+change landed, the suites were swept for what they had never covered
+rather than for what had just been written, in two directions. The
+combination space first: every dual-role fixture in the project puts the
+tutor half and the parent half in *different* classes, which is what
+makes the union provable and also means the commonest arrangement at a
+small TPA — the ustadzah teaching the class her own child sits in — had
+no case anywhere, and four of the sixteen capability combinations had
+none either. RLS-36…RLS-41 and NC-17/NC-18 close both (219 pgTAP
+assertions, up from 171). Then measured coverage, which found that
+`authenticateCaller` and `verifyWebhookSecret` — the two functions
+deciding who may operate the service-role key — were the least-tested
+code in the repository at 9% and 35% of lines; those, the orchestration
+all six notification senders share, the browser subscribe/unsubscribe
+flow and the weekly-activity query are now covered (346 unit tests, 97.3%
+of statements).
+
+The sweep surfaced **two behaviours nobody had decided**, and they were
+not the same kind of thing. The first is a santri grading themselves: a
+student assistant assigned to their own class could record their own
+Yanbu'a and Quran progress, set their own memorization target, mark their
+own homework verified, author their own year-end report and read that
+draft. That contradicts the boundary ADR-020 states in prose, so it was a
+defect rather than a question, and **migration 013 (ADR-023)** closes it —
+by relationship (`fn_my_recordable_students()`), not by role, which is
+what keeps it consistent with the alternative ADR-020 explicitly rejected.
+`attendance` is deliberately not narrowed: the register is one upsert of
+the whole roster, so refusing one row would stop the assistant marking
+anybody, and closing it properly needs a UI change and an answer to "who
+marks the assistant present?" (ADR-023(c)). RLS-37 asserts that half as
+current behaviour so it stays visible.
+
+The second is still open, and characterised rather than changed: a tutor
+of the class their own child is in can record that child's progress and
+can see that child's draft year-end report. RLS-31 and RLS-32 refuse both,
+but only because their fixture puts the child in another class. Whether an
+ustadzah should assess her own son is a conflict-of-interest question for
+PPME, not a defect, and RLS-36 now records what the database does either
+way.
