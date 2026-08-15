@@ -1,5 +1,6 @@
+import { fetchFamilyRelationships } from '../../src/lib/capabilities'
+import { canReceiveNotifications } from '../../src/lib/notificationRecipients'
 import { authenticateCaller, jsonError, jsonOk } from './lib/callerAuth'
-import { canReceiveNotifications } from './lib/notifications'
 import { RateLimiter } from './lib/rateLimit'
 import { isValidSubscription, normalizeSubscription } from './lib/webPush'
 
@@ -18,10 +19,19 @@ import { isValidSubscription, normalizeSubscription } from './lib/webPush'
  *   2. **Rate limiting** — checklist §6 names this endpoint
  *      specifically. See `lib/rateLimit.ts` for what that does and
  *      honestly does not cover.
- *   3. **Role check.** Notifications are family-facing (ADR-015), so a
- *      subscription is only stored for a role that can actually receive
- *      one. Collecting push endpoints for accounts we will never send to
- *      is personal data with no purpose.
+ *   3. **Recipient check.** Notifications are about a child, so a
+ *      subscription is only stored for an account that some child's row
+ *      actually points at — their parent, or their own 16+ login
+ *      (ADR-022). Collecting push endpoints for accounts we will never
+ *      send to is personal data with no purpose.
+ *
+ *      Until ADR-022 this was a *role* check, and it 403'd a tutor whose
+ *      own child attends the TPA: they could not store a subscription,
+ *      so nothing about their own child could ever reach them. The
+ *      question is now the relationship the account holds, asked with
+ *      the same query and the same predicate the settings screen uses,
+ *      so the screen offering the toggle and the Function honouring it
+ *      cannot disagree.
  *
  * A user can only ever write their own row here: the id comes from the
  * validated JWT, never from the request body.
@@ -57,8 +67,20 @@ export default async (req: Request) => {
     return jsonOk({ subscribed: false })
   }
 
-  if (!canReceiveNotifications(caller.role)) {
-    return jsonError('This role does not receive notifications', 403)
+  // Asked with the service-role client, which is the only way to answer
+  // it here — but the query is the caller's own id in both link columns,
+  // so it is the same set of rows their own session would be shown.
+  let recipient: boolean
+  try {
+    recipient = canReceiveNotifications(await fetchFamilyRelationships(admin, caller.id))
+  } catch (err) {
+    // Failing closed would silently look like "this account receives
+    // nothing", which is the exact failure mode ADR-022 exists to end.
+    // A 500 says a lookup broke.
+    return jsonError(err instanceof Error ? err.message : 'Could not check recipients', 500)
+  }
+  if (!recipient) {
+    return jsonError('This account is not linked to any student', 403)
   }
 
   let body: unknown

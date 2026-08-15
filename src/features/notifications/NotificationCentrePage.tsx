@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+import { useCapabilities } from '../../hooks/useCapabilities'
 import { getErrorMessage } from '../../lib/errors'
-import { canReceiveNotifications } from '../../lib/notificationRoles'
-import { ROLE_I18N_KEY } from '../../lib/roleLabels'
+import { canReceiveNotifications } from '../../lib/notificationRecipients'
 import {
   NOTIFICATION_ROUTE,
   copyKeyFor,
@@ -44,13 +43,17 @@ import { fetchNotifications, markAllRead, type NotificationRow } from './api'
  */
 export function NotificationCentrePage() {
   const { t, i18n } = useTranslation()
-  const { profile } = useAuth()
+  const {
+    capabilities,
+    loading: capabilitiesLoading,
+    error: capabilitiesError,
+  } = useCapabilities()
 
   const [rows, setRows] = useState<NotificationRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const isRecipient = profile ? canReceiveNotifications(profile.role) : false
+  const isRecipient = canReceiveNotifications(capabilities)
 
   const dateFormatter = new Intl.DateTimeFormat(i18n.language === 'nl' ? 'nl-NL' : 'id-ID', {
     day: 'numeric',
@@ -76,28 +79,39 @@ export function NotificationCentrePage() {
   }, [])
 
   useEffect(() => {
+    // Nothing is decided until the relationships are known: fetching on
+    // `NO_CAPABILITIES` would render "you receive none" at a parent for
+    // as long as the lookup takes.
+    if (capabilitiesLoading || capabilitiesError) return
     if (!isRecipient) {
       setLoading(false)
       return
     }
     void load()
-  }, [isRecipient, load])
+  }, [capabilitiesLoading, capabilitiesError, isRecipient, load])
 
-  if (!isRecipient) {
-    // Tutors and admin receive nothing (ADR-015(a)), and admin cannot
-    // read anyone else's either (ADR-017) — so this is genuinely empty
-    // rather than merely filtered, and says so.
+  if (capabilitiesError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-lg font-bold text-ppme-primary">{t('notifications.title')}</h1>
+        <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">
+          {capabilitiesError}
+        </p>
+      </div>
+    )
+  }
+
+  if (!capabilitiesLoading && !isRecipient) {
+    // An account no child's row points at receives nothing (ADR-022) and
+    // can read nobody else's (ADR-017) — so this is genuinely empty
+    // rather than merely filtered, and says so. A tutor whose own child
+    // attends the TPA never lands here; the class they teach is what
+    // they will not find behind it.
     return (
       <div className="space-y-4">
         <h1 className="text-lg font-bold text-ppme-primary">{t('notifications.title')}</h1>
         <p className="rounded-lg bg-white p-4 text-center text-ppme-text/60 shadow-sm">
-          {t('notifications.settings.notARecipient', {
-            // `ROLE_I18N_KEY`, not `roles.${role}` — the DB enum values
-            // and the i18n keys deliberately do not match 1:1 (the copy
-            // uses Ustadz/Orang Tua/Santri). Interpolating the enum
-            // rendered the raw key on screen.
-            role: t(ROLE_I18N_KEY[profile?.role ?? 'tutor']),
-          })}
+          {t('notifications.settings.notLinkedToAStudent')}
         </p>
       </div>
     )

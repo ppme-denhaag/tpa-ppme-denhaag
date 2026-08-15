@@ -3,11 +3,11 @@ import nlCopy from '../../../public/locales/nl.json'
 import type { Database } from '../../../src/lib/database.types'
 
 export type Locale = Database['public']['Enums']['locale']
-export type UserRole = Database['public']['Enums']['user_role']
 
-// Shared with the settings screen rather than restated — see the module
-// for why the two must not drift.
-export { RECIPIENT_ROLES, canReceiveNotifications } from '../../../src/lib/notificationRoles'
+// The recipient rule used to be re-exported from here, keyed on a role.
+// It is a relationship now and lives in `src/lib/notificationRecipients.ts`,
+// imported directly by the two places that ask it (ADR-022). This module
+// builds payloads; who a payload is addressed to is not its question.
 
 /**
  * Every push a family can receive. The names match the keys under

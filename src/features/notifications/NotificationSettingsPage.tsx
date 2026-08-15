@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../context/AuthContext'
+import { useCapabilities } from '../../hooks/useCapabilities'
 import { getErrorMessage } from '../../lib/errors'
-import { canReceiveNotifications } from '../../lib/notificationRoles'
-import { ROLE_I18N_KEY } from '../../lib/roleLabels'
+import { canReceiveNotifications } from '../../lib/notificationRecipients'
 import {
   permissionState,
   pushCapability,
@@ -17,11 +16,19 @@ import {
 /**
  * Notification settings — the only place a family turns push on or off.
  *
- * Rendered for every role, but it does not pretend the switch means the
- * same thing to all of them: notifications are family-facing (TAD
- * ADR-015), so a tutor or admin is told plainly that nothing would be
- * sent to them rather than being offered a toggle that stores a
+ * Rendered for everyone, but it does not pretend the switch means the
+ * same thing to all of them: a notification is always about a child, so
+ * an account no child's row points at is told plainly that nothing would
+ * be sent to it rather than being offered a toggle that stores a
  * subscription and then goes quiet forever.
+ *
+ * **That is a relationship, not a role** (TAD ADR-022). It used to be
+ * `role in ('parent','student')`, which told a tutor whose own child
+ * attends the TPA that they were not a recipient — and `push-subscribe`
+ * agreed with the screen and 403'd them, so the account was consistently
+ * and wrongly silent. Both now ask `canReceiveNotifications` over the
+ * same two derived booleans, so the screen deciding one thing and the
+ * Function another is not a state this code can reach.
  *
  * The three states that are easy to get wrong, and are handled here
  * explicitly rather than falling through to a dead button:
@@ -36,7 +43,11 @@ import {
  */
 export function NotificationSettingsPage() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
+  const {
+    capabilities,
+    loading: capabilitiesLoading,
+    error: capabilitiesError,
+  } = useCapabilities()
 
   const [capability, setCapability] = useState<PushCapability>('unsupported')
   const [permission, setPermission] = useState<NotificationPermission>('default')
@@ -44,8 +55,13 @@ export function NotificationSettingsPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isRecipient = profile ? canReceiveNotifications(profile.role) : false
+  const isRecipient = canReceiveNotifications(capabilities)
   const subscribedHere = state === 'on-this-device'
+  // Neither branch until the relationships are actually known. Showing
+  // "you receive nothing" to a parent for a moment is the same lie this
+  // screen used to tell them permanently, and an enable button that
+  // resolves to a 403 is the other half of it.
+  const decided = !capabilitiesLoading && capabilitiesError === null
 
   useEffect(() => {
     setCapability(pushCapability())
@@ -98,13 +114,19 @@ export function NotificationSettingsPage() {
         <p className="mt-2 text-sm text-ppme-text/70">{t('notifications.settings.intro')}</p>
       </div>
 
-      {!isRecipient && profile && (
+      {capabilitiesError && (
+        <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">
+          {capabilitiesError}
+        </p>
+      )}
+
+      {decided && !isRecipient && (
         <div className="rounded-lg bg-ppme-bg-alt p-4 text-sm text-ppme-text/80 shadow-sm">
-          {t('notifications.settings.notARecipient', { role: t(ROLE_I18N_KEY[profile.role]) })}
+          {t('notifications.settings.notLinkedToAStudent')}
         </div>
       )}
 
-      {isRecipient && (
+      {decided && isRecipient && (
         <div className="rounded-lg bg-white p-6 shadow-sm">
           {capability === 'unsupported' && (
             <p className="text-sm text-ppme-text/70">{t('notifications.settings.unsupported')}</p>
@@ -160,7 +182,7 @@ export function NotificationSettingsPage() {
         </div>
       )}
 
-      {isRecipient && (
+      {decided && isRecipient && (
         <div className="rounded-lg bg-white p-6 shadow-sm">
           <h2 className="font-medium text-ppme-text">{t('notifications.settings.whatYouGet')}</h2>
           {/* One line per notification the system can actually send. A
@@ -175,7 +197,7 @@ export function NotificationSettingsPage() {
         </div>
       )}
 
-      {/* Shown to every role, recipient or not: it describes what the
+      {/* Shown to everyone, recipient or not: it describes what the
           system does with children's data, which a tutor or admin has
           as much reason to be able to read as a parent. */}
       <div className="rounded-lg bg-white p-6 shadow-sm">

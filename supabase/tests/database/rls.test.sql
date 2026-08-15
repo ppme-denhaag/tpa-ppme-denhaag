@@ -1049,6 +1049,13 @@ insert into _tap_log(line) select is(
 -- read every operational table on every class, because running the TPA
 -- needs that; an inbox of every family's personal messages is a
 -- different kind of access and adds nothing to running the TPA.
+--
+-- This admin is nobody's parent, which is why the count is flatly zero.
+-- The policy that produces it — `notifications_own_read`, `user_id =
+-- auth.uid()` — was never a role test, so an admin whose own child
+-- attends the TPA reads that child's notifications and still nobody
+-- else's. NC-12 asserts exactly that, and it is the boundary rather
+-- than an exception to this one.
 set local request.jwt.claim.sub to 'a0000000-0000-0000-0000-000000000000';
 insert into _tap_log(line) select is(
   (select count(*) from public.notifications),
@@ -1699,6 +1706,188 @@ insert into _tap_log(line) select is(
   'present',
   'RLS-35: …and the row really is unchanged, seen from outside RLS — a filtered UPDATE is silent, so this is the half that proves it did nothing'
 );
+
+-- ======================================================================
+-- NC-12…NC-16 — the notification centre for a person who is more than
+--               one thing (TAD ADR-022)
+--
+-- NC-01…NC-11 asked the access-control question of accounts that were
+-- exactly one thing each. The recipient rule was a *role* test at the
+-- time — `role in ('parent','student')` — and the consequence was that a
+-- tutor whose own child attends the TPA received nothing about their own
+-- child: no push, no email, no row here, and `push-subscribe` 403'd them
+-- so they could not even store a subscription. Silent, and
+-- indistinguishable from a quiet week.
+--
+-- The database needed no change for that, and this block is the evidence
+-- rather than the assertion of it: `notifications_own_read` is
+-- `user_id = auth.uid()`, which is a relationship and always was. What
+-- changed is the application-layer rule that decides which `user_id` a
+-- row is written for, so what these cases pin is the boundary that rule
+-- now has to respect — stated from both sides, because "a tutor-parent
+-- hears about their own child" and "a tutor hears nothing about their
+-- class" are one decision and it is possible to satisfy either alone.
+--
+-- Placed last, after RLS-35, because it addresses notifications to the
+-- dual-role people those blocks create.
+-- ======================================================================
+reset role;
+
+insert into public.notifications (user_id, student_id, event, context, event_date)
+values
+  -- TP (users.role 'parent', tutor of Class C) about their OWN child,
+  -- who is in Class D and taught by somebody else.
+  ('b0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-000000000006',
+   'absence', '{}'::jsonb, current_date),
+  -- TT (users.role 'tutor', same shape) about theirs.
+  ('b0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-000000000007',
+   'absence', '{}'::jsonb, current_date),
+  -- TAP (users.role 'admin', tutor of Class C) about theirs.
+  ('b0000000-0000-0000-0000-000000000004', 'd0000000-0000-0000-0000-000000000009',
+   'jilidMilestone', '{"number": 2}'::jsonb, current_date),
+  -- The student assistant, about their own record.
+  ('b0000000-0000-0000-0000-000000000005', 'd0000000-0000-0000-0000-00000000000a',
+   'reportReady', '{}'::jsonb, current_date),
+  -- P4 — the ordinary parent of C Kid, who sits in the class TP, TT, TAP
+  -- and the student assistant all teach. This row is the one none of
+  -- them may read, and the reason it exists.
+  ('b0000000-0000-0000-0000-000000000003', 'd0000000-0000-0000-0000-000000000005',
+   'absence', '{}'::jsonb, current_date);
+
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+
+-- ============================================================
+-- NC-12: the tutor-parent reads their own child's notification —
+--        and only ever their own
+-- ============================================================
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000001';   -- TP
+
+insert into _tap_log(line) select set_eq(
+  'select student_id from public.notifications',
+  array['d0000000-0000-0000-0000-000000000006']::uuid[],
+  'NC-12: a tutor-parent reads the notification about their OWN child — the case the role-based rule silently dropped'
+);
+-- The half of ADR-015(a) that survives ADR-022, stated where it would
+-- fail loudest: C Kid is in the class TP teaches, a notification about
+-- C Kid exists, and TP cannot read it. A tutor learns about an absence
+-- by recording it.
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where student_id = 'd0000000-0000-0000-0000-000000000005'),
+  0::bigint,
+  'NC-12: …and none about a child in the class they TEACH, though a row for that child exists'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where user_id <> 'b0000000-0000-0000-0000-000000000001'),
+  0::bigint,
+  'NC-12: CROSS-FAMILY — no notification addressed to anyone else is visible, including the co-tutor''s'
+);
+
+-- ============================================================
+-- NC-13: identical relationships, users.role = 'tutor' — the same
+--        answer. Two rows differing only in the role column cannot
+--        be what grants either of them anything.
+-- ============================================================
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000002';   -- TT
+
+insert into _tap_log(line) select set_eq(
+  'select student_id from public.notifications',
+  array['d0000000-0000-0000-0000-000000000007']::uuid[],
+  'NC-13: a tutor-parent whose users.role really is ''tutor'' reads their own child''s notification too'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where student_id = 'd0000000-0000-0000-0000-000000000006'),
+  0::bigint,
+  'NC-13: …and cannot read the other tutor-parent''s, though their children share Class D'
+);
+
+-- ============================================================
+-- NC-14: the admin-parent — ADR-017(d) refined, not reversed
+--
+-- NC-09 said "an admin reads no notifications at all", which is true of
+-- an admin who is nobody's parent, and that is every admin the fixture
+-- had. The policy behind it is `user_id = auth.uid()`, so what it
+-- actually says is "no notification addressed to somebody else" — and
+-- that is the sentence that survives ADR-022. `fn_is_admin()` is an
+-- unconditional ALL on every other table (RLS-34); `public.notifications`
+-- is the one table with no admin policy at all, which is why adding a
+-- parent relationship widens an admin here by exactly one child and not
+-- by the school.
+-- ============================================================
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000004';   -- TAP
+
+insert into _tap_log(line) select is(
+  public.fn_is_admin(), true,
+  'NC-14: the account under test really is an admin'
+);
+insert into _tap_log(line) select set_eq(
+  'select student_id from public.notifications',
+  array['d0000000-0000-0000-0000-000000000009']::uuid[],
+  'NC-14: an admin who is also a parent reads the notification about their OWN child'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where user_id <> 'b0000000-0000-0000-0000-000000000004'),
+  0::bigint,
+  'NC-14: …and STILL reads nobody else''s — the one place ADR-014''s super admin does not reach (ADR-017(d))'
+);
+-- Said again against the specific rows an admin can read everything else
+-- about. TAP reads C Kid's attendance, progress and draft report through
+-- `fn_is_admin()`; C Kid's parent's notification is not among them.
+insert into _tap_log(line) select is(
+  (select count(*) from public.students where id = 'd0000000-0000-0000-0000-000000000005'),
+  1::bigint,
+  'NC-14: …while the same admin does read that child''s student row, so the refusal above is the notification policy and not a missing row'
+);
+
+-- ============================================================
+-- NC-15: the student assistant reads their own, and none of the
+--        class they teach
+-- ============================================================
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000005';   -- SA
+
+insert into _tap_log(line) select set_eq(
+  'select student_id from public.notifications',
+  array['d0000000-0000-0000-0000-00000000000a']::uuid[],
+  'NC-15: a student assistant reads the notification about their own record'
+);
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where student_id = 'd0000000-0000-0000-0000-000000000005'),
+  0::bigint,
+  'NC-15: …and none about the class they teach, exactly as any other tutor (ADR-020 grants a write, never an inbox)'
+);
+
+-- ============================================================
+-- NC-16: nobody's inbox widened, and the ordinary parent still has
+--        exactly one
+-- ============================================================
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000003';   -- P4
+insert into _tap_log(line) select set_eq(
+  'select student_id from public.notifications',
+  array['d0000000-0000-0000-0000-000000000005']::uuid[],
+  'NC-16: the ordinary parent still reads exactly their own child''s — four co-tutors of that class changed nothing'
+);
+
+set local request.jwt.claim.sub to '90000000-0000-0000-0000-000000000001';   -- P1
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications
+   where user_id <> '90000000-0000-0000-0000-000000000001'),
+  0::bigint,
+  'NC-16: P1 from the original fixture is unaffected by every row above'
+);
+
+set local role anon;
+set local request.jwt.claim.sub to '';
+set local request.jwt.claim.role to 'anon';
+insert into _tap_log(line) select is(
+  (select count(*) from public.notifications), 0::bigint,
+  'NC-16: anon still reads 0 notifications after all of the above'
+);
+reset role;
 
 -- ---------- done ----------
 reset role;

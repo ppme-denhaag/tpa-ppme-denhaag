@@ -49,9 +49,17 @@ const RUDI = { id: 'a2000000-0000-0000-0000-000000000002', email: 'bapak.rudi@de
 const AHMAD = { id: 'a1000000-0000-0000-0000-000000000001', email: 'ustadz.ahmad@dev.local' }
 const ADMIN = { id: 'c1000000-0000-0000-0000-000000000001', email: 'admin.dev@dev.local' }
 const FATIMAH_USER = { id: 'a3000000-0000-0000-0000-000000000001', email: 'fatimah@dev.local' }
+// The two accounts ADR-022 exists for. Both teach Kelas A and have their
+// own child in Kelas B, so for each of them "my child" and "my class"
+// are disjoint sets — which is what makes the two halves of the rule
+// separable in a live assertion rather than only in a unit test.
+const AMINAH = { id: 'd1000000-0000-0000-0000-000000000001', email: 'ustadzah.aminah@dev.local' }
+const LAILA = { id: 'd1000000-0000-0000-0000-000000000003', email: 'ustadzah.laila@dev.local' }
 const ALI = 'a5000000-0000-0000-0000-000000000001' // Ibu Siti's child, Kelas A
 const ZAINAB = 'a5000000-0000-0000-0000-000000000002' // Ibu Siti's second child, Kelas A
 const FATIMAH = 'a5000000-0000-0000-0000-000000000003' // Bapak Rudi's child, Kelas A, 16+ self-login
+const YUSUF = 'a5000000-0000-0000-0000-000000000005' // Ustadzah Aminah's own child, Kelas B
+const SALMA = 'a5000000-0000-0000-0000-000000000007' // Ustadzah Laila's own child, Kelas B
 const KELAS_A = 'a4000000-0000-0000-0000-000000000001'
 const MURAJAAH_TARGET = 'a7000000-0000-0000-0000-0000000000e1'
 const DUE_TOMORROW = 'a8000000-0000-0000-0000-0000000000e1'
@@ -198,6 +206,26 @@ async function waitForNotification(page, timeoutMs = 45000) {
   return last
 }
 
+/**
+ * How many TopNav bells the header is showing.
+ *
+ * Waits, rather than counting immediately. Since ADR-022 the bell is
+ * gated on the caller's *relationships*, which is a round trip rather
+ * than a value already in the auth context, so it renders a beat after
+ * the page does. `waitFor` covers the positive case; `settleMs` is what
+ * keeps the negative case honest — counting zero before the query has
+ * come back would pass for a tutor even if the gate were broken.
+ */
+async function bellCount(page, { settleMs = 4000 } = {}) {
+  const bell = page.locator('header').getByRole('link', { name: /Notifikasi|Meldingen/ })
+  try {
+    await bell.first().waitFor({ timeout: 15000 })
+  } catch {
+    await page.waitForTimeout(settleMs)
+  }
+  return bell.count()
+}
+
 async function enable(page, label) {
   const button = page.getByRole('button', { name: /Aktifkan notifikasi|Meldingen inschakelen/ })
   await button.waitFor({ timeout: 15000 })
@@ -320,8 +348,9 @@ if (configured !== 't') {
   console.error('Webhook is not configured in Vault — see the header comment in this file.')
   process.exit(2)
 }
-sql(`update public.users set push_sub = null, locale = 'id' where id in ('${SITI.id}', '${RUDI.id}', '${FATIMAH_USER.id}')`)
-sql(`delete from public.attendance where student_id in ('${ALI}', '${FATIMAH}') and session_id in (select id from public.sessions where date = current_date)`)
+sql(`update public.users set push_sub = null, locale = 'id' where id in ('${SITI.id}', '${RUDI.id}', '${FATIMAH_USER.id}', '${AMINAH.id}', '${LAILA.id}')`)
+sql(`delete from public.notifications where user_id in ('${AMINAH.id}', '${LAILA.id}')`)
+sql(`delete from public.attendance where student_id in ('${ALI}', '${FATIMAH}', '${YUSUF}', '${SALMA}') and session_id in (select id from public.sessions where date = current_date)`)
 sql(`delete from public.yanbua_progress where student_id in ('${ALI}', '${FATIMAH}')`)
 sql(`delete from public.murajaah_assignments where id = '${MURAJAAH_TARGET}'`)
 sql(`delete from public.assignments where class_id = '${KELAS_A}'`)
@@ -462,7 +491,14 @@ try {
     values ('${KELAS_A}', '${AHMAD.id}', 'Hafalan Surah An-Nas ayat 1-6', current_date + 2);
   `)
   await waitForNotification(siti.page)
-  const rudiHomework = await waitForNotification(rudi.page)
+  // Bapak Rudi has *two* children in Kelas A: Fatimah, and Aisyah — the
+  // student assistant, whose own record is enrolled here even though the
+  // class she helps with is Kelas B (ADR-020). Both are his, so he is
+  // notified about both. This read `waitForNotification` and asserted a
+  // single notification until the dev fixture gained Aisyah and
+  // Khadijah, at which point it was asserting the old roster rather than
+  // the delivery rule.
+  const rudiHomework = await waitForCount(rudi.page, 2)
   const fatimahHomework = await waitForNotification(fatimah.page)
 
   // Two children in this class, so two notifications — one per child.
@@ -476,8 +512,14 @@ try {
       sitiClass.some((n) => n.body === 'Ada tugas baru untuk Zainab'),
     JSON.stringify(sitiClass.map((n) => n.body)),
   )
-  check('the other family in the same class is notified about their own child', rudiHomework.length === 1 && rudiHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(rudiHomework))
-  check('CROSS-FAMILY: that parent is told nothing about the other family’s children', !/Ali|Zainab/.test(JSON.stringify(rudiHomework)))
+  check(
+    'the other family in the same class is notified about their own children',
+    rudiHomework.length === 2 &&
+      rudiHomework.some((n) => n.body === 'Ada tugas baru untuk Fatimah') &&
+      rudiHomework.some((n) => n.body === 'Ada tugas baru untuk Aisyah'),
+    JSON.stringify(rudiHomework.map((n) => n.body)),
+  )
+  check('CROSS-FAMILY: that parent is told nothing about the other families’ children', !/Ali|Zainab|Khadijah/.test(JSON.stringify(rudiHomework)))
   check('FAMILY AUDIENCE: the 16+ student is notified too', fatimahHomework.length === 1 && fatimahHomework[0].body === 'Ada tugas baru untuk Fatimah', JSON.stringify(fatimahHomework))
   check('DPIA R6: the assignment title is not on the lock screen', !/An-Nas|ayat/i.test(JSON.stringify([...sitiClass, ...rudiHomework, ...fatimahHomework])))
 
@@ -629,9 +671,13 @@ try {
   )
 
   const dueRun = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
-  check('the 08:00 run reports the whole class', dueRun.body.sent === 4, JSON.stringify(dueRun.body))
+  // Five pushes across Kelas A's five children: Ibu Siti for Ali and for
+  // Zainab, Bapak Rudi for Fatimah and for Aisyah, and Fatimah's own
+  // 16+ login. Khadijah's parent is subscribed to nothing, so hers is
+  // recorded in the centre and pushed nowhere — `recorded` is 7.
+  check('the 08:00 run reports the whole class', dueRun.body.sent === 5, JSON.stringify(dueRun.body))
   const sitiDue = await waitForCount(siti.page, 2)
-  const rudiDue = await waitForNotification(rudi.page)
+  const rudiDue = await waitForCount(rudi.page, 2)
   const fatimahDue = await waitForNotification(fatimah.page)
   check('the parent of two children in the class is reminded about both', sitiDue.length === 2, JSON.stringify(sitiDue.map((n) => n.body)))
   check(
@@ -641,13 +687,19 @@ try {
       sitiDue.some((n) => n.body === 'Tugas Zainab deadline besok'),
     JSON.stringify(sitiDue.map((n) => n.body)),
   )
-  check('the other family is reminded about their own child', rudiDue.length === 1 && rudiDue[0].body === 'Tugas Fatimah deadline besok', JSON.stringify(rudiDue))
-  check('CROSS-FAMILY: and about nobody else’s', !/Ali|Zainab/.test(JSON.stringify(rudiDue)))
+  check(
+    'the other family is reminded about their own children',
+    rudiDue.length === 2 &&
+      rudiDue.some((n) => n.body === 'Tugas Fatimah deadline besok') &&
+      rudiDue.some((n) => n.body === 'Tugas Aisyah deadline besok'),
+    JSON.stringify(rudiDue.map((n) => n.body)),
+  )
+  check('CROSS-FAMILY: and about nobody else’s', !/Ali|Zainab|Khadijah/.test(JSON.stringify(rudiDue)))
   check('FAMILY AUDIENCE: the 16+ student is reminded too', fatimahDue.length === 1 && fatimahDue[0].body === 'Tugas Fatimah deadline besok', JSON.stringify(fatimahDue))
   check('DPIA R6: the assignment title is not on the lock screen', !/hijaiyah|Menulis/i.test(JSON.stringify([...sitiDue, ...rudiDue, ...fatimahDue])))
 
   const dueRerun = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
-  check('a second 08:00 run reports the same sends', dueRerun.body.sent === 4, JSON.stringify(dueRerun.body))
+  check('a second 08:00 run reports the same sends', dueRerun.body.sent === 5, JSON.stringify(dueRerun.body))
   await new Promise((resolve) => setTimeout(resolve, 12000))
   check('IDEMPOTENT: the parent of two still sees exactly two', (await shown(siti.page)).length === 2, JSON.stringify((await shown(siti.page)).map((n) => n.tag)))
   check('IDEMPOTENT: the 16+ student still sees exactly one', (await shown(fatimah.page)).length === 1)
@@ -661,7 +713,9 @@ try {
   const afterCompletion = invokeScheduled('homework-due-reminders', amsterdamInstant(today, 8))
   check(
     'a student who already completed it is left out',
-    afterCompletion.body.sent === 2,
+    // Fatimah's two deliveries — her parent's and her own — drop out of
+    // the five.
+    afterCompletion.body.sent === 3,
     JSON.stringify(afterCompletion.body),
   )
   sql(`delete from public.assignment_status where assignment_id='${DUE_TOMORROW}'`)
@@ -673,6 +727,29 @@ try {
   console.log('\n4i. weekly-progress-digest → real notification')
   const thisFriday = addDaysStr(mondayOf(today), 4)
   const thursday = addDaysStr(mondayOf(today), 3)
+  // The digest summarises `weekStart(today) … today`, and the run is
+  // pinned to this week's Friday — so everything the sections above
+  // recorded, which is stamped with the *real* current date, is inside
+  // that window only from Monday to Friday. Run on a Saturday the
+  // digest correctly found nothing and this section failed for a reason
+  // that had nothing to do with the digest. One present-marked session
+  // dated on the Friday itself makes it the same test on any day.
+  sql(`
+    insert into public.sessions (class_id, date, tutor_id)
+    values ('${KELAS_A}', '${thisFriday}', '${AHMAD.id}')
+    on conflict (class_id, date) do nothing;
+  `)
+  const fridaySession = sql(
+    `select id from public.sessions where class_id='${KELAS_A}' and date='${thisFriday}'`,
+  )
+  // 'present', deliberately: the absence webhook fires only on the
+  // transition *into* absent (migration 009), so this seeds activity
+  // without also sending two families a notification.
+  sql(`
+    insert into public.attendance (session_id, student_id, status)
+    values ('${fridaySession}', '${ALI}', 'present'), ('${fridaySession}', '${ZAINAB}', 'present')
+    on conflict (session_id, student_id) do update set status = 'present';
+  `)
   const wrongDay = invokeScheduled('weekly-progress-digest', amsterdamInstant(thursday, 8))
   check(
     'the digest does not go out on a Thursday',
@@ -686,21 +763,81 @@ try {
     JSON.stringify(wrongHour.body),
   )
 
-  const digest = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 8))
-  check('the Friday 08:00 run sends', digest.body.sent >= 1, JSON.stringify(digest.body))
-  const sitiDigest = await waitForCount(siti.page, 2)
+  // ── Whether this Friday can carry a real push, and why it might not ──
+  // Unlike every other delivery here, the digest's instant is not
+  // "today": it is this week's Friday, and the clock is pinned to it.
+  // `web-push` signs its VAPID JWT from that pinned clock, and a push
+  // service rejects a JWT whose `exp` has passed or is more than 24h
+  // ahead — so run on a Saturday, the Friday 08:00 JWT expired eleven
+  // hours before the request was made and every send comes back
+  // `failed`. That is the caveat `scripts/invoke-scheduled.mjs` already
+  // documents, and this section did not respect it: it asserted a real
+  // notification on a day when no valid JWT can exist, so it failed for
+  // a reason that has nothing to do with the digest.
+  //
+  // The digest's *own* decisions — the weekday gate, the hour gate,
+  // which children have a week worth summarising, and idempotency — are
+  // asserted every day either way. What varies is only the transport,
+  // and when it cannot be exercised the subscriptions are taken out of
+  // play (as §4f already does for the DST gate) so the run reports a
+  // clean "nobody to push to" rather than a spurious failure. The
+  // identical `dispatch` path is proven against a real push service in
+  // §4g and §4h in the same run.
+  const digestInstant = amsterdamInstant(thisFriday, 8)
+  const digestCanPush = Math.abs(Date.parse(digestInstant) - Date.now()) < 11 * 3600_000
+  if (!digestCanPush) {
+    console.log(
+      `       (push leg not exercised: a VAPID JWT signed at ${digestInstant} is not valid at real now —` +
+        ' the digest decides on Fridays and today is not one. Its recipients are asserted below;' +
+        ' delivery is proven in 4g/4h)',
+    )
+  }
+
+  const digestSubs = [SITI, RUDI, FATIMAH_USER].map((u) => ({
+    id: u.id,
+    sub: sql(`select coalesce(push_sub::text, 'null') from public.users where id='${u.id}'`),
+  }))
+  if (!digestCanPush) sql(`update public.users set push_sub = null`)
+
+  const digest = invokeScheduled('weekly-progress-digest', digestInstant)
+  // Ali and Zainab were both marked present in a session dated on the
+  // Friday above. `>= 2` rather than `=== 2` because the window is
+  // Monday→Friday: run on a weekday, everything the sections above
+  // recorded today is inside it too, and which children that adds
+  // depends on the day rather than on the digest.
   check(
-    'Ibu Siti received the weekly digest, one per child',
-    sitiDigest.some((n) => n.body === 'Ringkasan mingguan Ali sudah siap') &&
-      sitiDigest.some((n) => n.body === 'Ringkasan mingguan Zainab sudah siap'),
-    JSON.stringify(sitiDigest.map((n) => n.body)),
+    'the Friday 08:00 run summarises the children with a week behind them',
+    digest.body.recorded >= 2,
+    JSON.stringify(digest.body),
   )
   check(
-    'DPIA R6: no attendance percentage on the lock screen',
-    !/%|\d+\s*(dari|van)/.test(JSON.stringify(sitiDigest)),
-    JSON.stringify(sitiDigest.map((n) => n.body)),
+    '…addressed to their parent, one row per child',
+    sql(`select count(*) from public.notifications
+         where user_id='${SITI.id}' and event='weeklyDigest' and event_date='${thisFriday}'
+           and student_id in ('${ALI}', '${ZAINAB}')`) === '2',
   )
-  const digestRerun = invokeScheduled('weekly-progress-digest', amsterdamInstant(thisFriday, 8))
+  check(
+    digestCanPush ? 'the Friday 08:00 run sends' : 'the Friday 08:00 run has nobody to push to',
+    digestCanPush ? digest.body.sent >= 1 : digest.body.skipped === 'no push subscription',
+    JSON.stringify(digest.body),
+  )
+
+  if (digestCanPush) {
+    const sitiDigest = await waitForCount(siti.page, 2)
+    check(
+      'Ibu Siti received the weekly digest, one per child',
+      sitiDigest.some((n) => n.body === 'Ringkasan mingguan Ali sudah siap') &&
+        sitiDigest.some((n) => n.body === 'Ringkasan mingguan Zainab sudah siap'),
+      JSON.stringify(sitiDigest.map((n) => n.body)),
+    )
+    check(
+      'DPIA R6: no attendance percentage on the lock screen',
+      !/%|\d+\s*(dari|van)/.test(JSON.stringify(sitiDigest)),
+      JSON.stringify(sitiDigest.map((n) => n.body)),
+    )
+  }
+
+  const digestRerun = invokeScheduled('weekly-progress-digest', digestInstant)
   const digestTrayBefore = (await shown(siti.page)).length
   await new Promise((resolve) => setTimeout(resolve, 12000))
   check(
@@ -709,14 +846,23 @@ try {
     `${digestTrayBefore} → ${(await shown(siti.page)).length}`,
   )
   check('…and reports the same sends', digestRerun.body.sent === digest.body.sent, JSON.stringify(digestRerun.body))
+  check(
+    '…and the same rows, updated rather than duplicated',
+    sql(`select count(*) from public.notifications
+         where event='weeklyDigest' and event_date='${thisFriday}'`) === String(digest.body.recorded),
+  )
 
   // A child with no activity at all this week is not summarised. Umar
   // is in Kelas B, which nothing above has touched.
   check(
     'a quiet week is not summarised',
-    digest.body.sent < Number(sql('select count(*) from public.students where parent_id is not null')),
+    digest.body.recorded < Number(sql('select count(*) from public.students where parent_id is not null')),
     JSON.stringify(digest.body),
   )
+
+  for (const { id, sub } of digestSubs) {
+    if (sub !== 'null') sql(`update public.users set push_sub = $j$${sub}$j$::jsonb where id='${id}'`)
+  }
 
   await clearTray(siti.page)
   await clearTray(rudi.page)
@@ -767,10 +913,17 @@ try {
          where user_id='${SITI.id}' and event='assignmentDueTomorrow'
            and student_id='${ALI}' and event_date='${today}'`) === '1',
   )
+  // This used to read "no admin or tutor was given a notification row",
+  // which asserted the bug ADR-022 fixed rather than the property worth
+  // having: a tutor whose own child attends *should* have rows. The
+  // invariant underneath it is about relationships and holds for every
+  // account whatever its role — every row is addressed to that child's
+  // own parent, or to that child's own 16+ login, and to nobody else.
   check(
-    'no admin or tutor was given a notification row',
-    sql(`select count(*) from public.notifications n join public.users u on u.id = n.user_id
-         where u.role in ('admin','tutor')`) === '0',
+    'every notification row is addressed to that child’s own parent or the child themselves',
+    sql(`select count(*) from public.notifications n join public.students s on s.id = n.student_id
+         where n.user_id <> s.parent_id
+           and (s.user_id is null or n.user_id <> s.user_id)`) === '0',
   )
 
   // The property the centre exists for: a family with push switched off
@@ -825,25 +978,33 @@ try {
   )
 
   await siti.page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' })
-  const bell = siti.page.locator('header').getByRole('link', { name: /Notifikasi|Meldingen/ })
-  check('the TopNav bell is shown to a parent', (await bell.count()) === 1)
+  check('the TopNav bell is shown to a parent', (await bellCount(siti.page)) === 1)
 
-  // A tutor and an admin get no bell at all.
+  // A tutor with no child of their own, and an admin likewise, get no
+  // bell at all.
   const tutorCtx = await openAs(AHMAD)
   try {
     await tutorCtx.page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' })
     check(
-      'no bell for a tutor — they receive none and can read none',
+      'no bell for a tutor with no child of their own — they receive none and can read none',
       // Scoped to the header: the dashboard has its own "Notifikasi"
-      // link to the *settings* screen, which every role gets and which
-      // an unscoped selector matched.
-      (await tutorCtx.page.locator('header').getByRole('link', { name: /Notifikasi|Meldingen/ }).count()) === 0,
+      // link to the *settings* screen, which everyone gets and which an
+      // unscoped selector matched.
+      (await bellCount(tutorCtx.page)) === 0,
     )
     await tutorCtx.page.goto(`${ORIGIN}/notifications`, { waitUntil: 'domcontentloaded' })
+    // The screen cannot say "you are linked to no santri" until it knows
+    // the relationships, which is a round trip since ADR-022 — reading
+    // the body straight after the navigation caught it mid-"Memuat…".
+    // Waiting for the sentence is also the assertion that it arrives.
+    await tutorCtx.page
+      .getByText(/belum terhubung dengan santri mana pun|aan geen enkele leerling gekoppeld/i)
+      .waitFor({ timeout: 15000 })
+      .catch(() => undefined)
     const tutorText = await tutorCtx.page.locator('body').innerText()
     check(
-      'a tutor visiting the centre directly is told plainly they receive none',
-      /tidak menerima notifikasi|ontvangt u geen meldingen/i.test(tutorText),
+      'a tutor visiting the centre directly is told plainly they are linked to no santri',
+      /belum terhubung dengan santri mana pun|aan geen enkele leerling gekoppeld/i.test(tutorText),
       tutorText.slice(0, 200),
     )
     check('a tutor sees no family’s notification on that screen', !/tidak hadir hari ini/.test(tutorText))
@@ -874,6 +1035,127 @@ try {
     String(invokeScheduled('prune-notifications', amsterdamInstant(today, 10)).body.skipped ?? '').startsWith('not 3:00'),
   )
 
+  console.log('\n4m. a tutor-parent and an admin-parent (ADR-022)')
+  // The bug this section exists for was silent: a tutor whose own child
+  // attends the TPA received nothing about that child — no push, no
+  // in-app row — and could not store a subscription in the first place,
+  // which is indistinguishable from a quiet week. So it is proven here
+  // end to end rather than inferred from the unit suite: a real browser,
+  // a real subscription, a real absence, a real push service.
+  //
+  // Both accounts teach Kelas A and have their own child in Kelas B. The
+  // two halves of the rule are therefore asserted against the same
+  // account in the same run: they hear about their own child, and they
+  // hear nothing about the class they teach.
+  // Every child in the fixture, so "nobody else's" can be asserted as a
+  // closed set rather than as a couple of names somebody remembered.
+  const EVERY_CHILD = ['Ali', 'Zainab', 'Fatimah', 'Umar', 'Yusuf', 'Khadijah', 'Salma', 'Aisyah']
+
+  for (const persona of [
+    {
+      label: 'tutor-parent',
+      user: AMINAH,
+      who: 'Ustadzah Aminah (users.role = tutor, teaches Kelas A, own child in Kelas B)',
+      childId: YUSUF,
+      childName: 'Yusuf',
+    },
+    {
+      label: 'admin-parent',
+      user: LAILA,
+      who: 'Ustadzah Laila (users.role = admin, teaches Kelas A, own child in Kelas B)',
+      childId: SALMA,
+      childName: 'Salma',
+    },
+  ]) {
+    // One at a time rather than both at once: each persona drives a real
+    // Chromium with a real FCM registration, and the fewer of those are
+    // live simultaneously the less a delivery failure can be somebody
+    // else's resource problem rather than this rule's.
+    const ctx = await openAs(persona.user)
+    const others = new RegExp(EVERY_CHILD.filter((n) => n !== persona.childName).join('|'))
+    try {
+      await clearTray(siti.page)
+
+      // 1. The settings screen offers them the toggle at all, and
+      //    `push-subscribe` honours it. It used to tell them their role
+      //    receives nothing, and 403 them if they tried anyway.
+      await enable(ctx.page, persona.who)
+      check(
+        `${persona.label}: can store a push subscription at all`,
+        sql(`select push_sub is not null from public.users where id='${persona.user.id}'`) === 't',
+      )
+
+      // 2. Their own child, in a class they do not teach.
+      markAbsent(persona.childId)
+      const own = await waitForNotification(ctx.page)
+      check(
+        `${persona.label}: receives the push about their OWN child`,
+        own.length === 1 && own[0].body === `${persona.childName} tidak hadir hari ini di TPA`,
+        JSON.stringify(own),
+      )
+      check(
+        `${persona.label}: …tagged to them and to that child`,
+        own[0]?.tag === `absence:${persona.user.id}:${persona.childId}:${today}`,
+        own[0]?.tag,
+      )
+      check(
+        `${persona.label}: …and the in-app row is there too`,
+        sql(`select count(*) from public.notifications
+             where user_id='${persona.user.id}' and student_id='${persona.childId}'
+               and event='absence'`) === '1',
+      )
+
+      // 3. The half of ADR-015(a) that survives, live: a child in the
+      //    class they teach. Ibu Siti is that child's parent and is
+      //    subscribed, so this also proves the notification was really
+      //    sent — a silent pipeline would pass the negative for the
+      //    wrong reason.
+      await clearTray(ctx.page)
+      markPresent(ALI)
+      markAbsent(ALI, 'demam')
+      const sitiAgain = await waitForNotification(siti.page)
+      check(
+        `${persona.label}: the class absence really was delivered — to that child’s own parent`,
+        sitiAgain.length === 1 && sitiAgain[0].body === 'Ali tidak hadir hari ini di TPA',
+        JSON.stringify(sitiAgain),
+      )
+      check(
+        `${persona.label}: DATA MINIMISATION — nothing at all about a pupil in the class they teach`,
+        (await shown(ctx.page)).length === 0,
+        JSON.stringify(await shown(ctx.page)),
+      )
+      check(
+        `${persona.label}: …and no in-app row was written for them either`,
+        sql(`select count(*) from public.notifications
+             where user_id='${persona.user.id}' and student_id='${ALI}'`) === '0',
+      )
+
+      // 4. The centre, read through RLS as they see it. The admin is the
+      //    one that matters: ADR-014 made admin a super admin over every
+      //    operational screen, and `public.notifications` is the one
+      //    table that does not reach (ADR-017(d), pgTAP NC-14).
+      await ctx.page.goto(`${ORIGIN}/notifications`, { waitUntil: 'domcontentloaded' })
+      await ctx.page.locator('li').first().waitFor({ timeout: 20000 })
+      const centre = await ctx.page.locator('body').innerText()
+      check(`${persona.label}: their centre lists their own child`, new RegExp(persona.childName).test(centre))
+      check(
+        `${persona.label}: CROSS-FAMILY — and names no other child in the school`,
+        !others.test(centre),
+        centre.slice(0, 300),
+      )
+
+      // 5. And the bell, which is the same gate a third time.
+      await ctx.page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded' })
+      check(`${persona.label}: the TopNav bell is shown`, (await bellCount(ctx.page)) === 1)
+
+      check(`${persona.label}: no console errors`, ctx.consoleErrors.length === 0, ctx.consoleErrors.join(' | '))
+      check(`${persona.label}: no failed requests`, ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+    } finally {
+      await ctx.context.close()
+    }
+  }
+  await clearTray(siti.page)
+
   console.log('\n5. unsubscribe → silence')
   const disable = rudi.page.getByRole('button', { name: /Meldingen uitschakelen|Matikan notifikasi/ })
   await disable.waitFor({ timeout: 15000 })
@@ -902,12 +1184,17 @@ try {
   sql(`update public.users set locale='id' where id='${RUDI.id}'`)
 }
 
-console.log('\n7. non-recipient roles (ADR-015)')
+// Ustadz Ahmad teaches both classes and has no child of his own; Admin
+// Dev has neither. Neither is a recipient — not because of what their
+// role column says, but because no student row points at them (ADR-022).
+// The tutor-parent and admin-parent cases in 4m are the other half of
+// this: same roles, different relationships, opposite outcome.
+console.log('\n7. accounts no student row points at (ADR-022)')
 for (const [label, user] of [['tutor', AHMAD], ['admin', ADMIN]]) {
   const ctx = await openAs(user)
   try {
     const text = await ctx.page.locator('body').innerText()
-    check(`${label}: told plainly that this role receives nothing`, text.includes('Notifikasi TPA ditujukan untuk orang tua dan santri'))
+    check(`${label}: told plainly that this account is linked to no santri`, text.includes('Akun ini belum terhubung dengan santri mana pun'))
     check(`${label}: no enable button is offered`, (await ctx.page.getByRole('button', { name: /Aktifkan notifikasi/ }).count()) === 0)
     check(`${label}: the lock-screen privacy note is still readable`, text.includes('Apa yang tampil di layar kunci'))
     check(`${label}: no console errors`, ctx.consoleErrors.length === 0, ctx.consoleErrors.join(' | '))
@@ -926,8 +1213,14 @@ const asUser = (user, body) => ({
 })
 const VALID_SUB = { endpoint: 'https://fcm.googleapis.com/fcm/send/x', keys: { p256dh: 'a', auth: 'b' } }
 
-check('push-subscribe refuses a tutor', (await post('push-subscribe', asUser(AHMAD, VALID_SUB))).status === 403)
-check('push-subscribe refuses an admin', (await post('push-subscribe', asUser(ADMIN, VALID_SUB))).status === 403)
+// The gate is the relationship, so the same two roles appear on both
+// sides of it: refused when no student row points at the account,
+// accepted when one does (ADR-022).
+check('push-subscribe refuses a tutor with no child of their own', (await post('push-subscribe', asUser(AHMAD, VALID_SUB))).status === 403)
+check('push-subscribe refuses an admin with no child of their own', (await post('push-subscribe', asUser(ADMIN, VALID_SUB))).status === 403)
+check('push-subscribe accepts a tutor whose own child attends', (await post('push-subscribe', asUser(AMINAH, VALID_SUB))).status === 201)
+check('push-subscribe accepts an admin whose own child attends', (await post('push-subscribe', asUser(LAILA, VALID_SUB))).status === 201)
+check('push-subscribe accepts a 16+ santri, through their own record', (await post('push-subscribe', asUser(FATIMAH_USER, VALID_SUB))).status === 201)
 check('push-subscribe rejects a non-HTTPS endpoint', (await post('push-subscribe', asUser(RUDI, { ...VALID_SUB, endpoint: 'http://evil.example/x' }))).status === 400)
 check('push-subscribe rejects junk', (await post('push-subscribe', asUser(RUDI, { nope: true }))).status === 400)
 check('push-subscribe requires a session', (await post('push-subscribe', { method: 'POST', body: '{}' })).status === 401)

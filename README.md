@@ -126,14 +126,17 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 `supabase/tests/database/rls.test.sql` implements all 35 cases from
 test-plan.md §3 (RLS-01…RLS-35), plus WH-01…WH-12 for the notification
-webhooks in migrations 009 and 010, plus NC-01…NC-11 for the notification
-centre in migration 012 — 157 pgTAP assertions, using the standard
+webhooks in migrations 009 and 010, plus NC-01…NC-16 for the notification
+centre in migration 012 — 171 pgTAP assertions, using the standard
 fixture set from §2. The NC cases assert that only the addressee reads a
 notification, that **no client role can create or delete one at all**,
 that a recipient may write `read_at` and nothing else (a column-level
 GRANT, since RLS has no column granularity), that neither admin nor tutor
-reads any, and that `TRUNCATE` — which RLS does not filter — is no longer
-held by `anon`/`authenticated` on any table. The WH cases assert each trigger fires on
+reads one addressed to anybody else, and that `TRUNCATE` — which RLS does
+not filter — is no longer held by `anon`/`authenticated` on any table.
+NC-12…NC-16 ask the same question of people who are more than one thing
+(ADR-022): a tutor-parent and an admin-parent read their own child's
+notifications and nobody else's, and read none for the class they teach. The WH cases assert each trigger fires on
 exactly its own event and nothing else (a re-saved roster, a re-activated
 murajaah target and a re-published report must all notify nobody), that
 they are silent when unconfigured, that the body carries the row id and
@@ -194,7 +197,7 @@ against the live project in that window and appeared broken.
 | `generate-year-end-drafts.mts` | Admin-only: bulk-creates draft year-end reports for an academic year, optionally scoped to a class. Triggered from the panel at the top of the admin's own Reports screen |
 | `publish-report.mts` | Authoring tutor only — **not admin**, deliberately (TAD ADR-014 left this boundary where ADR-013 put it): renders the report PDF (pdfkit), uploads it to the private `reports` bucket, then flips `draft → published` |
 | `report-pdf.mts` | Mints a 5-minute signed URL for a report's PDF after re-checking the caller's authorization (admin: any report; tutor: own class; parent/student 16+: own child/self, published only) |
-| `push-subscribe.mts` | Stores (POST) or clears (DELETE) the caller's own Web Push subscription in `users.push_sub`. **403 for tutor and admin** — notifications are family-facing (TAD ADR-015), so no push endpoint is stored for an account nothing sends to |
+| `push-subscribe.mts` | Stores (POST) or clears (DELETE) the caller's own Web Push subscription in `users.push_sub`. **403 when no student row points at the caller** — a notification is always about a child, so no push endpoint is stored for an account nothing would send to (TAD ADR-022). That is a *relationship*, not a role: a tutor or admin whose own child attends the TPA can subscribe and is notified about that child; a tutor with no child of their own cannot, and hears nothing about the class they teach |
 | `notify-absence.mts` | Invoked by the **database webhook** on `public.attendance` (migration 009), not by the client that saved the attendance. Sends one push to the absent child's parent, in that parent's own locale |
 | `notify-milestone.mts` | Webhook on `yanbua_progress` (jilid completed — applies `src/lib/yanbua.ts#isJilidComplete`, imported rather than restated) and on `murajaah_assignments.active` going true→false (surah memorized) |
 | `notify-assignment.mts` | Webhook on `assignments`. The one sender that fans out across a whole class: every enrolled student's parent, plus any 16+ student themselves |
@@ -512,9 +515,21 @@ if you change it:
   This is deliberate: the screen has never been design-reviewed (PRD
   §71), so the schema is built to survive whatever a review decides.
   Keep it that way, and put display concerns in the component.
-- **Admin can read none of them.** The one place ADR-014's super admin
-  stops (ADR-017(d)). There is no admin policy on the table and NC-09
-  asserts it stays that way.
+- **Nobody reads a notification addressed to somebody else — admin
+  included.** The one place ADR-014's super admin stops (ADR-017(d)).
+  There is no admin policy on the table; `notifications_own_read` is
+  `user_id = auth.uid()` and nothing else, which NC-09 and NC-14 assert
+  from both directions. An admin whose own child attends the TPA
+  therefore reads that child's notifications and still nobody else's —
+  the policy was always a relationship, so ADR-022 needed no migration.
+- **Who a row is written *for* is also a relationship, not a role**
+  (ADR-022). Recipients come from the child's own `parent_id` and
+  `user_id`, so a tutor whose own child attends hears about that child
+  and hears nothing about the class they teach. The five places that ask
+  it — `push-subscribe`, `buildAudiences`, the settings screen, the bell
+  and the centre — share one predicate over two derived booleans; if you
+  add a sixth, use `canReceiveNotifications` rather than reading
+  `users.role`.
 
 The client's only write is `read_at`, and that is a column-level GRANT
 rather than a convention — `update (read_at)` is all `authenticated`

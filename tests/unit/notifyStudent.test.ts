@@ -16,9 +16,15 @@ const SUB = (id: string) => ({
   keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
 })
 
-const parent = (id: string, locale: 'id' | 'nl' = 'id'): UserRow => ({
+/**
+ * An account row as `audiencesForStudents` loads it. There is no `role`
+ * on it, and that is the subject of half the cases below: since ADR-022
+ * the recipient rule is the child's own `parent_id`/`user_id`, and what
+ * role the account behind those columns happens to hold is not a
+ * question this module can ask.
+ */
+const account = (id: string, locale: 'id' | 'nl' = 'id'): UserRow => ({
   id,
-  role: 'parent',
   locale,
   push_sub: SUB(id),
 })
@@ -33,7 +39,7 @@ const student = (over: Partial<StudentRow> = {}): StudentRow => ({
 
 describe('who receives a notification about a child', () => {
   it('sends to the child’s own parent', () => {
-    const [audience] = buildAudiences([student()], [parent('parent-1')], 'parent')
+    const [audience] = buildAudiences([student()], [account('parent-1')], 'parent')
     expect(audience.recipients.map((r) => r.userId)).toEqual(['parent-1'])
     expect(audience.childFullName).toBe('Ali Rahman')
   })
@@ -47,7 +53,7 @@ describe('who receives a notification about a child', () => {
         student({ id: 'child-a', full_name: 'Ali', parent_id: 'parent-1' }),
         student({ id: 'child-b', full_name: 'Fatimah', parent_id: 'parent-2' }),
       ],
-      [parent('parent-1'), parent('parent-2')],
+      [account('parent-1'), account('parent-2')],
       'parent',
     )
 
@@ -60,7 +66,7 @@ describe('who receives a notification about a child', () => {
 
   it('adds the 16+ student only for a family audience', () => {
     const rows = [student({ user_id: 'student-user-1' })]
-    const users = [parent('parent-1'), { ...parent('student-user-1'), role: 'student' as const }]
+    const users = [account('parent-1'), account('student-user-1')]
 
     expect(buildAudiences(rows, users, 'parent')[0].recipients.map((r) => r.userId)).toEqual([
       'parent-1',
@@ -76,25 +82,87 @@ describe('who receives a notification about a child', () => {
     // the parent contact, a family audience must still be one delivery.
     const audiences = buildAudiences(
       [student({ parent_id: 'user-1', user_id: 'user-1' })],
-      [parent('user-1')],
+      [account('user-1')],
       'family',
     )
     expect(audiences[0].recipients).toHaveLength(1)
   })
 
-  it('skips accounts that cannot receive notifications', () => {
-    // A tutor or admin should never be a recipient even if a
-    // subscription somehow reached their row (ADR-015(a)).
-    const users: UserRow[] = [
-      { ...parent('parent-1'), role: 'tutor' },
-      { ...parent('parent-2'), role: 'admin' },
-    ]
+  it('notifies a tutor about their OWN child', () => {
+    // The bug ADR-022 fixes. `tutor-parent-1` holds `users.role =
+    // 'tutor'` and is also the `parent_id` on this row — a shape the TPA
+    // has several of. Under the old role filter they received nothing
+    // about their own child: no push, no in-app row, and no way to store
+    // a subscription in the first place.
+    //
+    // There is no role on `UserRow` to set any more, which is the point:
+    // the case cannot regress by someone re-adding a role test here,
+    // because the data to test would have to come back first.
+    const [audience] = buildAudiences(
+      [student({ parent_id: 'tutor-parent-1' })],
+      [account('tutor-parent-1')],
+      'parent',
+    )
+    expect(audience.recipients.map((r) => r.userId)).toEqual(['tutor-parent-1'])
+  })
+
+  it('notifies an admin about their OWN child, and nobody else’s', () => {
+    // ADR-014 made admin a super admin over the operational *screens*;
+    // ADR-017(d) is the one place that does not reach, and it still does
+    // not. An admin who is a parent is a recipient here exactly like any
+    // other parent, and exactly as narrowly: the other family's child in
+    // the same batch resolves to their own parent alone.
     const audiences = buildAudiences(
-      [student({ parent_id: 'parent-1' }), student({ id: 's2', parent_id: 'parent-2' })],
-      users,
+      [
+        student({ id: 'own', full_name: 'Salma', parent_id: 'admin-parent-1' }),
+        student({ id: 'other', full_name: 'Ali', parent_id: 'parent-2' }),
+      ],
+      [account('admin-parent-1'), account('parent-2')],
       'family',
     )
-    expect(audiences.flatMap((a) => a.recipients)).toEqual([])
+    expect(audiences[0].recipients.map((r) => r.userId)).toEqual(['admin-parent-1'])
+    expect(audiences[1].recipients.map((r) => r.userId)).toEqual(['parent-2'])
+  })
+
+  it('NEVER notifies a tutor about a child in the class they teach', () => {
+    // The half of ADR-015(a) that survives ADR-022, and the single most
+    // important property in this file: a tutor learns about an absence
+    // by recording it, and subscribing one account to a whole class's
+    // lock screens is indefensible under data minimisation.
+    //
+    // It is enforced by the shape of the pairing rather than by a check
+    // — `tutor-1` teaches both these children and is the `parent_id` of
+    // neither, so there is no column through which they could appear.
+    // The account is passed in deliberately, as `audiencesForStudents`
+    // would if some other row made it a recipient elsewhere.
+    const audiences = buildAudiences(
+      [
+        student({ id: 'pupil-a', parent_id: 'parent-1' }),
+        student({ id: 'pupil-b', parent_id: 'parent-2' }),
+      ],
+      [account('parent-1'), account('parent-2'), account('tutor-1')],
+      'family',
+    )
+    const everyone = audiences.flatMap((a) => a.recipients.map((r) => r.userId))
+    expect(everyone).toEqual(['parent-1', 'parent-2'])
+    expect(everyone).not.toContain('tutor-1')
+  })
+
+  it('tells a tutor-parent about their own child and not about their class', () => {
+    // Both halves in one audience, which is the case the two rules have
+    // to hold simultaneously for. The same account is `parent_id` on one
+    // row and teaches the other; only the first reaches them.
+    const audiences = buildAudiences(
+      [
+        student({ id: 'own-child', full_name: 'Yusuf', parent_id: 'tutor-parent-1' }),
+        student({ id: 'pupil', full_name: 'Ali', parent_id: 'parent-2' }),
+      ],
+      [account('tutor-parent-1'), account('parent-2')],
+      'family',
+    )
+    expect(audiences[0].recipients.map((r) => r.userId)).toEqual(['tutor-parent-1'])
+    expect(audiences[1].recipients.map((r) => r.userId)).toEqual(['parent-2'])
+    expect(audiences[1].recipients.map((r) => r.userId)).not.toContain('tutor-parent-1')
   })
 
   it('keeps accounts with no usable subscription, with nothing to push to', () => {
@@ -105,9 +173,9 @@ describe('who receives a notification about a child', () => {
     // `subscription: null`, which is what `dispatch` filters on and
     // `recordNotifications` deliberately ignores.
     const users: UserRow[] = [
-      { ...parent('parent-1'), push_sub: null },
-      { ...parent('parent-2'), push_sub: { endpoint: 'http://not-https.example' } },
-      { ...parent('parent-3'), push_sub: 'nonsense' },
+      { ...account('parent-1'), push_sub: null },
+      { ...account('parent-2'), push_sub: { endpoint: 'http://not-https.example' } },
+      { ...account('parent-3'), push_sub: 'nonsense' },
     ]
     const rows = [
       student({ id: 's1', parent_id: 'parent-1' }),
@@ -119,27 +187,30 @@ describe('who receives a notification about a child', () => {
     expect(recipients.every((r) => r.subscription === null)).toBe(true)
   })
 
-  it('still drops a role that receives nothing, subscription or not', () => {
+  it('keeps a recipient who is unreachable by push, which is a different thing', () => {
     // The distinction that matters: "not reachable by push" is a
-    // delivery fact, "not a recipient" is an authorization one
-    // (ADR-015(a)). Only the second removes someone from the audience,
-    // and so from the notification centre.
+    // delivery fact, "not a recipient" is an authorization one. Only the
+    // second removes someone from the audience, and so from the
+    // notification centre — and since ADR-022 the only thing that does
+    // that is holding no relationship to the child. A tutor-parent with
+    // push switched off is still owed their in-app row.
     const users: UserRow[] = [
-      { ...parent('tutor-1'), role: 'tutor', push_sub: null },
-      { ...parent('admin-1'), role: 'admin' },
+      { ...account('tutor-parent-1'), push_sub: null },
+      account('admin-parent-1'),
     ]
     const rows = [
-      student({ id: 's1', parent_id: 'tutor-1' }),
-      student({ id: 's2', parent_id: 'admin-1' }),
+      student({ id: 's1', parent_id: 'tutor-parent-1' }),
+      student({ id: 's2', parent_id: 'admin-parent-1' }),
     ]
-    expect(buildAudiences(rows, users, 'family').flatMap((a) => a.recipients)).toEqual([])
+    const recipients = buildAudiences(rows, users, 'family').flatMap((a) => a.recipients)
+    expect(recipients.map((r) => [r.userId, r.subscription !== null])).toEqual([
+      ['tutor-parent-1', false],
+      ['admin-parent-1', true],
+    ])
   })
 
   it('mixes reachable and unreachable recipients in one family audience', () => {
-    const users: UserRow[] = [
-      parent('parent-1'),
-      { ...parent('self-1'), role: 'student', push_sub: null },
-    ]
+    const users: UserRow[] = [account('parent-1'), { ...account('self-1'), push_sub: null }]
     const rows = [student({ parent_id: 'parent-1', user_id: 'self-1' })]
     const [audience] = buildAudiences(rows, users, 'family')
     expect(audience.recipients.map((r) => [r.userId, r.subscription !== null])).toEqual([
@@ -154,7 +225,7 @@ describe('who receives a notification about a child', () => {
     // because one family is unsubscribed.
     const audiences = buildAudiences(
       [student({ id: 's1', parent_id: 'parent-1' }), student({ id: 's2', parent_id: 'parent-2' })],
-      [parent('parent-2')],
+      [account('parent-2')],
       'parent',
     )
     expect(audiences).toHaveLength(2)

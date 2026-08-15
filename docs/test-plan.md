@@ -130,7 +130,7 @@ path cannot fail the write it observes: `fn_post_webhook` is renamed out
 from under the triggers and the writes must still succeed. Total: 93
 assertions.*
 
-### 3.1 Notification centre (NC-01…NC-11, migration 012 / ADR-017)
+### 3.1 Notification centre (NC-01…NC-16, migration 012 / ADR-017, ADR-022)
 
 A notification is a message addressed to one named person, so the whole
 table is a single access-control question asked from every direction.
@@ -141,9 +141,27 @@ table is a single access-control question asked from every direction.
 - [x] NC-06 — no client role can insert a notification, even addressed to themselves. A client that could would be able to put words in the TPA's mouth on another parent's screen
 - [x] NC-07 — nor delete one: retention is central, so there is no path by which the record of what a family was told disappears early
 - [x] NC-08 — a 16+ student reads their own
-- [x] NC-09 — **an admin reads none at all**, the one place TAD ADR-014's super admin deliberately does not reach
+- [x] NC-09 — **an admin reads none at all**, the one place TAD ADR-014's super admin deliberately does not reach. True of an admin who is nobody's parent, which is every admin the base fixture has; NC-14 states the boundary exactly
 - [x] NC-10 — nor a tutor, including for their own class
 - [x] NC-11 — `TRUNCATE`, which RLS does **not** filter, is no longer held by `anon`/`authenticated` on any table. Found while checking the grants for this migration: it came from Supabase's own role bootstrap, and `set role authenticated; truncate public.attendance;` succeeded before migration 012 revoked it. Not reachable through PostgREST, which exposes no TRUNCATE — removed on least-privilege grounds rather than in response to a live route
+
+**NC-12…NC-16 — the same question asked of a person who is more than one
+thing (ADR-022).** NC-01…NC-11 tested accounts that were exactly one
+thing each, at a time when the recipient rule was `role in
+('parent','student')` — which is why a tutor whose own child attends the
+TPA received nothing about their own child. The database needed no change
+for the fix (`notifications_own_read` is `user_id = auth.uid()`, a
+relationship and always was), so these cases pin the boundary the
+application-layer rule now has to respect, stated from both sides:
+satisfying either half alone is possible and useless.
+
+- [x] NC-12 — a **tutor-parent** reads the notification about their own child, reads none about a child in the class they *teach* though a row for that child exists, and reads nothing addressed to anyone else including their co-tutor
+- [x] NC-13 — the same shape with `users.role = 'tutor'` instead of `'parent'` gives the same answer, and neither tutor-parent can read the other's though their children share a class. Two rows differing only in the role column cannot be what grants either of them anything
+- [x] NC-14 — an **admin-parent** reads their own child's and **still nobody else's**, asserted alongside the fact that the same account *does* read that child's classmate's `students` row through `fn_is_admin()`. So the refusal is the notification policy, not a missing row — ADR-017(d) refined, not reversed
+- [x] NC-15 — a **student assistant** reads the notification about their own record and none about the class they teach: ADR-020 granted a write, never an inbox
+- [x] NC-16 — nobody's inbox widened. The ordinary parent of a child taught by four co-tutors still reads exactly one, the original fixture's parent is unaffected, and `anon` still reads zero
+
+*Total after these: 171 pgTAP assertions (157 before).*
 
 ## 4. Unit tests (Vitest)
 
@@ -222,7 +240,8 @@ Also tested alongside it:
 - `tests/unit/push.test.ts` (10) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter
 - `tests/unit/pushServiceWorker.test.ts` (8) — `public/push-sw.js` loaded into a VM and driven with the browser's own event shapes: it renders the payload, never re-alerts on a replaced notification, still shows *something* when the payload is missing or unparseable (otherwise Android substitutes its own "site updated in the background" notice), and routes a click to an already-open tab rather than opening a second one
 - `tests/unit/pushCapability.test.ts` (13) — platform detection, including the iOS branch this project cannot verify on hardware (see §6)
-- `tests/unit/notifyStudent.test.ts` (13) — **who receives what**, the highest-risk logic in the feature. A two-family class roster must resolve each child to their own parent and no one else; the 16+ student is added only for a "family" audience; tutor and admin are never recipients; an account with no usable subscription is skipped without dropping the rest of the roster. Plus the fan-out dispatch: one payload per recipient in that recipient's own locale, a dead subscription cleared without costing anyone else their notification, a failed send not mistaken for an expired one, and delivery bounded to a fixed concurrency — none of which can be produced on demand against a real push service, which is why they are injected here rather than left to the live run
+- `tests/unit/notificationRecipients.test.ts` (14) — the recipient rule on its own (ADR-022): the predicate, the derivation from a set of student rows, and the query `push-subscribe` asks. A tutor with no child of their own is not a recipient even when the children they teach are among the rows they can read; a 16+ santri is a recipient through their own record and is not thereby a parent of themselves; and a failed lookup throws rather than reporting "not a recipient", because a swallowed error there 403s a real parent and looks exactly like the rule working
+- `tests/unit/notifyStudent.test.ts` (28) — **who receives what**, the highest-risk logic in the feature. A two-family class roster must resolve each child to their own parent and no one else; the 16+ student is added only for a "family" audience; an account with no usable subscription stays in the audience with nothing to push to, without dropping the rest of the roster. Since ADR-022 the cases that matter most are the dual-role ones: a **tutor-parent** and an **admin-parent** are recipients for their own child, a **tutor is never a recipient for a child in the class they teach**, and both hold at once for the same account in the same audience. `UserRow` no longer carries a role at all, so those cases cannot regress without the data coming back first Plus the fan-out dispatch: one payload per recipient in that recipient's own locale, a dead subscription cleared without costing anyone else their notification, a failed send not mistaken for an expired one, and delivery bounded to a fixed concurrency — none of which can be produced on demand against a real push service, which is why they are injected here rather than left to the live run
 
 ### 4.4 Year-end report generation
 - `generate-year-end-drafts` computes `attendance_present/absent/late` and `attendance_rate` that exactly match a hand-computed value from fixture attendance rows for the academic year window
@@ -286,7 +305,7 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | Report-ready push received (parent + 16+ student) | ☐ | ☐ | ☑ |
 | Scheduled Murajaah reminder at 18:00 local (check after DST switch too) | ☐ | ☐ | ☑ |
 | Scheduled homework-due reminder at 08:00 local | ☐ | ☐ | ☑ |
-| Weekly digest, Friday 08:00 local, and the dashboard summary it links to | ☐ | ☐ | ☑ |
+| Weekly digest, Friday 08:00 local, and the dashboard summary it links to | ☐ | ☐ | ☑ (push leg on a Thu/Fri run — see below) |
 | Two children absent → two notifications, one per child (ADR-016(f)) | ☐ | ☐ | ☑ |
 | Tapping a push opens the app on the right screen | ☐ | ☐ | ☑ |
 | Notification centre lists the same events, with the in-app detail | ☐ | ☐ | ☑ |
@@ -321,11 +340,12 @@ Safari tab and shows the install explanation rather than a broken prompt
 the platform being tested.
 
 **Desktop Chrome is genuinely run**, not inspected: `scripts/verify-push.mjs`
-drives three real Chromium profiles (a parent with two children in one class,
-a second family in the same class, and a 16+ student with their own account)
-against a real push service, and asserts on what each browser displayed. 130
-checks, currently all passing (63 before part 2b, 104 before part 3).
-Beyond the ticked rows above it also covers:
+drives real Chromium profiles (a parent with two children in one class, a
+second family in the same class, a 16+ student with their own account, and —
+since ADR-022 — a tutor whose own child attends and an admin whose own child
+attends) against a real push service, and asserts on what each browser
+displayed. 158 checks, currently all passing (63 before part 2b, 104 before
+part 3, 130 before ADR-022). Beyond the ticked rows above it also covers:
 
 - the subscription is stored, with exactly the three fields we use
 - **cross-family isolation live** — the other parent's browser received nothing (§1's highest-risk property). Checked on every event type, and hardest on the class fan-out: one assignment notifies both families in the class, each naming only their own child
@@ -337,14 +357,40 @@ Beyond the ticked rows above it also covers:
 - re-saving an already-absent roster notifies nobody a second time
 - unsubscribe clears `users.push_sub`, and a later absence then produces nothing at all
 - zero console errors and zero failed requests, for both parents, the 16+ student, tutor and admin
-- non-recipient roles (tutor, admin) are told plainly that they receive nothing, and are offered no toggle
-- endpoint authorization: `push-subscribe` 403s a tutor and an admin, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
+- accounts no student row points at (a tutor of two classes, an admin) are told plainly that this account is linked to no santri, and are offered no toggle
+- endpoint authorization: `push-subscribe` 403s a tutor and an admin **with no child of their own** and 201s a tutor and an admin **whose own child attends**, 400s a non-HTTPS endpoint and junk, 401s without a session; `notify-absence` 401s a missing or wrong webhook secret and 405s a GET
+- **the tutor-parent and the admin-parent, end to end (ADR-022)** — the bug this addressed was silent, so it is proven rather than inferred. Each opens a real browser, is offered the toggle, stores a subscription (both were 403'd before), is pushed a real absence about their **own** child with the right dedup tag, and gets the in-app row. Then a pupil in the class they **teach** is marked absent and they receive nothing at all — no push, no row — asserted in the same breath as that pupil's own parent receiving it, so the negative cannot pass because the pipeline went quiet. Their notification centre lists their own child and names no other child in the school, which for the admin is the live form of ADR-017(d): the same account reads every student row and no other family's inbox
 - **two children, two notifications** — a parent whose children are both absent receives one notification per child, on distinct tags. This is the regression ADR-016(f) fixed: keyed without the child, the second replaced the first and the parent was told about one of them
 - **the three scheduled Functions, driven at a chosen instant** by `scripts/invoke-scheduled.mjs`, which pins the clock from outside the process (there is deliberately no test hook inside the Function). For each: the Europe/Amsterdam gate opens at 18:00 local on a **CET** date and at 18:00 local on a **CEST** date — an hour apart in UTC — and the same 17:00 UTC that is 18:00 in winter is correctly refused as 19:00 in summer; the **second, idempotent run** reports the same sends and adds no notification; a family already on track, a morning with nothing due, and a week with no activity each send nothing; a student who has marked homework `completed` drops out of the run; the Friday digest refuses a Thursday and refuses 09:00
-- **the in-app notification centre** (ADR-017): every event above also leaves a row; every row belongs to a child of that family and no other; the centre carries the detail the lock screen may not — the jilid number, the surah, the assignment title and deadline — while the child's name is never stored on the row; a repeated scheduled run updates its row rather than adding a second; no tutor or admin is given a row at all; **and a family with push switched off is still recorded**, which is who the centre is for, with the sender reporting `recorded` separately from `sent`
-- **the centre on screen**: the list renders in the recipient's own language, names both of a parent's children and neither of the other family's, opening it clears the unread count, the TopNav bell appears for a parent and not for a tutor, and a tutor who navigates to `/notifications` directly is told plainly that they receive none rather than shown an empty list
+- **the in-app notification centre** (ADR-017): every event above also leaves a row; every row belongs to a child of that family and no other; the centre carries the detail the lock screen may not — the jilid number, the surah, the assignment title and deadline — while the child's name is never stored on the row; a repeated scheduled run updates its row rather than adding a second; **every row is addressed to that child's own parent or to the child themselves and to nobody else** (this read "no tutor or admin is given a row at all" until ADR-022, which was asserting the bug rather than the property — a tutor whose own child attends *should* have rows, and the invariant underneath holds whatever role anyone has); **and a family with push switched off is still recorded**, which is who the centre is for, with the sender reporting `recorded` separately from `sent`
+- **the centre on screen**: the list renders in the recipient's own language, names both of a parent's children and neither of the other family's, opening it clears the unread count, the TopNav bell appears for a parent, for a tutor-parent and for an admin-parent and not for a tutor with no child of their own, and a tutor who navigates to `/notifications` directly is told plainly that this account is linked to no santri rather than shown an empty list. The bell is now gated on a relationship, which is a round trip rather than a value already in the auth context, so the harness waits for it — and settles before counting zero, since counting too early would pass the negative for the wrong reason
 - **retention** (DPIA R5): `prune-notifications` deletes past the 90-day window, leaves everything inside it, reports its cutoff and count, deletes nothing on a second run, and does nothing outside its hour
 - **the scheduled Functions disclose nothing to an unauthenticated caller.** They carry no shared secret — Netlify's scheduler cannot send one — and under `netlify dev` they answer plain HTTP. Asserted: a hostile POST naming another family's child gets a response containing no dedup tags and no identifiers, and the posted body is not read at all (ADR-016(d)/(e))
+
+**Two things the harness itself had wrong, found by running it.** Both
+were assertions about the fixture rather than about the product, and both
+are the reason it must actually be run rather than assumed:
+
+- **Stale roster arithmetic.** The class fan-out checks counted the
+  Kelas A roster as it stood before ADR-019's dev-fixture additions —
+  `sent === 4`, one notification for the second family — while the class
+  had gained two children, one of them a second child of that same
+  second family. They now assert five sends and two notifications, and
+  name who each is for.
+- **The weekly digest's Friday could not always carry a push.** The
+  digest is the only delivery here whose instant is not "today": the
+  clock is pinned to this week's Friday, and `web-push` signs its VAPID
+  JWT from that pinned clock, so run on a Saturday the JWT had expired
+  eleven hours before the request was made and every send came back
+  `failed` — a failure with nothing to do with the digest. That is the
+  caveat `invoke-scheduled.mjs` documents and this section did not
+  respect. The digest's own decisions (weekday gate, hour gate, which
+  children have a week worth summarising, idempotency, the recorded
+  rows) are now asserted on **any** day; the push leg runs when a valid
+  JWT can exist for that Friday and is otherwise taken out of play
+  explicitly, with a line in the output saying so. The identical
+  `dispatch` path is exercised against the real push service by the
+  murajaah and homework reminders in the same run.
 
 **One thing this could not check.** Netlify's own types describe a
 deployed scheduled function as "Not reachable via HTTP". That is

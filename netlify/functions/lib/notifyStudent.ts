@@ -1,11 +1,5 @@
 import type { ServiceClient } from './callerAuth'
-import {
-  buildPayload,
-  canReceiveNotifications,
-  type Locale,
-  type NotificationEvent,
-  type UserRole,
-} from './notifications'
+import { buildPayload, type Locale, type NotificationEvent } from './notifications'
 import {
   isValidSubscription,
   sendPush,
@@ -21,7 +15,9 @@ import {
  * it" is always answered from that child's row — `students.parent_id`,
  * and for a 16+ self-login student their own `students.user_id`. Nothing
  * about the recipient ever comes from the request that triggered the
- * notification.
+ * notification, and since ADR-022 nothing about it comes from
+ * `users.role` either: a person's relationship to *this* child is the
+ * whole question, and a role column cannot express it.
  *
  * This lives in one module rather than per-Function on purpose. Sending
  * a family a notification about another family's child is the single
@@ -80,9 +76,17 @@ export interface StudentRow {
   user_id: string | null
 }
 
+/**
+ * `role` is deliberately absent. It was read here until ADR-022, to skip
+ * any user whose role was not `parent` or `student` — which is exactly
+ * how a tutor whose own child attends the TPA was left hearing nothing
+ * about their own child. It is not merely unused now: selecting it again
+ * would put the column back within reach of a future gate, and the point
+ * of ADR-022 is that this file has no business knowing what role anybody
+ * holds.
+ */
 export interface UserRow {
   id: string
-  role: UserRole
   locale: Locale
   push_sub: unknown
 }
@@ -100,10 +104,14 @@ export function buildAudiences(
 ): StudentAudience[] {
   const reachable = new Map<string, Recipient>()
   for (const user of users) {
-    // Belt and braces with `push-subscribe`'s own check: a role that
-    // never receives notifications is never sent one, even if a
-    // subscription somehow reached its row.
-    if (!canReceiveNotifications(user.role)) continue
+    // No filter on who these accounts *are*. There used to be one —
+    // "skip any role that does not receive notifications" — and it was a
+    // second, weaker answer to a question the two lines below already
+    // answer exactly: an account reaches this map only by being named on
+    // the child's own row, and a tutor is named on no row for the
+    // children they teach. The role test could therefore only ever
+    // subtract from a correct answer, which is what it did (ADR-022).
+    //
     // A missing or malformed subscription no longer excludes anyone —
     // it only means this recipient is reached in the app rather than on
     // their lock screen (ADR-017).
@@ -149,7 +157,7 @@ export async function audiencesForStudents(
 
   const { data: users, error: usersError } = await client
     .from('users')
-    .select('id, role, locale, push_sub')
+    .select('id, locale, push_sub')
     .in('id', [...wanted])
   if (usersError) return []
 

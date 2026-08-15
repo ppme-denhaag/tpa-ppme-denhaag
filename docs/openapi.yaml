@@ -917,7 +917,11 @@ paths:
         PostgREST, not a Function. RLS (`notifications_own_read`, migration 012)
         restricts every row to `user_id = auth.uid()`, so this endpoint takes no
         user parameter and cannot be pointed at anyone else — including by an
-        admin, who reads none at all (ADR-017(d), asserted as NC-09).
+        admin, who reads no notification addressed to somebody else (ADR-017(d),
+        asserted as NC-09 and, for an admin who is also a parent, NC-14). The
+        policy is a relationship rather than a role test, which is why ADR-022
+        needed no migration here: an admin whose own child attends reads that
+        child's notifications and still nobody else's.
 
         Rows store the **event**, not a rendered sentence: `event` plus a
         `context` object, with the child's name joined through `student_id`.
@@ -1123,10 +1127,20 @@ paths:
         dropped. Rate-limited per caller (checklist §6; see TAD ADR-015 for
         the limiter's honest scope).
 
-        **403 for `tutor` and `admin`.** Notifications are family-facing
-        (ADR-015(a)); a push endpoint is personal data and is not collected for
-        an account nothing would ever send to. ADR-014 made admin a super admin
-        over the *screens*, which is a different question.
+        **403 when no student row points at the caller.** A notification is
+        always about a child, so a subscription is stored only for an account
+        that some child's row names — their `students.parent_id`, or their own
+        `students.user_id` for a 16+ santri. A push endpoint is personal data
+        and is not collected for an account nothing would ever send to.
+
+        This is a **relationship, not a role** (ADR-022). A tutor or an admin
+        whose own child attends the TPA is accepted and is notified about that
+        child; a tutor of a class with no child of their own is refused, and
+        receives nothing about the children they teach — which is the
+        data-minimisation half of ADR-015(a), still standing. ADR-014 made
+        admin a super admin over the *screens*, which remains a different
+        question. Until ADR-022 this was a check on `users.role`, and it left
+        a tutor whose own child attends unable to subscribe at all.
 
         One subscription per user, not per device: enabling on a second device
         replaces the first (ADR-015(g)).
@@ -1156,7 +1170,7 @@ paths:
                   subscribed: { type: boolean, enum: [true] }
         '400': { description: Not a valid push subscription (non-HTTPS endpoint, missing keys, oversized values, malformed JSON) }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { description: This role does not receive notifications (tutor, admin) }
+        '403': { description: This account is not linked to any student, so it receives no notifications (ADR-022) }
         '429': { description: Rate limited; `retry-after` header set }
     delete:
       tags: [functions]

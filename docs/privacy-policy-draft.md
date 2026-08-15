@@ -138,6 +138,14 @@ te leggen voor de leerlingen van de eigen klas. Is een van die rollen beheerder,
 geldt de bredere toegang uit de vorige alinea: die is niet aan een klas of een kind
 gebonden en gaat dus verder dan de optelsom van de overige rollen.
 
+Voor **meldingen** telt uitsluitend de gezinsband. Een melding gaat altijd over
+één kind, en die krijgt de ouder van dat kind — en de leerling zelf, als hij of
+zij een eigen account heeft. Geeft u daarnaast les op de TPA, dan verandert dat
+hier niets: u ontvangt gewoon de meldingen over uw eigen kind, en over de
+leerlingen van uw klas ontvangt u er geen. Zo hoeft niemand voor honderden
+kinderen op zijn vergrendelscherm meldingen te krijgen, en mist een ouder die
+toevallig ook docent is niets over het eigen kind.
+
 Het aantal beheerdersaccounts wordt bewust klein gehouden en elk account staat op
 naam. Vragen over wie op enig moment beheerder is, kunt u stellen via
 `[e-mailadres]`.
@@ -307,6 +315,15 @@ mencatat progres santri di kelas yang ia ampu. Bila salah satu perannya adalah a
 berlaku akses yang lebih luas seperti dijelaskan pada paragraf sebelumnya: akses itu
 tidak terikat pada kelas atau anak tertentu, sehingga melampaui gabungan peran-peran
 lainnya.
+
+Khusus untuk **notifikasi**, yang menentukan hanyalah hubungan keluarga. Setiap
+notifikasi selalu mengenai satu anak, dan yang menerimanya adalah orang tua anak
+tersebut — serta santri itu sendiri bila ia memiliki akun sendiri. Bila Anda juga
+mengajar di TPA, hal itu tidak mengubah apa pun di sini: Anda tetap menerima
+notifikasi tentang anak Anda sendiri, dan tidak menerima notifikasi tentang santri
+di kelas yang Anda ampu. Dengan begitu tidak ada satu akun pun yang menerima
+notifikasi ratusan anak di layar kuncinya, dan orang tua yang kebetulan juga
+mengajar tidak kehilangan kabar tentang anaknya sendiri.
 
 Jumlah akun admin sengaja dijaga tetap sedikit dan setiap akun atas nama perorangan.
 Pertanyaan mengenai siapa saja yang menjadi admin dapat diajukan ke

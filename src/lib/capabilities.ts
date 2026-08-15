@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Tables } from './database.types'
+import type { RecipientRelationships } from './notificationRecipients'
 
 type UserRole = Database['public']['Enums']['user_role']
 
@@ -25,7 +26,7 @@ type UserRole = Database['public']['Enums']['user_role']
  * decides what data comes back. A capability that said yes where RLS
  * says no produces an empty screen, never a leak.
  */
-export interface Capabilities {
+export interface Capabilities extends RecipientRelationships {
   /** Has at least one child enrolled — `fn_my_children()` is non-empty. */
   isParentOfAnyone: boolean
   /** Is named in at least one class's `tutor_ids` — `fn_my_classes()` is non-empty. */
@@ -101,6 +102,49 @@ export async function fetchFamilyLinks(
 }
 
 /**
+ * The two *family* relationships, read off a set of student rows.
+ *
+ * Split out of `deriveCapabilities` because these two — and only these
+ * two — are also the notification recipient rule (ADR-022), which a
+ * Netlify Function has to be able to answer with a service-role client
+ * and no React around it. One implementation, so the settings screen and
+ * `push-subscribe` cannot come to different conclusions about the same
+ * account; `canReceiveNotifications` in `notificationRecipients.ts` is
+ * the predicate over the result.
+ */
+export function familyRelationships(
+  userId: string,
+  familyLinks: readonly Pick<FamilyLink, 'parent_id' | 'user_id'>[],
+): RecipientRelationships {
+  return {
+    isParentOfAnyone: familyLinks.some((s) => s.parent_id === userId),
+    isSelfStudent: familyLinks.some((s) => s.user_id === userId),
+  }
+}
+
+/**
+ * The relationship half of `fetchFamilyLinks`, selecting the two link
+ * columns and nothing else.
+ *
+ * A separate query rather than a reuse of `fetchFamilyLinks` because the
+ * caller that needs it — `push-subscribe`, deciding whether to store a
+ * push endpoint — has no business reading a list of children's names to
+ * answer a yes/no question. Data minimisation applies to what a Function
+ * loads into memory, not only to what it sends.
+ */
+export async function fetchFamilyRelationships(
+  client: SupabaseClient<Database>,
+  userId: string,
+): Promise<RecipientRelationships> {
+  const { data, error } = await client
+    .from('students')
+    .select('parent_id, user_id')
+    .or(familyLinkFilter(userId))
+  if (error) throw error
+  return familyRelationships(userId, data ?? [])
+}
+
+/**
  * Whether the caller is named in any class's `tutor_ids`.
  *
  * `contains` compiles to PostgREST's `cs.{…}` — the `@>` array operator,
@@ -167,9 +211,8 @@ export function deriveCapabilities(input: {
 }): Capabilities {
   const { userId, role, familyLinks, tutorClassCount } = input
   return {
-    isParentOfAnyone: familyLinks.some((s) => s.parent_id === userId),
+    ...familyRelationships(userId, familyLinks),
     isTutorOfAnyClass: tutorClassCount > 0,
-    isSelfStudent: familyLinks.some((s) => s.user_id === userId),
     isAdmin: role === 'admin',
   }
 }
