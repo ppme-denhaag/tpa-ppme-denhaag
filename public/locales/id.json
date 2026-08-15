@@ -323,7 +323,8 @@
     "studentClass": "Kelas",
     "studentParent": "Orang Tua",
     "studentDob": "Tanggal Lahir",
-    "linkSelfLogin": "Tautkan Akun Login Mandiri (16+)",
+    "hasOwnLogin": "Akun sendiri",
+    "linkSelfLogin": "Tautkan Akun Login Mandiri",
     "linkSelfLoginNone": "Tidak ada",
     "noParents": "Belum ada orang tua terdaftar",
     "hubSubtitle": "Pendaftaran pengguna, kelas, dan data santri"

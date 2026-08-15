@@ -69,7 +69,8 @@ local Docker stack, which is disposable and per-machine.
 
 `supabase/dev-fixture.sql` seeds a small realistic dataset (2 tutors — one
 assigned to both classes, one to Kelas B only — plus admin, 2 parents,
-2 classes, 4 students, 1 pending/unregistered sign-in) into a local stack — load it after migrations are applied:
+4 multi-role accounts, 2 classes, 8 students, 1 pending/unregistered sign-in)
+into a local stack — load it after migrations are applied:
 
 ```bash
 supabase migration up --local
@@ -83,6 +84,24 @@ With `.env` pointed at the local stack, `npm run dev` then shows a
 sign-in screen — pick any fixture identity to get a real authenticated
 session against the local stack without configuring Google OAuth
 (`supabase/config.toml` has no `[auth.external.google]` section locally).
+
+The last three identities in that panel hold **more than one
+relationship** (TAD ADR-019): Ustadzah Aminah teaches Kelas A and her own
+son is in Kelas B, Bapak Hasan teaches Kelas B and his own daughter is in
+Kelas A, and Ustadzah Laila is an admin who *also* teaches Kelas A and
+*also* has a daughter in Kelas B. The first two land on opposite halves
+of the app, because which half you see is still decided by `users.role` —
+Aminah on the tutor views, Hasan on the family ones. Worth using whenever
+a change touches "my children" or "my classes": each of them has a child
+in a class they do **not** teach, which is exactly the shape that made an
+unfiltered `select` look correct in testing. Laila is the one to use when
+a query grows an admin branch, since for her the admin grant and the
+tutor relationship disagree — `useMyClasses` hands her every class while
+`fn_my_classes()` holds only Kelas A. Aisyah is the fourth: a 16+ santri
+in Kelas A who assists in Kelas B (ADR-020). She is entitled to record
+for Kelas B and cannot reach a screen that would let her, because
+routing still follows `users.role` — signing in as her is how that gap
+stays visible until role switching lands.
 
 **Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
 already does this correctly): PostgREST/RLS never look at `instance_id` or
@@ -105,10 +124,10 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
-`supabase/tests/database/rls.test.sql` implements all 27 cases from
-test-plan.md §3 (RLS-01…RLS-27), plus WH-01…WH-12 for the notification
+`supabase/tests/database/rls.test.sql` implements all 35 cases from
+test-plan.md §3 (RLS-01…RLS-35), plus WH-01…WH-12 for the notification
 webhooks in migrations 009 and 010, plus NC-01…NC-11 for the notification
-centre in migration 012 — 104 pgTAP assertions, using the standard
+centre in migration 012 — 157 pgTAP assertions, using the standard
 fixture set from §2. The NC cases assert that only the addressee reads a
 notification, that **no client role can create or delete one at all**,
 that a recipient may write `read_at` and nothing else (a column-level
@@ -125,7 +144,23 @@ the whole thing rolls back with everything else and never makes a real
 request. RLS-22…RLS-27 cover the super-admin change (TAD
 ADR-014): that an admin INSERT/UPDATE lands on every operational table, and
 — the half that matters more — that those rows widen nobody else's
-visibility. It runs entirely inside a transaction that's rolled
+visibility. RLS-28…RLS-33 cover dual-role people (ADR-019): that someone
+who is both a tutor of one class and the parent of a child in another
+gets the union of both grants and nothing more, identically whichever
+value their `users.role` holds, and that the union is not a promotion —
+they cannot record progress for their own child, cannot confirm home
+practice for a student they teach, and cannot see their own child's
+draft report. RLS-34 adds a third relationship on top (admin + tutor +
+parent) to show the model is n-ary rather than merely dual, and to mark
+where the pattern stops: `fn_is_admin()` is an unconditional `ALL`, so
+once admin is in the union the "nothing more" property no longer holds
+and each of RLS-31/RLS-32's refusals becomes an allowance. RLS-35 covers
+the student assistant (ADR-020): a student with their own login who also tutors may
+record for the class they teach, and still not for their own record —
+no policy tests for the `student` role anywhere, so "students are
+read-only" only ever described a student who taught nothing. Like the
+RLS-22 block, these cases add rows of their own and so are placed after
+the assertions that count exact fixture rows. It runs entirely inside a transaction that's rolled
 back at the end, so it never leaves data behind. CI runs it against a
 fresh local Postgres (Docker, via the Supabase CLI) built from
 `supabase/migrations` — see the `rls` job in `.github/workflows/test.yml`.
@@ -491,7 +526,7 @@ holds, so a recipient cannot rewrite an event on their own row.
 |---|---|
 | `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
 | `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
-| `student` (16+) | Their own record only, strictly read-only |
+| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
 | `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
 
 Admin's access has always been granted at the database layer — every table

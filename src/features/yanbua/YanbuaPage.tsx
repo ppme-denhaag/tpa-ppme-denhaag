@@ -7,12 +7,11 @@ import { FamilyYanbuaView } from './FamilyYanbuaView'
 // (yanbua.childTitle, needs the selected child's name) or a 16+ student
 // (yanbua.myTitle) — that distinction isn't known until a child is picked.
 //
-// Admin gets the tutor view (ADR-014): the class-picker shape works
-// unchanged for it because `useMyClasses` already returns every class for
-// admin, whereas `FamilyYanbuaView`'s "my children" query would return
-// every student in the TPA (`students_admin_all` has no `parent_id`
-// predicate). Recorded rows carry the admin's own id in `tutor_id` —
-// see AttendancePage/TutorYanbuaView.
+// Admin gets the tutor view (ADR-014): the class-picker shape is the
+// right job for it, and `useMyClasses` returns every class for an admin
+// (its own branch — see ADR-019), whereas the family shape is the wrong
+// job. Recorded rows carry the admin's own id in `tutor_id` — see
+// AttendancePage/TutorYanbuaView.
 export function YanbuaPage() {
   const { profile } = useAuth()
   const isManager = profile?.role === 'tutor' || profile?.role === 'admin'

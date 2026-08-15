@@ -98,9 +98,20 @@ export function StudentsPage() {
             <li key={s.id} className="rounded-lg bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium text-ppme-text">{s.full_name}</p>
+                {/*
+                  Says "has their own login", because that is the only
+                  thing `user_id` records. It read "16+" until ADR-021,
+                  which was a claim about the child's age that nothing
+                  ever checked — `date_of_birth` sits in the same row and
+                  is never consulted — so linking an account to a younger
+                  santri labelled them 16+ on the one screen where the
+                  enrolment decision is made. Who may hold a login is the
+                  identity provider's rule (ADR-021), and this badge is
+                  not the place to restate it.
+                */}
                 {s.user_id && (
                   <span className="rounded-full bg-ppme-accent/15 px-2 py-0.5 text-xs font-semibold text-ppme-primary">
-                    16+
+                    {t('admin.hasOwnLogin')}
                   </span>
                 )}
               </div>

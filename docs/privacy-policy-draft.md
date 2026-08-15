@@ -90,9 +90,22 @@ De meeste leerlingen zijn jonger dan 16 jaar. Voor hen geldt:
 - Er wordt **geen** eigen account aangemaakt; alle toegang loopt via het account van de ouder/verzorger.
 - De ouder/verzorger geeft bij inschrijving toestemming voor de verwerking van de gegevens van het kind.
 
-Leerlingen van 16 jaar en ouder kunnen — met medeweten van de ouder — een eigen
-account koppelen met alleen-lezen toegang tot hun eigen gegevens. De koppeling met
-het ouderaccount blijft altijd bestaan.
+Inloggen gaat uitsluitend met een Google-account. **Wij hanteren daarbij geen eigen
+leeftijdsgrens**: welke minimumleeftijd geldt voor een eigen Google-account bepaalt
+Google, volgens de wettelijke leeftijd voor digitale toestemming in het land van de
+gebruiker. Voor Nederland ligt die grens bovenaan de Europese bandbreedte, en in de
+praktijk betekent dit dat jongere leerlingen geen eigen account hebben. De
+geboortedatum die wij van een leerling bewaren, gebruiken wij hiervoor niet.
+
+Leerlingen die wél een eigen account hebben, kunnen dat — met medeweten van de ouder
+— aan hun leerlingdossier laten koppelen. Zij zien dan hun eigen gegevens en kunnen
+die niet zelf wijzigen. De koppeling met het ouderaccount blijft altijd bestaan.
+
+Helpt een oudere leerling mee met een jongere klas, dan gelden voor díe klas dezelfde
+rechten als voor elke andere begeleider: hij of zij kan aanwezigheid en voortgang van
+die klas vastleggen. Voor de eigen gegevens verandert er niets. Meehelpen kent geen
+leeftijdsgrens; wie meehelpt wordt door de beheerder aan een klas toegewezen, en dat
+is dus een bewuste keuze en geen automatisme.
 
 ### 5. Wie binnen PPME kan welke gegevens zien?
 
@@ -103,7 +116,7 @@ afgedwongen in de database zelf — niet alleen in het scherm:
 |---|---|
 | Ouder/verzorger | Uitsluitend de gegevens van de eigen kinderen |
 | Docent (ustadz) | Uitsluitend de leerlingen van de eigen klas(sen) |
-| Leerling van 16+ | Uitsluitend de eigen gegevens, alleen-lezen |
+| Leerling van 16+ | Uitsluitend de eigen gegevens, die hij of zij niet zelf kan wijzigen |
 | Beheerder | Alle leerlingen en alle gegevens — ook wijzigen |
 
 Beheerders zijn vrijwilligers van de TPA-commissie. Zij hebben deze bredere toegang
@@ -114,6 +127,16 @@ voor deze rol geen extra gegevens verzameld, en er wordt niets buiten PPME gedee
 Twee handelingen blijven bewust voorbehouden aan anderen: alleen een ouder kan
 bevestigen dat er thuis geoefend is, en alleen de docent die een jaarrapport heeft
 geschreven kan het aan het gezin vrijgeven.
+
+Iemand kan meer dan één rol tegelijk hebben — een docent van wie het eigen kind ook
+op de TPA zit, of een beheerder die daarnaast lesgeeft. Zo iemand krijgt precies de
+optelsom van de rollen die hij of zij heeft en niets daarbuiten: als docent de eigen
+klas, als ouder het eigen kind. De grenzen van elke rol blijven daarbij op hun eigen
+helft gelden — lesgeven geeft bijvoorbeeld geen toegang tot een nog niet vrijgegeven
+jaarrapport van het eigen kind, en het ouderschap geeft geen recht om voortgang vast
+te leggen voor de leerlingen van de eigen klas. Is een van die rollen beheerder, dan
+geldt de bredere toegang uit de vorige alinea: die is niet aan een klas of een kind
+gebonden en gaat dus verder dan de optelsom van de overige rollen.
 
 Het aantal beheerdersaccounts wordt bewust klein gehouden en elk account staat op
 naam. Vragen over wie op enig moment beheerder is, kunt u stellen via
@@ -237,7 +260,20 @@ Sebagian besar santri berusia di bawah 16 tahun. Bagi mereka:
 - Orang tua/wali memberikan persetujuan saat pendaftaran untuk pemrosesan data anak.
 
 Santri berusia 16 tahun ke atas dapat — dengan sepengetahuan orang tua — menautkan
-akun sendiri dengan akses baca-saja ke data mereka sendiri. Tautan dengan akun orang
+akun sendiri untuk melihat data mereka sendiri, tanpa dapat mengubahnya.
+
+Login hanya dapat dilakukan dengan akun Google. **Kami tidak menetapkan batas usia
+sendiri**: batas usia minimum untuk memiliki akun Google ditentukan oleh Google,
+mengikuti usia persetujuan digital di negara masing-masing pengguna. Untuk Belanda
+batas itu berada di ujung atas rentang Eropa, sehingga dalam praktiknya santri yang
+lebih muda tidak memiliki akun sendiri. Tanggal lahir yang kami simpan tidak kami
+gunakan untuk keperluan ini.
+
+Bila santri yang lebih besar ikut membantu kelas yang lebih kecil, untuk kelas itu
+berlaku hak yang sama seperti pengajar lain: ia dapat mencatat kehadiran dan progres
+kelas tersebut. Untuk datanya sendiri tidak ada yang berubah. Membantu mengajar tidak
+dibatasi usia; siapa yang membantu ditetapkan oleh admin melalui penugasan ke sebuah
+kelas, jadi hal itu selalu merupakan keputusan yang disengaja. Tautan dengan akun orang
 tua tetap ada.
 
 ### 5. Siapa saja di dalam PPME yang dapat melihat data apa?
@@ -249,7 +285,7 @@ di dalam basis data — bukan hanya di tampilan aplikasi:
 |---|---|
 | Orang tua/wali | Hanya data anak sendiri |
 | Ustadz | Hanya santri di kelas yang diampu |
-| Santri 16+ | Hanya data diri sendiri, baca-saja |
+| Santri 16+ | Hanya data diri sendiri, dan tidak dapat mengubahnya |
 | Admin | Seluruh santri dan seluruh data — termasuk mengubahnya |
 
 Admin adalah relawan pengurus TPA. Mereka memiliki akses yang lebih luas karena
@@ -260,6 +296,17 @@ ustadz — tidak ada data tambahan yang dikumpulkan untuk peran ini, dan tidak a
 yang dibagikan ke luar PPME. Dua tindakan sengaja tetap menjadi hak pihak lain:
 hanya orang tua yang dapat mengonfirmasi hafalan yang disetorkan di rumah, dan hanya
 ustadz penulis rapor yang dapat menerbitkannya kepada keluarga.
+
+Satu orang dapat memegang lebih dari satu peran sekaligus — ustadz yang anaknya
+sendiri juga mengaji di TPA, atau admin yang ikut mengajar. Aksesnya adalah
+gabungan dari peran-peran yang ia pegang dan tidak lebih: sebagai ustadz ia melihat
+kelas yang diampu, sebagai orang tua ia melihat anaknya sendiri. Batasan tiap peran
+tetap berlaku di bagiannya masing-masing — mengajar, misalnya, tidak memberi akses ke
+rapor anaknya sendiri yang belum diterbitkan, dan menjadi orang tua tidak memberi hak
+mencatat progres santri di kelas yang ia ampu. Bila salah satu perannya adalah admin,
+berlaku akses yang lebih luas seperti dijelaskan pada paragraf sebelumnya: akses itu
+tidak terikat pada kelas atau anak tertentu, sehingga melampaui gabungan peran-peran
+lainnya.
 
 Jumlah akun admin sengaja dijaga tetap sedikit dan setiap akun atas nama perorangan.
 Pertanyaan mengenai siapa saja yang menjadi admin dapat diajukan ke
