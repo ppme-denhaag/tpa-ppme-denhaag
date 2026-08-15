@@ -31,6 +31,7 @@
  * — asserts the notification actually arriving.
  */
 import { build } from 'esbuild'
+import { createRequire } from 'node:module'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
@@ -87,6 +88,67 @@ if (instant) {
   }
   globalThis.Date = FixedDate
   console.error(`clock pinned to ${new RealDate(fixed).toISOString()}`)
+  keepVapidSignedInRealTime(fixed, RealDate)
+}
+
+/**
+ * Signs VAPID with the **real** clock while the handler keeps the
+ * pinned one.
+ *
+ * Pinning `Date` globally is what lets the Amsterdam gate be driven to
+ * any hour, but `web-push` reads the same `new Date()` to stamp the
+ * `exp` of the JWT it signs each request with — so a run pinned to
+ * 08:00 produces a token that expired at 20:00, and every push in it
+ * comes back `403 Received unexpected response code`. That made the
+ * delivery assertions depend on what time of day the suite was run:
+ * green before ~20:00 Amsterdam, nine failures after it, with nothing
+ * about the code different. The 18:00 job passed while the 08:00 job
+ * failed in the same run, which is what the shape of this bug looks
+ * like from the outside.
+ *
+ * `getVapidHeaders` already takes an explicit expiration; `web-push`
+ * simply never passes one. Filling it in here keeps the fix on the
+ * harness side of the line — the Functions get no test hook, and
+ * production still signs with the ordinary default (see the note at the
+ * top of this file about there deliberately being no way to move the
+ * clock from a request).
+ *
+ * The bound is what `validateExpiration` will accept, and it is checked
+ * against the *pinned* clock: strictly less than pinned + 24h. The
+ * value is otherwise the real now + 12h, i.e. exactly what an unpinned
+ * run would have produced.
+ */
+function keepVapidSignedInRealTime(fixed, RealDate) {
+  const require = createRequire(import.meta.url)
+  let vapidHelper
+  try {
+    vapidHelper = require('web-push/src/vapid-helper.js')
+  } catch {
+    // web-push not installed, or it moved its internals: leave the
+    // default alone rather than guess. The delivery assertions will
+    // report their own failure if that ever happens.
+    return
+  }
+
+  const original = vapidHelper.getVapidHeaders
+  vapidHelper.getVapidHeaders = (audience, subject, publicKey, privateKey, encoding, expiration) => {
+    if (expiration === undefined) {
+      const realNow = Math.floor(RealDate.now() / 1000)
+      const pinnedCeiling = Math.floor(fixed / 1000) + 24 * 60 * 60 - 60
+      expiration = Math.min(realNow + 12 * 60 * 60, pinnedCeiling)
+      if (expiration <= realNow) {
+        // The pin is more than a day behind real time — the January CET
+        // instants. No token signed now can be both unexpired and
+        // within 24h of a clock that far back, which is the caveat this
+        // file's header describes; those runs assert the gate, not
+        // delivery. Said out loud rather than left as a silent 403.
+        console.error(
+          `vapid: pinned instant is ${Math.round((realNow - expiration) / 3600)}h too far back to sign a live push`,
+        )
+      }
+    }
+    return original(audience, subject, publicKey, privateKey, encoding, expiration)
+  }
 }
 
 const handler = (await import(pathToFileURL(outfile).href)).default
