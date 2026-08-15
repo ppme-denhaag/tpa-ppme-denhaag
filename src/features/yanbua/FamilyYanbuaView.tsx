@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../context/AuthContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { useViewScope } from '../../context/ViewScopeContext'
+import { isSelfRecord } from '../../lib/capabilities'
 import { ChildPicker } from '../../components/ChildPicker'
 import type { JilidRef } from '../../lib/yanbua'
 import { getErrorMessage } from '../../lib/errors'
@@ -11,7 +12,7 @@ import { YanbuaTimeline } from './YanbuaTimeline'
 
 export function FamilyYanbuaView() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
+  const { selfStudentId } = useViewScope()
   const { students, loading: studentsLoading } = useMyStudents()
 
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -55,7 +56,7 @@ export function FamilyYanbuaView() {
     [students, studentId],
   )
   const title =
-    profile?.role === 'parent' && selectedName
+    !isSelfRecord(studentId, selfStudentId) && selectedName
       ? t('yanbua.childTitle', { name: selectedName })
       : t('yanbua.myTitle')
 

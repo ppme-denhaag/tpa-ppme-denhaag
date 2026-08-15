@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../context/AuthContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { useViewScope } from '../../context/ViewScopeContext'
+import { isSelfRecord } from '../../lib/capabilities'
 import { ChildPicker } from '../../components/ChildPicker'
 import { getErrorMessage } from '../../lib/errors'
 import { computeDisplayStatus, type AssignmentDisplayStatus } from '../../lib/assignments'
@@ -36,7 +37,7 @@ interface AssignmentWithStatus {
 
 export function FamilyAssignmentsView() {
   const { t, i18n } = useTranslation()
-  const { profile } = useAuth()
+  const { selfStudentId } = useViewScope()
   const { students, loading: studentsLoading } = useMyStudents()
 
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -113,7 +114,7 @@ export function FamilyAssignmentsView() {
     [students, studentId],
   )
   const title =
-    profile?.role === 'parent' && selectedName
+    !isSelfRecord(studentId, selfStudentId) && selectedName
       ? t('assignments.childTitle', { name: selectedName })
       : t('assignments.myTitle')
 

@@ -3,7 +3,9 @@ import {
   NO_CAPABILITIES,
   deriveCapabilities,
   familyLinkFilter,
-  fetchCapabilities,
+  fetchViewerRelationships,
+  isSelfRecord,
+  selfStudentId,
   fetchFamilyLinks,
   fetchTaughtClasses,
   fetchTutorClassCount,
@@ -247,6 +249,58 @@ describe('the sixteen combinations of the four capabilities', () => {
   })
 })
 
+describe('selfStudentId — which roster row is the viewer’s own', () => {
+  it('finds the caller’s own record by user_id, not by parentage', () => {
+    // Aisyah's row: `parent_id` is her actual parent, `user_id` is her.
+    // Reading `parent_id` here would return null for her and — worse —
+    // a *child's* id for every parent, which is the id the register
+    // would then refuse to submit.
+    const own = link({ id: 'own-record', parent_id: OTHER, user_id: STUDENT16 })
+    expect(selfStudentId(STUDENT16, [link({ parent_id: STUDENT16 }), own])).toBe('own-record')
+  })
+
+  it('is null for a parent, however many children they have', () => {
+    // Which is the answer that makes `recordableStudents` a no-op for
+    // every account in the TPA but one.
+    expect(selfStudentId(PARENT, [link({ parent_id: PARENT }), link({ parent_id: PARENT })])).toBe(
+      null,
+    )
+  })
+
+  it('is null for a tutor-parent, so their own child stays recordable (ADR-024)', () => {
+    // Bapak Hasan holds no `students` record of his own. If this ever
+    // returned his daughter's id, the register that teaches his class
+    // would silently stop submitting her row.
+    expect(selfStudentId(TP, [link({ id: 'khadijah', parent_id: TP })])).toBe(null)
+  })
+
+  it('is null when the person has no family link at all', () => {
+    expect(selfStudentId(OTHER, [])).toBe(null)
+  })
+})
+
+describe('isSelfRecord — the question the family screens used to ask of the role column', () => {
+  it('is true only for the viewer’s own record', () => {
+    expect(isSelfRecord('own-record', 'own-record')).toBe(true)
+    expect(isSelfRecord('somebody-else', 'own-record')).toBe(false)
+  })
+
+  it('is false for everyone who has no record of their own', () => {
+    // A parent, a tutor, an admin. This is what keeps the confirm
+    // control on FamilyMurajaahView exactly where it was for them —
+    // and puts it back for the ustadzah whose role column says `tutor`
+    // while `fn_my_children()` holds her son (RLS-19).
+    expect(isSelfRecord('any-child', null)).toBe(false)
+  })
+
+  it('is false before a child has been picked', () => {
+    // The family screens render before the ChildPicker has a value, and
+    // a null studentId is "nothing selected", never "this is me".
+    expect(isSelfRecord(null, 'own-record')).toBe(false)
+    expect(isSelfRecord(null, null)).toBe(false)
+  })
+})
+
 describe('fetchFamilyLinks — the query itself, not just its result', () => {
   function fakeClient(rows: FamilyLink[]) {
     const calls: { table?: string; select?: string; or?: string; order?: string } = {}
@@ -467,7 +521,7 @@ describe('fetchTaughtClasses — the tutor-side mirror of the same fix', () => {
  * and a failure mode, since a rejection from either one has to surface
  * rather than resolve into a smaller capability set.
  */
-describe('fetchCapabilities — the two relationship queries, together', () => {
+describe('fetchViewerRelationships — the two relationship queries, together', () => {
   function fakeClient(over: {
     links?: FamilyLink[]
     classCount?: number
@@ -502,7 +556,7 @@ describe('fetchCapabilities — the two relationship queries, together', () => {
           }),
         }
       },
-    } as unknown as Parameters<typeof fetchCapabilities>[0]
+    } as unknown as Parameters<typeof fetchViewerRelationships>[0]
     return { client, started, releaseLinks: () => resolveLinks?.() }
   }
 
@@ -512,7 +566,7 @@ describe('fetchCapabilities — the two relationship queries, together', () => {
     // screen a family sees, on the connection they are most likely to
     // have.
     const { client, started, releaseLinks } = fakeClient({ classCount: 1 })
-    const pending = fetchCapabilities(client, TP, 'parent')
+    const pending = fetchViewerRelationships(client, TP, 'parent')
     await Promise.resolve()
     expect(started).toEqual(['students', 'classes'])
     releaseLinks()
@@ -524,12 +578,13 @@ describe('fetchCapabilities — the two relationship queries, together', () => {
       links: [link({ parent_id: TP })],
       classCount: 1,
     })
-    const pending = fetchCapabilities(client, TP, 'parent')
+    const pending = fetchViewerRelationships(client, TP, 'parent')
     releaseLinks()
     await expect(pending).resolves.toEqual({
-      ...NO_CAPABILITIES,
-      isParentOfAnyone: true,
-      isTutorOfAnyClass: true,
+      capabilities: { ...NO_CAPABILITIES, isParentOfAnyone: true, isTutorOfAnyClass: true },
+      // Their child's row, not their own: `selfStudentId` reads
+      // `user_id`, and a parent is never in that column.
+      selfStudentId: null,
     })
   })
 
@@ -538,9 +593,12 @@ describe('fetchCapabilities — the two relationship queries, together', () => {
     // capability the role column may produce, here as in
     // `deriveCapabilities`.
     const { client, releaseLinks } = fakeClient({})
-    const pending = fetchCapabilities(client, OTHER, 'admin')
+    const pending = fetchViewerRelationships(client, OTHER, 'admin')
     releaseLinks()
-    await expect(pending).resolves.toEqual({ ...NO_CAPABILITIES, isAdmin: true })
+    await expect(pending).resolves.toEqual({
+      capabilities: { ...NO_CAPABILITIES, isAdmin: true },
+      selfStudentId: null,
+    })
   })
 
   it('rejects when either query fails, rather than reporting fewer capabilities', async () => {
@@ -548,12 +606,12 @@ describe('fetchCapabilities — the two relationship queries, together', () => {
     // nobody" — which is a family locked out of their own child's
     // screens with no error to explain it.
     const links = fakeClient({ linksError: { message: 'students unavailable' } })
-    const linksPending = fetchCapabilities(links.client, TP, 'parent')
+    const linksPending = fetchViewerRelationships(links.client, TP, 'parent')
     links.releaseLinks()
     await expect(linksPending).rejects.toMatchObject({ message: 'students unavailable' })
 
     const classes = fakeClient({ classesError: { message: 'classes unavailable' } })
-    const classesPending = fetchCapabilities(classes.client, TP, 'parent')
+    const classesPending = fetchViewerRelationships(classes.client, TP, 'parent')
     classes.releaseLinks()
     await expect(classesPending).rejects.toMatchObject({ message: 'classes unavailable' })
   })

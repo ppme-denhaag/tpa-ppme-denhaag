@@ -88,8 +88,9 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 - [x] `manifest.json` + icon set using the real PPME logo — configured (192/512/maskable) in `vite.config.ts`, now generated from the **high-resolution vendor masters** in `assets/brand/` (3564×1844) by `scripts/generate-brand-assets.py`, replacing the ~3.7x upscale from a 135×70px source. The square icons carry the **globe mark alone** rather than a letterboxed wordmark, so they stay readable at 48px; the maskable variant is scaled to 58% so its furthest pixel sits inside the 80% safe zone under any launcher mask. Also generated: `public/logo.png` (full colour), `public/logo-white.png` (reversed, for the blue top bar — the white pill behind the old logo is gone), 16/32px favicons, and `icons/badge-96.png` — the Android notification badge, which must be a **transparent monochrome silhouette** because Android masks that slot by its alpha channel and repaints it (an opaque icon shows as a white block, and no badge at all shows Chrome's logo; both were live until a real device caught it)
 - [~] Service worker via Workbox: app-shell precaching done (`vite-plugin-pwa`, `generateSW`); runtime caching per route and **background sync queue for offline attendance/murajaah submissions not built** — attendance currently requires being online
 - [ ] IndexedDB offline queue tested for conflict resolution (e.g., tutor marks attendance offline on two devices before sync)
-- [x] Role-based routing/dashboards for the 3 roles shown in the prototype: **Ustadz** (Hadir/Tugas/Yanbu'a/Al-Quran/Murajaah — class roster views), **Orang Tua** (same 5 tabs — single child's data), **Santri** (same 5 tabs — self view, 16+ only) — built for all 5 tabs (**Hadir + Tugas + Yanbu'a + Al-Quran + Murajaah**). A 4th role (**Admin**) was also built (§10); since ADR-014 it uses the *same* five tabs and the same class-shaped tutor views on every class, rather than the separate replacement nav it had originally
-  - [x] Note: prototype's top "Pilih Peran" switcher is **prototype-only** — production derives role from authenticated user via Supabase Auth + RLS, not a manual toggle — confirmed correct in the shipped `AuthContext`/RLS implementation
+- [x] Role-based routing/dashboards for the 3 roles shown in the prototype: **Ustadz** (Hadir/Tugas/Yanbu'a/Al-Quran/Murajaah — class roster views), **Orang Tua** (same 5 tabs — single child's data), **Santri** (same 5 tabs — self view, 16+ only) — built for all 5 tabs (**Hadir + Tugas + Yanbu'a + Al-Quran + Murajaah**). A 4th role (**Admin**) was also built (§10); since ADR-014 it uses the *same* five tabs and the same class-shaped tutor views on every class, rather than the separate replacement nav it had originally. **Routing is no longer keyed on the role column** (ADR-025): each of the six two-shaped screens picks its shape from a `ViewScope` resolved out of the caller's relationships, so a person who is several things — a tutor whose own child attends, an admin who also teaches, a 16+ santri who assists a class — reaches every screen they are entitled to instead of the one their `users.role` label happened to name. For anyone who is one thing the resolved scope is exactly what the old expression returned, including the invited-but-unassigned tutor, whose scope still comes from the role column because they hold no relationship yet
+  - [x] Note: prototype's top "Pilih Peran" switcher is **prototype-only** — production derives role from authenticated user via Supabase Auth + RLS, not a manual toggle — confirmed correct in the shipped `AuthContext`/RLS implementation. **Still true after ADR-025**, which builds a control that has to be told apart from it: the **scope switch** offers only the relationships the signed-in account already holds (never a role, and never a role it does not hold), renders only when there is more than one, and is captioned by subject — "Kelas saya" / "Anak saya", "Saya" for a 16+ self-login, "Keluarga saya" for the account that is both. Role is still derived and never chosen; what is chosen is which of one's own relationships a screen is about. `scripts/verify-push.mjs` §9 asserts the captions live, so a future edit cannot quietly turn it back into "Pilih Peran"
+  - [x] Scope switch placement: **not** a sixth tab. Five 44px targets is what a mobile bottom nav fits at 390px and those five are the prototype-validated set, and a scope is not a destination — pressing it leaves you on the same screen with a different subject. It renders above the content on mobile (`AppLayout`) and at the right-hand end of the desktop tab row (`DesktopTabs`), which is where the admin "Kelola" entry already lives for the same reason: desktop has the horizontal room. Verified at 390px in both locales; the longest Dutch caption pair is "Mijn klas / Mijn gezin" and neither overflows
 - [x] Bottom tab nav built in confirmed order: Hadir | Tugas | Yanbu'a | Al-Quran | Murajaah — **the same five for every role including admin** since ADR-014. The admin-only tab set that used to *replace* them (Pendaftaran | Kelas | Santri | Rapor) is gone: 5 + 4 will not fit a mobile bottom nav at 44px tap targets, and the 5 above are the prototype-validated set. The enrollment screens sit one level down behind a single "Kelola" entry (a dashboard tile, plus a sixth tab on desktop where there is room), with an `AdminSectionNav` pill strip inside `/admin/*` to move between them. Order unchanged, so no re-validation against the Figma Make prototype was needed — a unit test (`tests/unit/tabs.test.ts`) now pins it
 - [x] Top nav: logo left, language toggle (globe icon), notification bell with badge — **all three now built**. The bell waited for the in-app notification centre it opens (TAD ADR-015 part 3 / ADR-017), because a bell with a badge promises a stored, readable list and there was no table behind it until migration 012. It renders for parents and 16+ students only: a tutor or admin receives no notifications and can read nobody else's, so a bell for them would be a permanently empty control that also implied an admin inbox of every family's messages exists
 - [x] Attendance check-in UI: 3-state per student (✓ present / clock late / ✕ absent), matching `attendance_status` enum
@@ -448,3 +449,46 @@ into one rule — a santri assessing their own work is not a teacher
 assessing a pupil who happens to be their child — which is why
 `fn_my_recordable_students()` excludes the caller's own record and never
 their children.
+
+**Status update (the UI catches up with the data layer, TAD ADR-025):**
+this closes the multi-relationship work that ADR-019 opened. The database
+has been relationship-shaped since ADR-019 and the notification pipeline
+since ADR-022; routing was still keyed on `users.role` in six places,
+where it picked a class view or a family view for a person who might be
+both. Each of those six screens now resolves a **`ViewScope`** out of the
+caller's relationships, and a person holding more than one gets an
+explicit switch between them — captioned by subject ("Kelas saya" / "Anak
+saya"), never by role, which is what distinguishes it from the "Pilih
+Peran" affordance PRD §1 rejected and still rejects. Anyone holding one
+relationship sees no control and no change; the invited-but-unassigned
+tutor keeps the screens they have today, because the one branch that
+still reads the role column is the branch for someone holding no
+relationship at all.
+
+Two gates that were correct only by accident came out of building it, and
+are fixed here rather than filed: `FamilyMurajaahView` decided who may
+confirm home practice with `role === 'parent'`, which would have denied
+Ustadzah Aminah the control for her own son the moment she could reach
+his screens, and `WeeklySummary` hid the Friday digest card from every
+tutor-parent it had been notifying. Both now ask about the relationship
+to the child on screen.
+
+**ADR-023(c) is closed in the same change, because this is what made it
+reachable.** DPIA R7 accepted the assistant's own attendance row as
+residual risk *on the grounds that no screen routed them to a register* —
+a mitigation this change removes. The register now leaves their own
+record out of what it submits while still showing the row, and the answer
+to "who marks the assistant present?" is a co-tutor or an admin, which
+holds for every class because ADR-014 gives an admin the class shape on
+all of them. The five evaluative screens drop the row entirely, mirroring
+`fn_my_recordable_students()` — and never a tutor-parent's own child
+(ADR-024). No migration, no policy change.
+
+**Creating a dual-role person is deliberately still not possible from the
+admin UI.** `StudentsPage` picks parents with `fetchUsersByRole('parent')`
+and `ClassesPage` picks tutors with `fetchUsersByRole('tutor')`, so every
+multi-role account in this project still exists because SQL put it there.
+This change lets such a person *use* both halves; it does not let anyone
+*create* one. Widening those pickers is an enrolment decision about who
+may be attached to a child's record, with a DPIA question of its own, and
+belongs to the admin-UI change that follows.

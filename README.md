@@ -590,9 +590,22 @@ holds, so a recipient cannot rewrite an event on their own row.
 | Role | What it can do |
 |---|---|
 | `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
-| `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
-| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020) — with one carve-out since ADR-023: those grants exclude the assistant's **own** record for every evaluative write, so a santri assigned to the class they sit in cannot grade themselves (`attendance` excepted, deliberately — see ADR-023(c)). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
+| `parent` | Their own children only, read-only — except confirming Murajaah home practice, which is the parent of *that child*'s to do, asked per child rather than of the role column (ADR-025) |
+| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020) — with one carve-out since ADR-023: those grants exclude the assistant's **own** record for every evaluative write, so a santri assigned to the class they sit in cannot grade themselves (`attendance` excepted in SQL, deliberately — the register is one upsert for the whole class, so ADR-025 closes it in the interface instead: their own row is shown but not submitted, and a co-tutor or an admin fills it in). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
 | `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
+
+**The table above names the four `users.role` values, and access does not
+follow from them** (ADR-019). Every policy in the schema is written
+against a relationship — `parent_id = auth.uid()`, `auth.uid() = any
+(tutor_ids)`, `user_id = auth.uid()` — and `fn_is_admin()` is the only
+one that reads the role column. One person routinely holds several of
+these rows at once: an ustadz whose own child attends, an admin who also
+teaches, a 16+ santri who assists a younger class. Since ADR-025 the
+interface follows suit — such a person gets a **scope switch** on the six
+two-shaped screens ("Kelas saya" / "Anak saya") offering only the
+relationships they actually hold, and anyone who holds one sees no
+control at all. It is not a role picker: role is still derived from the
+authenticated user and never chosen (PRD §1).
 
 Admin's access has always been granted at the database layer — every table
 has an `*_admin_all` policy keyed on `fn_is_admin()` (migrations 003/005).

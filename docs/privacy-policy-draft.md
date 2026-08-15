@@ -106,7 +106,10 @@ rechten als voor elke andere begeleider: hij of zij kan aanwezigheid en voortgan
 die klas vastleggen. Over de eigen gegevens kan hij of zij géén beoordeling vastleggen
 — geen eigen Yanbu'a- of Qur'an-voortgang, geen eigen memorisatiedoel, geen eigen
 rapport — ook niet wanneer hij of zij meehelpt in de eigen klas. Die beoordeling doet
-altijd een andere begeleider of de beheerder. Meehelpen kent geen
+altijd een andere begeleider of de beheerder. Dat geldt ook voor de **eigen
+aanwezigheid**: helpt hij of zij mee in de eigen klas, dan staat de eigen naam wel op
+de presentielijst, maar wordt die regel door een andere begeleider of de beheerder
+ingevuld en niet door hemzelf of haarzelf. Meehelpen kent geen
 leeftijdsgrens; wie meehelpt wordt door de beheerder aan een klas toegewezen, en dat
 is dus een bewuste keuze en geen automatisme.
 
@@ -292,7 +295,10 @@ berlaku hak yang sama seperti pengajar lain: ia dapat mencatat kehadiran dan pro
 kelas tersebut. Untuk datanya sendiri ia tidak dapat mencatat penilaian apa pun —
 bukan progres Yanbu'a atau Al-Qur'annya sendiri, bukan target hafalannya sendiri,
 bukan rapornya sendiri — sekalipun ia membantu di kelasnya sendiri. Penilaian itu
-selalu dilakukan oleh pengajar lain atau oleh admin. Membantu mengajar tidak
+selalu dilakukan oleh pengajar lain atau oleh admin. Hal yang sama berlaku untuk
+**kehadirannya sendiri**: bila ia membantu di kelasnya sendiri, namanya tetap muncul
+di daftar hadir, tetapi baris itu diisi oleh pengajar lain atau oleh admin, bukan
+olehnya sendiri. Membantu mengajar tidak
 dibatasi usia; siapa yang membantu ditetapkan oleh admin melalui penugasan ke sebuah
 kelas, jadi hal itu selalu merupakan keputusan yang disengaja. Tautan dengan akun orang
 tua tetap ada.

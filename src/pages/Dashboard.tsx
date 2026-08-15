@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ROLE_I18N_KEY } from '../lib/roleLabels'
+import { useViewScope } from '../context/ViewScopeContext'
+import { capabilityLabelKeys } from '../lib/viewScope'
 import { NAV_TABS } from '../components/tabs'
 import { WeeklySummary } from '../features/dashboard/WeeklySummary'
 
@@ -16,12 +17,26 @@ const TILE_CLASS =
  *
  * Admin additionally gets a "Kelola" tile: the single entry point into
  * the enrollment screens, which are still admin-only (`RequireAdmin`)
- * and no longer have top-level tabs of their own.
+ * and no longer have top-level tabs of their own. That tile stays keyed
+ * on `profile.role`: admin is a granted position rather than a
+ * relationship (ADR-019(b)), and `RequireAdmin` guards the routes it
+ * points at with the same check.
+ *
+ * The line under the person's name is the one thing here ADR-025
+ * changes. It used to render a single label out of `users.role`, which
+ * was the most visible place the app still asserted that a person is
+ * one thing: it told Bapak Hasan he is "Orang Tua" while he teaches two
+ * classes, and Aisyah she is "Santri" while she assists two. It now
+ * lists the relationships actually held — and for the accounts that
+ * hold one, or none yet, `capabilityLabelKeys` falls back to exactly
+ * the label that was there before.
  */
 export function Dashboard() {
   const { t } = useTranslation()
   const { profile } = useAuth()
+  const { capabilities } = useViewScope()
   const isAdmin = profile?.role === 'admin'
+  const labelKeys = capabilityLabelKeys(capabilities, profile?.role ?? null)
 
   return (
     <div className="space-y-4">
@@ -29,8 +44,10 @@ export function Dashboard() {
         <h1 className="text-lg font-bold text-ppme-primary">
           {profile?.full_name ?? profile?.email}
         </h1>
-        {profile?.role && (
-          <p className="mt-1 text-sm text-ppme-text/70">{t(ROLE_I18N_KEY[profile.role])}</p>
+        {labelKeys.length > 0 && (
+          <p className="mt-1 text-sm text-ppme-text/70">
+            {labelKeys.map((key) => t(key)).join(' · ')}
+          </p>
         )}
       </div>
 

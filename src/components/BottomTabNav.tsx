@@ -9,6 +9,15 @@ import { NAV_TABS } from './tabs'
  * are the prototype-validated set (checklist §5). Admin reaches
  * `/admin/*` through the "Kelola" tile on the dashboard or the extra
  * desktop tab.
+ *
+ * ADR-025's scope switch is likewise **not** here, and the reason is
+ * not only room. A scope is not a destination: pressing it changes what
+ * the current screen is about while leaving you on it, which is the
+ * opposite of what every control in this bar does. It renders above the
+ * content on mobile (`AppLayout`) and at the end of the tab row on
+ * desktop (`DesktopTabs`), where there is horizontal space for it. Five
+ * plus one would also not fit — 6 × 44px targets across 390px leaves
+ * 65px per label, and the Dutch strings are the longer pair.
  */
 export function BottomTabNav() {
   const { t } = useTranslation()

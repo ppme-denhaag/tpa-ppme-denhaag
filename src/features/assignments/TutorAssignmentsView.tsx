@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
-import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
+import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
+import { useViewScope } from '../../context/ViewScopeContext'
 import type { Database, TablesInsert } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
 import {
@@ -44,6 +45,7 @@ export function TutorAssignmentsView() {
   const { t, i18n } = useTranslation()
   const { profile } = useAuth()
   const { classes, loading: classesLoading } = useMyClasses()
+  const { selfStudentId } = useViewScope()
 
   const [classId, setClassId] = useState<string | null>(null)
   const [roster, setRoster] = useState<RosterStudent[]>([])
@@ -74,7 +76,7 @@ export function TutorAssignmentsView() {
     setLoading(true)
     setError(null)
     setSelectedAssignment(null)
-    Promise.all([fetchClassRoster(classId), fetchClassAssignments(classId)])
+    Promise.all([fetchRecordableRoster(classId, selfStudentId), fetchClassAssignments(classId)])
       .then(([rosterData, assignmentsData]) => {
         if (!active) return
         setRoster(rosterData)
@@ -89,7 +91,7 @@ export function TutorAssignmentsView() {
     return () => {
       active = false
     }
-  }, [classId])
+  }, [classId, selfStudentId])
 
   const dateFormatter = useMemo(
     () =>

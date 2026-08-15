@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../context/AuthContext'
 import { useMyStudents } from '../../hooks/useMyStudents'
+import { useViewScope } from '../../context/ViewScopeContext'
+import { isSelfRecord } from '../../lib/capabilities'
 import { ChildPicker } from '../../components/ChildPicker'
 import { getErrorMessage } from '../../lib/errors'
 import { fetchReportsForStudents, type YearEndReport } from './api'
@@ -17,7 +18,7 @@ import { ReportCard } from './ReportCard'
  */
 export function FamilyReportsView() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
+  const { selfStudentId } = useViewScope()
   const { students, loading: studentsLoading } = useMyStudents()
 
   const [studentId, setStudentId] = useState<string | null>(null)
@@ -54,7 +55,7 @@ export function FamilyReportsView() {
     [students, studentId],
   )
   const title =
-    profile?.role === 'parent' && selectedName
+    !isSelfRecord(studentId, selfStudentId) && selectedName
       ? t('reports.childTitle', { name: selectedName })
       : t('reports.myTitle')
 

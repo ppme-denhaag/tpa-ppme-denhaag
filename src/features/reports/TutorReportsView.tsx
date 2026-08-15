@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
-import { fetchClassRoster, type RosterStudent } from '../../lib/roster'
+import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
+import { useViewScope } from '../../context/ViewScopeContext'
 import { getErrorMessage } from '../../lib/errors'
 import { fetchReportsForStudents, fetchTutorNames, type YearEndReport } from './api'
 import { GenerateDraftsPanel } from './GenerateDraftsPanel'
@@ -36,6 +37,7 @@ export function TutorReportsView() {
   const { t } = useTranslation()
   const { profile } = useAuth()
   const { classes, loading: classesLoading } = useMyClasses()
+  const { selfStudentId } = useViewScope()
   const isAdmin = profile?.role === 'admin'
 
   const [classId, setClassId] = useState<string | null>(null)
@@ -57,7 +59,7 @@ export function TutorReportsView() {
     setLoading(true)
     setError(null)
     setSelectedId(null)
-    fetchClassRoster(classId)
+    fetchRecordableRoster(classId, selfStudentId)
       .then(async (students) => {
         const data = await fetchReportsForStudents(students.map((s) => s.id))
         // Only admin can resolve another user's name (`users_self_read`
@@ -78,7 +80,7 @@ export function TutorReportsView() {
     return () => {
       active = false
     }
-  }, [classId, isAdmin, reloadToken])
+  }, [classId, isAdmin, reloadToken, selfStudentId])
 
   const handleGenerated = useCallback(() => setReloadToken((n) => n + 1), [])
 

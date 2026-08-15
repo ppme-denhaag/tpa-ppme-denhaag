@@ -78,12 +78,20 @@ values
   -- on opposite halves of the app:
   --
   --   Ustadzah Aminah — role 'tutor', teaches Kelas A, her own son Yusuf
-  --     is in Kelas B. Every page routes her to the *tutor* views, so
-  --     she is the check that the tutor side is untouched.
+  --     is in Kelas B. Since ADR-025 she lands on the *class* scope, as
+  --     before, and the switch is what gets her to Yusuf — a route she
+  --     did not have at all until then. She is the account to sign in as
+  --     when a change touches the family screens' "am I looking at my
+  --     own record" question: her role column says `tutor` while
+  --     `fn_my_children()` holds her son, so a gate written against the
+  --     role would deny her the control to confirm his home practice.
   --   Bapak Hasan — role 'parent', teaches Kelas B **and Kelas A**, and
-  --     his own daughter Khadijah is in Kelas A. Every page routes him to
-  --     the *family* views, which is where the unfiltered "my children"
-  --     query used to hand him Kelas B's whole roster in the ChildPicker.
+  --     his own daughter Khadijah is in Kelas A. Before ADR-025 every
+  --     page routed him to the *family* views on the strength of that
+  --     role column — which is where the unfiltered "my children" query
+  --     used to hand him Kelas B's whole roster in the ChildPicker. He
+  --     now lands on the class scope like any other tutor and reaches
+  --     the family views through the switch.
   --     Kelas B is the disjoint half; Kelas A makes him the **overlap
   --     tutor-parent** of RLS-36 — a tutor of the class his own child
   --     sits in. Unlike Aisyah's, his overlap is *not* closed by
@@ -110,12 +118,17 @@ values
   --     is the **overlap**, and the reason it was added: assisting the
   --     group you already attend is the likely arrangement, and it is
   --     the one that put her own record inside her own tutor grant.
-  --     Until migration 013 that let her grade herself. She is now the
-  --     account to click through for ADR-023: her class picker offers
-  --     both classes, the Kelas A roster contains her own name, and
-  --     recording progress against that row must fail while recording
-  --     against any classmate succeeds. Her attendance row is the
-  --     documented exception (ADR-023(c)).
+  --     Until migration 013 that let her grade herself. Until ADR-025
+  --     no screen took her to a roster at all, so the entitlement
+  --     ADR-020 records was unreachable in the product; she now lands on
+  --     the class scope and the exclusion is visible rather than
+  --     theoretical. Her own name is off the roster on the five
+  --     evaluative screens (`fetchRecordableRoster`, mirroring
+  --     `fn_my_recordable_students()`), and on the attendance register
+  --     it is *shown* but left out of what the upsert submits — the
+  --     ADR-023(c) gap, closed in the interface because the register is
+  --     one statement for the whole class. Sign in as her whenever a
+  --     change touches a roster query or the register's payload.
   ('d1000000-0000-0000-0000-000000000001', 'ustadzah.aminah@dev.local', 'Ustadzah Aminah', 'tutor', 'id'),
   ('d1000000-0000-0000-0000-000000000002', 'bapak.hasan@dev.local', 'Bapak Hasan', 'parent', 'id'),
   ('d1000000-0000-0000-0000-000000000003', 'ustadzah.laila@dev.local', 'Ustadzah Laila', 'admin', 'id'),
