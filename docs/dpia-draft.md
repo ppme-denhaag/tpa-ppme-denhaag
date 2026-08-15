@@ -53,11 +53,25 @@ organization warrants a documented assessment.
   person holds (parent of this child, tutor of this class) rather than against a
   role label, so nothing about it depends on the application asking the right
   question. It is now asserted directly in the test suite (test-plan.md §3,
-  RLS-28…RLS-35), including that each half keeps its own limits — a tutor-parent
+  RLS-28…RLS-41), including that each half keeps its own limits — a tutor-parent
   cannot record progress for their own child, and cannot see their own child's
   unpublished report merely because they teach someone else's — and including
   the admin exception above, which is asserted in the same explicit terms rather
   than left as an unstated consequence.
+
+  **One arrangement is the exception to that sentence, by decision** (TAD
+  ADR-024, RLS-36). Those limits hold because a tutor-parent's own child is in a
+  class they do *not* teach. Where the child is in the class they **do** teach —
+  the ordinary case at a small TPA, where a teacher teaches their own children —
+  the tutor grant already contains that child, so the parent-half limits do not
+  apply to them: the account records that child's progress and writes that
+  child's year-end report, which means seeing it before it is published. PPME
+  decided this is correct rather than a gap to close. It is bounded by class, not
+  by relationship — the same account is still refused for a second child of
+  theirs enrolled elsewhere — and it is disclosed to families in the privacy
+  policy rather than left as an unstated consequence. The narrower case of a
+  santri who assists their own class was *not* accepted and is closed by
+  migration 013 (ADR-023, R7).
 
   **Notifications follow the same principle, and did not until ADR-022.** Who is
   told about a child was decided by `users.role` rather than by the relationship,

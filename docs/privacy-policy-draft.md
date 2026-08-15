@@ -135,9 +135,16 @@ Iemand kan meer dan één rol tegelijk hebben — een docent van wie het eigen k
 op de TPA zit, of een beheerder die daarnaast lesgeeft. Zo iemand krijgt precies de
 optelsom van de rollen die hij of zij heeft en niets daarbuiten: als docent de eigen
 klas, als ouder het eigen kind. De grenzen van elke rol blijven daarbij op hun eigen
-helft gelden — lesgeven geeft bijvoorbeeld geen toegang tot een nog niet vrijgegeven
-jaarrapport van het eigen kind, en het ouderschap geeft geen recht om voortgang vast
-te leggen voor de leerlingen van de eigen klas. Is een van die rollen beheerder, dan
+helft gelden — het ouderschap geeft bijvoorbeeld geen recht om voortgang vast te
+leggen voor de leerlingen van de eigen klas.
+
+Zit het eigen kind in de klas die de docent zélf lesgeeft, dan vallen die twee helften
+samen. Voor dat kind is hij of zij dan gewoon de docent: het vastleggen van
+aanwezigheid en voortgang hoort daarbij, en ook het schrijven van het jaarrapport,
+dat de docent dus al vóór vrijgave inziet. PPME heeft dit bewust zo besloten — op een
+kleine TPA geeft een ustadz of ustadzah nu eenmaal les aan de eigen kinderen. Wat
+onveranderd blijft: dit geldt alleen voor de eigen klas, en alleen voor het eigen
+kind dat daarin zit. Is een van die rollen beheerder, dan
 geldt de bredere toegang uit de vorige alinea: die is niet aan een klas of een kind
 gebonden en gaat dus verder dan de optelsom van de overige rollen.
 
@@ -315,9 +322,15 @@ Satu orang dapat memegang lebih dari satu peran sekaligus — ustadz yang anakny
 sendiri juga mengaji di TPA, atau admin yang ikut mengajar. Aksesnya adalah
 gabungan dari peran-peran yang ia pegang dan tidak lebih: sebagai ustadz ia melihat
 kelas yang diampu, sebagai orang tua ia melihat anaknya sendiri. Batasan tiap peran
-tetap berlaku di bagiannya masing-masing — mengajar, misalnya, tidak memberi akses ke
-rapor anaknya sendiri yang belum diterbitkan, dan menjadi orang tua tidak memberi hak
-mencatat progres santri di kelas yang ia ampu. Bila salah satu perannya adalah admin,
+tetap berlaku di bagiannya masing-masing — menjadi orang tua, misalnya, tidak memberi
+hak mencatat progres santri di kelas yang ia ampu.
+
+Bila anaknya sendiri berada di kelas yang ia ampu, kedua bagian itu menyatu. Untuk
+anak tersebut ia memang ustadznya: mencatat kehadiran dan progres termasuk di
+dalamnya, begitu pula menulis rapor akhir tahun, sehingga ia sudah dapat melihat
+rapor itu sebelum diterbitkan. PPME memutuskan hal ini dengan sadar — di TPA kecil,
+seorang ustadz atau ustadzah memang mengajar anaknya sendiri. Yang tidak berubah: ini
+hanya berlaku untuk kelas yang ia ampu, dan hanya untuk anaknya yang ada di kelas itu. Bila salah satu perannya adalah admin,
 berlaku akses yang lebih luas seperti dijelaskan pada paragraf sebelumnya: akses itu
 tidak terikat pada kelas atau anak tertentu, sehingga melampaui gabungan peran-peran
 lainnya.

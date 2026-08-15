@@ -87,10 +87,13 @@ values
   --     Kelas B is the disjoint half; Kelas A makes him the **overlap
   --     tutor-parent** of RLS-36 — a tutor of the class his own child
   --     sits in. Unlike Aisyah's, his overlap is *not* closed by
-  --     migration 013: he can record Khadijah's progress and read her
-  --     draft year-end report through the tutor grant. That is behaviour
-  --     nobody has decided rather than a defect (see RLS-36), and he is
-  --     the account to click through when PPME wants to look at it.
+  --     migration 013: he can record Khadijah's progress and write her
+  --     year-end report, seeing it in draft, through the tutor grant.
+  --     That is PPME's decision (ADR-024) and not an oversight — at a
+  --     small TPA a teacher teaches their own children. He is the account
+  --     to sign in as when a change touches the report editor or a
+  --     "drafts are invisible to parents" assumption, because for him
+  --     that assumption does not hold.
   --   Ustadzah Laila — role 'admin', teaches Kelas A, her own daughter
   --     Salma is in Kelas B: all three relationships at once, the shape
   --     RLS-34 asserts. She is the one to click through when a change
