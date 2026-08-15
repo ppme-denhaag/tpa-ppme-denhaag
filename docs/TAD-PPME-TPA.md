@@ -842,7 +842,7 @@ Each scheduled function follows the same pattern:
   - DPIA (Data Protection Impact Assessment) for children's data
   - Right to erasure implementation (delete student + all related records, **plus the year-end report PDF object in Storage**, which `on delete cascade` does not reach — manual runbook in README until an automated flow exists)
   - Data export (GDPR Article 20 portability — CSV export)
-* **CI/CD Pipeline**: Git push → Netlify auto-build → Preview deploy (PR) → Production deploy (main branch)
+* **CI/CD Pipeline**: Git push → Netlify auto-build → Preview deploy (PR) → Production deploy (main branch). **Production builds are currently stopped on purpose** (`build_settings.stop_builds` on the `ppme-tpa` site), to conserve the account's Netlify build credits while the project is still being built out — so `ppme-tpa.netlify.app` stays pinned to whatever commit was last published and does **not** track `main`. Per-PR deploy previews are unaffected and still build, which is why CI can be green on a change that is not live. Production is published deliberately, by re-enabling builds, and the plan is to do that once the work is close to complete. Two consequences worth knowing before diagnosing anything: a merged change is expected *not* to appear on the production URL, and whenever builds are re-enabled the release will carry every merged-but-undeployed commit at once rather than one increment
 * **Monitoring**: Netlify Analytics (built-in) + Supabase Dashboard (query performance, active connections)
 
 # Questions
