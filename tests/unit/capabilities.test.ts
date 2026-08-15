@@ -3,6 +3,7 @@ import {
   NO_CAPABILITIES,
   deriveCapabilities,
   familyLinkFilter,
+  fetchCapabilities,
   fetchFamilyLinks,
   fetchTaughtClasses,
   fetchTutorClassCount,
@@ -15,6 +16,7 @@ const TP = '11111111-1111-4111-8111-111111111111' // tutor of one class, parent 
 const PARENT = '22222222-2222-4222-8222-222222222222'
 const STUDENT16 = '33333333-3333-4333-8333-333333333333'
 const OTHER = '44444444-4444-4444-8444-444444444444'
+const SUBJECT = '55555555-5555-4555-8555-555555555555' // the account under test in the lattice sweep
 
 function link(over: Partial<FamilyLink> = {}): FamilyLink {
   return {
@@ -140,6 +142,108 @@ describe('deriveCapabilities — relationships in, capabilities out (ADR-019)', 
 
   it('grants nothing at all when there is no profile yet', () => {
     expect(deriveCapabilities({ ...base, userId: OTHER, role: null })).toEqual(NO_CAPABILITIES)
+  })
+})
+
+/**
+ * The whole lattice, not a selection from it.
+ *
+ * The cases above are the combinations somebody thought to name. Four
+ * independent booleans have sixteen, and the claim ADR-019 rests on is
+ * that they are genuinely independent — that no capability implies
+ * another, suppresses another, or is reachable by a route other than its
+ * own relationship. A hand-picked list can only ever demonstrate the
+ * cells it lists; this sweeps every one, so a future short-circuit
+ * ("an admin obviously isn't a parent", "a student can't be a tutor")
+ * fails here rather than in a family's screen.
+ *
+ * The four inputs are deliberately mismatched to the outputs where they
+ * can be: `role` is only ever allowed to produce `isAdmin`, and for the
+ * non-admin cells the role column is set to whatever would be *wrong* if
+ * anything read it.
+ */
+describe('the sixteen combinations of the four capabilities', () => {
+  const cells = [false, true]
+  const combinations = cells.flatMap((isAdmin) =>
+    cells.flatMap((isTutorOfAnyClass) =>
+      cells.flatMap((isParentOfAnyone) =>
+        cells.map((isSelfStudent) => ({
+          isAdmin,
+          isTutorOfAnyClass,
+          isParentOfAnyone,
+          isSelfStudent,
+        })),
+      ),
+    ),
+  )
+
+  it.each(combinations)(
+    'admin=$isAdmin tutor=$isTutorOfAnyClass parent=$isParentOfAnyone self=$isSelfStudent',
+    (expected) => {
+      const familyLinks: FamilyLink[] = []
+      // Two separate rows, because they are two separate relationships:
+      // a child of theirs, and their own 16+ record whose `parent_id` is
+      // somebody else entirely.
+      if (expected.isParentOfAnyone) familyLinks.push(link({ parent_id: SUBJECT }))
+      if (expected.isSelfStudent) {
+        familyLinks.push(
+          link({
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            parent_id: OTHER,
+            user_id: SUBJECT,
+          }),
+        )
+      }
+      expect(
+        deriveCapabilities({
+          userId: SUBJECT,
+          // The one input that may set `isAdmin`, and the one that may
+          // never set anything else: for every non-admin cell the role
+          // column says something the capabilities must not echo.
+          role: expected.isAdmin ? 'admin' : 'student',
+          familyLinks,
+          tutorClassCount: expected.isTutorOfAnyClass ? 2 : 0,
+        }),
+      ).toEqual(expected)
+    },
+  )
+
+  it('never reads one relationship out of the other one’s row', () => {
+    // The two family booleans come from two different columns of
+    // possibly the same row, and the failure mode is subtle: a 16+
+    // santri whose own record is read as parenthood becomes a "parent"
+    // with a ChildPicker over themselves, and a parent whose child has a
+    // self-login becomes a "student" and is offered a santri's screens.
+    const ownRecord = link({ parent_id: OTHER, user_id: SUBJECT })
+    const theirChildWithOwnLogin = link({
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      parent_id: SUBJECT,
+      user_id: OTHER,
+    })
+    expect(
+      deriveCapabilities({
+        userId: SUBJECT,
+        role: 'parent',
+        familyLinks: [ownRecord, theirChildWithOwnLogin],
+        tutorClassCount: 0,
+      }),
+    ).toEqual({ ...NO_CAPABILITIES, isParentOfAnyone: true, isSelfStudent: true })
+  })
+
+  it('counts a person once however many rows reach them', () => {
+    // The overlap case at the data layer (pgTAP RLS-36): a tutor whose
+    // own child sits in the class they teach. Both grants reach the same
+    // student row, and the capability is still one boolean — the screens
+    // derive from these, so a "true twice" would have to become a count
+    // somewhere before it could become a duplicate.
+    expect(
+      deriveCapabilities({
+        userId: SUBJECT,
+        role: 'parent',
+        familyLinks: [link({ parent_id: SUBJECT }), link({ parent_id: SUBJECT })],
+        tutorClassCount: 1,
+      }),
+    ).toEqual({ ...NO_CAPABILITIES, isParentOfAnyone: true, isTutorOfAnyClass: true })
   })
 })
 
@@ -352,5 +456,105 @@ describe('fetchTaughtClasses — the tutor-side mirror of the same fix', () => {
     return expect(fetchTaughtClasses(client, TP, { isAdmin: false })).rejects.toMatchObject({
       message: 'permission denied',
     })
+  })
+})
+
+/**
+ * The wrapper the app actually calls, which nothing exercised until now:
+ * every test above reaches past it to one of the two queries or to the
+ * pure derivation. What it adds on top of them is a decision — that the
+ * two relationship queries are independent and therefore run together —
+ * and a failure mode, since a rejection from either one has to surface
+ * rather than resolve into a smaller capability set.
+ */
+describe('fetchCapabilities — the two relationship queries, together', () => {
+  function fakeClient(over: {
+    links?: FamilyLink[]
+    classCount?: number
+    linksError?: unknown
+    classesError?: unknown
+  }) {
+    const started: string[] = []
+    let resolveLinks: (() => void) | undefined
+    const client = {
+      from(table: string) {
+        started.push(table)
+        if (table === 'students') {
+          return {
+            select: () => ({
+              or: () => ({
+                order: () =>
+                  // Deliberately deferred: if the two queries were
+                  // awaited in sequence, `classes` would not have been
+                  // touched by the time this is still pending.
+                  new Promise((resolve) => {
+                    resolveLinks = () =>
+                      resolve({ data: over.links ?? [], error: over.linksError ?? null })
+                  }),
+              }),
+            }),
+          }
+        }
+        return {
+          select: () => ({
+            contains: () =>
+              Promise.resolve({ count: over.classCount ?? 0, error: over.classesError ?? null }),
+          }),
+        }
+      },
+    } as unknown as Parameters<typeof fetchCapabilities>[0]
+    return { client, started, releaseLinks: () => resolveLinks?.() }
+  }
+
+  it('asks both questions at once, not one after the other', async () => {
+    // Two independent round trips on the critical path of every page
+    // load. Awaiting them in sequence doubles the latency of the first
+    // screen a family sees, on the connection they are most likely to
+    // have.
+    const { client, started, releaseLinks } = fakeClient({ classCount: 1 })
+    const pending = fetchCapabilities(client, TP, 'parent')
+    await Promise.resolve()
+    expect(started).toEqual(['students', 'classes'])
+    releaseLinks()
+    await pending
+  })
+
+  it('combines both answers into the capability set the screens hold', async () => {
+    const { client, releaseLinks } = fakeClient({
+      links: [link({ parent_id: TP })],
+      classCount: 1,
+    })
+    const pending = fetchCapabilities(client, TP, 'parent')
+    releaseLinks()
+    await expect(pending).resolves.toEqual({
+      ...NO_CAPABILITIES,
+      isParentOfAnyone: true,
+      isTutorOfAnyClass: true,
+    })
+  })
+
+  it('passes the role straight through without letting it imply anything else', async () => {
+    // An admin with no children and no class: `isAdmin` is the only
+    // capability the role column may produce, here as in
+    // `deriveCapabilities`.
+    const { client, releaseLinks } = fakeClient({})
+    const pending = fetchCapabilities(client, OTHER, 'admin')
+    releaseLinks()
+    await expect(pending).resolves.toEqual({ ...NO_CAPABILITIES, isAdmin: true })
+  })
+
+  it('rejects when either query fails, rather than reporting fewer capabilities', async () => {
+    // A swallowed error here is indistinguishable from "this person is
+    // nobody" — which is a family locked out of their own child's
+    // screens with no error to explain it.
+    const links = fakeClient({ linksError: { message: 'students unavailable' } })
+    const linksPending = fetchCapabilities(links.client, TP, 'parent')
+    links.releaseLinks()
+    await expect(linksPending).rejects.toMatchObject({ message: 'students unavailable' })
+
+    const classes = fakeClient({ classesError: { message: 'classes unavailable' } })
+    const classesPending = fetchCapabilities(classes.client, TP, 'parent')
+    classes.releaseLinks()
+    await expect(classesPending).rejects.toMatchObject({ message: 'classes unavailable' })
   })
 })

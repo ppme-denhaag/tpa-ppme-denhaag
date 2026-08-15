@@ -103,7 +103,10 @@ die niet zelf wijzigen. De koppeling met het ouderaccount blijft altijd bestaan.
 
 Helpt een oudere leerling mee met een jongere klas, dan gelden voor díe klas dezelfde
 rechten als voor elke andere begeleider: hij of zij kan aanwezigheid en voortgang van
-die klas vastleggen. Voor de eigen gegevens verandert er niets. Meehelpen kent geen
+die klas vastleggen. Over de eigen gegevens kan hij of zij géén beoordeling vastleggen
+— geen eigen Yanbu'a- of Qur'an-voortgang, geen eigen memorisatiedoel, geen eigen
+rapport — ook niet wanneer hij of zij meehelpt in de eigen klas. Die beoordeling doet
+altijd een andere begeleider of de beheerder. Meehelpen kent geen
 leeftijdsgrens; wie meehelpt wordt door de beheerder aan een klas toegewezen, en dat
 is dus een bewuste keuze en geen automatisme.
 
@@ -279,7 +282,10 @@ gunakan untuk keperluan ini.
 
 Bila santri yang lebih besar ikut membantu kelas yang lebih kecil, untuk kelas itu
 berlaku hak yang sama seperti pengajar lain: ia dapat mencatat kehadiran dan progres
-kelas tersebut. Untuk datanya sendiri tidak ada yang berubah. Membantu mengajar tidak
+kelas tersebut. Untuk datanya sendiri ia tidak dapat mencatat penilaian apa pun —
+bukan progres Yanbu'a atau Al-Qur'annya sendiri, bukan target hafalannya sendiri,
+bukan rapornya sendiri — sekalipun ia membantu di kelasnya sendiri. Penilaian itu
+selalu dilakukan oleh pengajar lain atau oleh admin. Membantu mengajar tidak
 dibatasi usia; siapa yang membantu ditetapkan oleh admin melalui penugasan ke sebuah
 kelas, jadi hal itu selalu merupakan keputusan yang disengaja. Tautan dengan akun orang
 tua tetap ada.

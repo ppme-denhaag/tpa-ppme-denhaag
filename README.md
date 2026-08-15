@@ -27,6 +27,7 @@ npm run dev
 npm run typecheck            # tsc -b --noEmit (src/)
 npm run typecheck:functions  # tsc -p netlify/functions (Netlify Functions, not covered by the above)
 npm run test                  # Vitest unit tests
+npm run test:coverage         # …with a v8 coverage report over src/lib + netlify/functions/lib
 npm run test:e2e              # Playwright (starts its own dev server)
 npm run build                  # production build
 ```
@@ -124,11 +125,19 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
-`supabase/tests/database/rls.test.sql` implements all 35 cases from
-test-plan.md §3 (RLS-01…RLS-35), plus WH-01…WH-12 for the notification
-webhooks in migrations 009 and 010, plus NC-01…NC-16 for the notification
-centre in migration 012 — 171 pgTAP assertions, using the standard
-fixture set from §2. The NC cases assert that only the addressee reads a
+`supabase/tests/database/rls.test.sql` implements all 41 cases from
+test-plan.md §3 (RLS-01…RLS-41), plus WH-01…WH-12 for the notification
+webhooks in migrations 009 and 010, plus NC-01…NC-18 for the notification
+centre in migration 012 — 227 pgTAP assertions, using the standard
+fixture set from §2. RLS-36…RLS-41 and NC-17/NC-18 close the combination
+space rather than adding a feature: every dual-role persona before them
+deliberately kept the tutor half and the parent half in different
+classes, so the commonest arrangement at a small TPA — teaching the class
+your own child is in — had never been asserted, and four of the sixteen
+capability combinations had no case at all. RLS-37 found a real hole
+there: a student assistant assigned to their own class could grade their
+own work, which is the boundary ADR-020 states in prose and never
+enforced. Migration 013 (ADR-023) closes it for every evaluative write. The NC cases assert that only the addressee reads a
 notification, that **no client role can create or delete one at all**,
 that a recipient may write `read_at` and nothing else (a column-level
 GRANT, since RLS has no column granularity), that neither admin nor tutor
@@ -159,9 +168,11 @@ where the pattern stops: `fn_is_admin()` is an unconditional `ALL`, so
 once admin is in the union the "nothing more" property no longer holds
 and each of RLS-31/RLS-32's refusals becomes an allowance. RLS-35 covers
 the student assistant (ADR-020): a student with their own login who also tutors may
-record for the class they teach, and still not for their own record —
-no policy tests for the `student` role anywhere, so "students are
-read-only" only ever described a student who taught nothing. Like the
+record for the class they teach, and — since ADR-023 and RLS-37 — not for
+their own record even when they teach the class they sit in, which is
+where that boundary turned out never to have been enforced. No policy
+tests for the `student` role anywhere, so "students are read-only" only
+ever described a student who taught nothing. Like the
 RLS-22 block, these cases add rows of their own and so are placed after
 the assertions that count exact fixture rows. It runs entirely inside a transaction that's rolled
 back at the end, so it never leaves data behind. CI runs it against a
@@ -541,7 +552,7 @@ holds, so a recipient cannot rewrite an event on their own row.
 |---|---|
 | `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
 | `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
-| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
+| `student` (self-login) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020) — with one carve-out since ADR-023: those grants exclude the assistant's **own** record for every evaluative write, so a santri assigned to the class they sit in cannot grade themselves (`attendance` excepted, deliberately — see ADR-023(c)). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like. The row records that the student has an account, not how old they are — the age threshold for holding one is Google's (ADR-021) |
 | `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
 
 Admin's access has always been granted at the database layer — every table
