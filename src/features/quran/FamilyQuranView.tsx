@@ -67,9 +67,7 @@ export function FamilyQuranView() {
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-ppme-primary">{title}</h1>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
-        <ChildPicker students={students} value={studentId} onChange={setStudentId} />
-      </div>
+      <ChildPicker students={students} value={studentId} onChange={setStudentId} />
 
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}
 

@@ -125,9 +125,7 @@ export function FamilyAssignmentsView() {
     <div className="space-y-4">
       <h1 className="text-lg font-bold text-ppme-primary">{title}</h1>
 
-      <div className="rounded-lg bg-white p-4 shadow-sm">
-        <ChildPicker students={students} value={studentId} onChange={setStudentId} />
-      </div>
+      <ChildPicker students={students} value={studentId} onChange={setStudentId} />
 
       {!loading && displayItems.length > 0 && (
         <p className="text-sm font-medium text-ppme-text/70">
