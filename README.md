@@ -399,10 +399,14 @@ missing key logs and returns `not-configured` — which is the opposite of
 unauthenticated endpoint is a security failure, an unsent courtesy email
 is a degraded feature.
 
-**Known: `invite-user` now sends two emails** — GoTrue's magic-link
-invite and this branded one. Removing the first also removes the
-`auth.users` row the profile insert needs, so it is an auth change, not
-an email one. See ADR-018(b).
+**Resolved: `invite-user` sends exactly one email.** It used to also
+trigger GoTrue's own magic-link invite, recorded as open in ADR-018(b).
+`invite-user.mts` now creates the `auth.users` row with
+`auth.admin.createUser({ email, email_confirm: true })` instead of
+`inviteUserByEmail`, which creates the row without sending GoTrue's mail.
+Safe here specifically because sign-in is Google OAuth only (ADR-003) —
+there is no password or magic-link flow anywhere in this app for that
+token to serve, so it was pure duplication. See ADR-026.
 
 **Never send real email while developing.** The transport is injected
 (`sendEmail(request, fetchImpl)`) and every test passes a fake, so the

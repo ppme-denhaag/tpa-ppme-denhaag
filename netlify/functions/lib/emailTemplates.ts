@@ -157,8 +157,9 @@ const INSTALL_NOTE: Record<Locale, string> = {
  *
  * No invite token or magic link: access is Google OAuth against the
  * address an admin already registered, so the link is simply the app.
- * (GoTrue's own invite mail, sent separately by `inviteUserByEmail`,
- * does carry a link — see ADR-018 on why there are currently two.)
+ * This is also why `invite-user.mts` sends only this one email —
+ * GoTrue's own invite mail carried a link nothing here consumes, and
+ * ADR-026 dropped it.
  */
 export const INVITATION: Record<UserRole, Record<Locale, EmailTemplate>> = {
   parent: {

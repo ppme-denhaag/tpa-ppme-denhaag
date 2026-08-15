@@ -1224,24 +1224,23 @@ paths:
         their JWT + a `public.users` lookup under the service-role key)
         rather than trusting the client, since this endpoint necessarily
         runs under `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS entirely —
-        required for `auth.admin.inviteUserByEmail()` and to write
-        `public.users` ahead of the invitee's first sign-in). On success,
-        creates both the `auth.users` row (GoTrue emails a sign-in link,
-        with `redirectTo` set to the deploy's own canonical URL rather
-        than relying on the project's dashboard-configured Site URL) and
-        the matching `public.users` profile in one request. If the email
-        is already registered, `inviteUserByEmail` is idempotent (returns
-        the existing user rather than erroring) and the profile insert
-        then hits a unique-constraint violation — surfaced as 409, not
-        the generic 500.
+        required for `auth.admin.createUser()` and to write `public.users`
+        ahead of the invitee's first sign-in). On success, creates both the
+        `auth.users` row, confirmed (`email_confirm: true`) and silent —
+        no GoTrue email — and the matching `public.users` profile in one
+        request. Unlike the `inviteUserByEmail` this endpoint used before
+        ADR-026, `createUser` is not idempotent for an already-registered
+        email: it errors outright (`email_exists`), which this endpoint
+        catches and surfaces as 409, the same status the old idempotency-
+        then-unique-constraint path produced.
 
-        **Sends two emails**, which is a known consequence of adding the
-        branded invitation (TAD ADR-018) to a call site that already emailed:
-        GoTrue's own magic-link invite, and the Resend invitation/onboarding
-        template chosen by the new user's `role`. Removing the first would
-        also remove the `auth.users` row this endpoint depends on, so it is a
-        separate decision from adding the second — recorded in ADR-018, not
-        settled here.
+        **Sends exactly one email**, the Resend invitation/onboarding
+        template chosen by the new user's `role`. Until ADR-026 this
+        endpoint also triggered GoTrue's own magic-link invite — recorded
+        as an open duplication in TAD ADR-018(b) — but sign-in here is
+        Google OAuth only (ADR-003), so that link was never consumed by
+        anything; ADR-026 drops it by creating the `auth.users` row with
+        `createUser` instead of `inviteUserByEmail`.
 
         The invitation email can never fail this request. It is sent after the
         profile insert, `sendEmail` never throws, and the outcome is reported

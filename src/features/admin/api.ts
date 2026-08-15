@@ -27,8 +27,8 @@ export async function registerUser(params: {
 
 /**
  * Invites a new user by email via the invite-user Netlify Function
- * (service-role only — inviteUserByEmail and pre-creating the profile
- * both require bypassing RLS, which the browser client can never do).
+ * (service-role only — createUser and pre-creating the profile both
+ * require bypassing RLS, which the browser client can never do).
  * Collapses the "they sign in once, then an admin notices and registers
  * them" two-step flow into one action; falls back to the existing
  * pending-registrations list if the invite email never arrives and they
