@@ -77,10 +77,18 @@ export function FamilyAttendanceView() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-white p-4 shadow-sm">
-        <ChildPicker students={students} value={studentId} onChange={setStudentId} />
+      <ChildPicker students={students} value={studentId} onChange={setStudentId} />
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+      {/*
+        The date range keeps its own card. It used to share one with the
+        picker above, which is why this screen never showed the empty box
+        the other five did — the card had the filter to fall back on. Now
+        that `ChildPicker` carries its own card, sharing would nest one
+        inside the other, so the two are siblings and a single-child
+        family sees exactly what it saw before: this card alone.
+      */}
+      <div className="rounded-lg bg-white p-4 shadow-sm">
+        <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-medium text-ppme-text/70">
             {t('common.from')}
             <input

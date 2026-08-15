@@ -1371,6 +1371,61 @@ console.log('\n9. view scope (ADR-025)')
   }
 }
 
+// The child picker's card follows the picker, asserted on the rendered
+// page because that is the only place the bug existed. `ChildPicker`
+// returns null for a family with one child, and all six family views
+// used to draw the white card around it themselves — so the card stayed
+// behind, empty, on every screen a single-child family opened. Nothing
+// in TypeScript or in a unit test can see an empty box; only a rendered
+// DOM can, which is why these checks live here rather than in Vitest.
+console.log('\n10. the child picker takes its card with it')
+{
+  const FAMILY_ROUTES = ['/attendance', '/assignments', '/yanbua', '/quran', '/murajaah', '/reports']
+
+  // A person with exactly one record on their family screens — the 16+
+  // santri, who lands on those screens by default and sees precisely one
+  // subject, herself. No picker, and therefore no card that held it.
+  {
+    const ctx = await openAs(FATIMAH_USER)
+    try {
+      for (const route of FAMILY_ROUTES) {
+        await ctx.page.goto(`${ORIGIN}${route}`, { waitUntil: 'networkidle' })
+        await ctx.page.waitForTimeout(1200)
+        const body = await ctx.page.locator('main').innerText()
+        check(`single record ${route}: no picker is offered`, !body.includes('Pilih Anak'))
+        // The regression itself: a white card with nothing inside it.
+        const empty = await ctx.page.$$eval(
+          'div.rounded-lg.bg-white',
+          (els) => els.filter((el) => el.textContent.trim() === '').length,
+        )
+        check(`single record ${route}: and no empty card is left behind`, empty === 0, `${empty} empty card(s)`)
+      }
+      check('single record: no failed requests across the family screens', ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+    } finally {
+      await ctx.context.close()
+    }
+  }
+
+  // …and the other half, so the fix cannot be "delete the picker": a
+  // parent of three still gets it, still inside a card of its own.
+  {
+    const ctx = await openAs(SITI)
+    try {
+      for (const route of FAMILY_ROUTES) {
+        await ctx.page.goto(`${ORIGIN}${route}`, { waitUntil: 'networkidle' })
+        await ctx.page.waitForTimeout(1200)
+        const body = await ctx.page.locator('main').innerText()
+        check(`three children ${route}: the picker is still offered`, body.includes('Pilih Anak'))
+        const carded = await ctx.page.$$eval('div.rounded-lg.bg-white select', (els) => els.length)
+        check(`three children ${route}: and still sits inside its card`, carded >= 1, `${carded} carded select(s)`)
+      }
+      check('three children: no failed requests across the family screens', ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
+    } finally {
+      await ctx.context.close()
+    }
+  }
+}
+
 for (const dir of profiles) rmSync(dir, { recursive: true, force: true })
 
 const failed = results.filter((r) => !r.pass)

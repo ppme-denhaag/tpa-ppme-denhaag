@@ -502,8 +502,8 @@ drives real Chromium profiles (a parent with two children in one class, a
 second family in the same class, a 16+ student with their own account, and —
 since ADR-022 — a tutor whose own child attends and an admin whose own child
 attends) against a real push service, and asserts on what each browser
-displayed. 191 checks, currently all passing (63 before part 2b, 104 before
-part 3, 130 before ADR-022, 158 before ADR-025).
+displayed. 217 checks (63 before part 2b, 104 before part 3, 130 before
+ADR-022, 158 before ADR-025, 191 before the child-picker fix).
 
 **Section 9 is ADR-025's, and it is here rather than in Playwright for
 the reason section 7 is:** a scope switch that renders for the wrong
@@ -520,8 +520,34 @@ That last group is the live half of closing ADR-023(c), asserted against
 the database rather than against a payload, because a payload that looks
 right is the entire failure mode.
 
-**Last run: ADR-025, 191/191** (158 + 33 new).
-**Previous run: after ADR-024 (`main` at the dev-fixture overlap personas),
+**Section 10 is the child picker's, and it exists because the bug it
+pins was invisible to every other kind of test.** `ChildPicker` returns
+`null` for a family with one child, and all six family views used to
+draw the white card around it themselves — so a single-child family got
+an empty white box above their content on all six screens. TypeScript
+cannot see it, there is no unit test that renders a component (the
+project has no `@testing-library/react`), and Playwright was not
+asserting on empty chrome. Only a rendered DOM can answer it, so the
+check is a DOM query: on each of the six family routes, no
+`div.rounded-lg.bg-white` may have empty text content. Both halves are
+asserted, because "delete the picker" would also pass the first one —
+the 16+ santri (one record) sees no picker and no empty card, and Ibu
+Siti (three children) still sees the picker, still inside a card of its
+own. The card now belongs to `ChildPicker`, so the component's own
+`null` takes its chrome with it.
+
+**Last run: the child-picker fix, 208/217.** The nine failures are all
+in §4h `homework-due-reminders`, where live Web Push delivery reports
+`{"sent":0,"failed":5,"recorded":7}` — the notification rows are written
+correctly and the sends to the push service fail. **This is not caused by
+the change under test and is not accepted as a limitation:** it was
+reproduced on unmodified `main` by stashing the change, rebuilding and
+re-running (181/191 there, the same cluster plus one further flake in
+§4g, which passed on the re-run). It is an open item to be diagnosed on
+its own, not a documented gap.
+
+**Previous run: ADR-025, 191/191** (158 + 33 new).
+**And before that: after ADR-024 (`main` at the dev-fixture overlap personas),
 158/158.** Re-run specifically to close the gap ADR-023's and ADR-024's
 pull requests both declared: neither could exercise this harness, so each
 argued from the shape of its change that the harness was unaffected —
