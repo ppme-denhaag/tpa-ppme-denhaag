@@ -115,6 +115,14 @@ Twee handelingen blijven bewust voorbehouden aan anderen: alleen een ouder kan
 bevestigen dat er thuis geoefend is, en alleen de docent die een jaarrapport heeft
 geschreven kan het aan het gezin vrijgeven.
 
+Iemand kan meer dan één rol tegelijk hebben — een docent van wie het eigen kind ook
+op de TPA zit, of een beheerder die daarnaast lesgeeft. Zo iemand krijgt precies de
+optelsom van beide rollen en niets daarbuiten: als docent de eigen klas, als ouder
+het eigen kind. De grenzen van elke rol blijven op hun eigen helft gelden —
+lesgeven geeft bijvoorbeeld geen toegang tot een nog niet vrijgegeven jaarrapport
+van het eigen kind, en ouder zijn geeft geen recht om voortgang van de eigen klas
+namens het eigen kind vast te leggen.
+
 Het aantal beheerdersaccounts wordt bewust klein gehouden en elk account staat op
 naam. Vragen over wie op enig moment beheerder is, kunt u stellen via
 `[e-mailadres]`.
@@ -260,6 +268,14 @@ ustadz — tidak ada data tambahan yang dikumpulkan untuk peran ini, dan tidak a
 yang dibagikan ke luar PPME. Dua tindakan sengaja tetap menjadi hak pihak lain:
 hanya orang tua yang dapat mengonfirmasi hafalan yang disetorkan di rumah, dan hanya
 ustadz penulis rapor yang dapat menerbitkannya kepada keluarga.
+
+Satu orang dapat memegang lebih dari satu peran sekaligus — ustadz yang anaknya
+sendiri juga mengaji di TPA, atau admin yang ikut mengajar. Aksesnya adalah
+gabungan dari kedua peran itu dan tidak lebih: sebagai ustadz ia melihat kelas yang
+diampu, sebagai orang tua ia melihat anaknya sendiri. Batasan tiap peran tetap
+berlaku di bagiannya masing-masing — mengajar, misalnya, tidak memberi akses ke
+rapor anaknya sendiri yang belum diterbitkan, dan menjadi orang tua tidak memberi
+hak mencatat progres kelas atas nama anaknya sendiri.
 
 Jumlah akun admin sengaja dijaga tetap sedikit dan setiap akun atas nama perorangan.
 Pertanyaan mengenai siapa saja yang menjadi admin dapat diajukan ke

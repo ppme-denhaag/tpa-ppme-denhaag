@@ -31,6 +31,8 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 - 2 classes: Class A (tutor T1), Class B (tutor T2)
 - P1 has 2 children in Class A; P2 has 1 child in Class B; P3 has 1 child (16+, user_id set) in Class B
 - Sessions, attendance, assignments, and progress rows for each child
+- **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach
+- These rows are created inside the RLS suite itself, after RLS-14 and the NC cases, because those assert exact fixture row counts. `supabase/dev-fixture.sql` seeds the browser-facing equivalents (Ustadzah Aminah, Bapak Hasan) for manual walkthroughs
 
 ## 3. RLS test suite (highest priority)
 
@@ -65,10 +67,28 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-25 | RLS *permits* an admin `murajaah_log` INSERT (`mlog_admin_all`). The parent-only rule for home-practice confirmation is application-layer by design (ADR-014(c)) — asserted so the split between "the database allows it" and "the app does not offer it" stays visible |
 | RLS-26 | Admin's new rows widen nobody else: P1 sees 0 of them for P2's child, T1 sees 0 of the Class B rows, S16 sees 0 of a classmate's, anon still sees 0 |
 | RLS-27 | The non-admin write boundaries are unchanged after admin gained access: T1 cannot UPDATE an admin-created Class B attendance row, a parent still cannot INSERT `yanbua_progress` for their own child (but *does* see the admin-recorded row), a 16+ student is still read-only |
+| RLS-28 | TP (tutor of Class C, parent of a child in Class D) SELECT students → **exactly** the Class C roster plus their own child; their child's classmates absent, another family absent. Their `users.role` is still `parent` and `fn_is_admin()` is false, so nothing in the result came from a role check. Classes and sessions are the same union — the one they teach and the one their child attends |
+| RLS-29 | TT — the identical relationships with the opposite `users.role` (`tutor`) — sees the identically-shaped set. Cross-family: neither dual-role person can see the other's child, though both children share a class |
+| RLS-30 | The union holds per operational table, not just on `students`: TP reads attendance, `yanbua_progress`, `quran_progress`, `murajaah_assignments` and `murajaah_log` for a student they teach **and** for their own child, and 0 rows for their child's classmate and for an unrelated family — the rows exist and are invisible |
+| RLS-31 | **The union is not a promotion.** TP records Yanbu'a for a student in the class they teach → allowed; for their own child → rejected (the parent half is read-only). TP confirms home practice for their own child → allowed; for a student in their class → rejected (teaching does not grant a parent's confirmation) |
+| RLS-32 | `year_end_reports`, the sharpest form of the same rule: TP sees the draft for a student they teach, still cannot see the draft for their **own** child, does see their own child's published report, and sees none of the classmate's at any status |
+| RLS-33 | The dual-role rows widen nobody: TP sees none of the four original fixture students, P1 and T1 see none of the dual-role students, S16 still sees exactly one student row (their own), anon still sees 0 |
 
 **Gate: all RLS tests green in CI is a merge requirement for any migration change, and a launch requirement before real data entry (DPIA risk R1).**
 
 *RLS-22…RLS-27 were added with TAD ADR-014 (admin as super admin). They test policies that already existed and were never modified, which is the point: an unchanged-green run of RLS-01…RLS-21 alongside them is the evidence that widening the application layer did not touch the database layer. 27 cases, 64 pgTAP assertions in `supabase/tests/database/rls.test.sql`.*
+
+*RLS-28…RLS-33 were added with TAD ADR-019 (dual-role people), and for
+the same reason: they test policies that already existed and were never
+modified. The claim they exist to prove is that the policies are written
+against relationships rather than roles, so someone who is both a tutor
+and a parent gets the union of both grants and nothing more — which is
+the assumption the whole dual-role change rests on, and would have
+changed all of it had it been wrong. They are worth reading in pairs:
+RLS-28 and RLS-29 are the same person with opposite `users.role` values
+and identical results, and RLS-31 and RLS-32 are the two places the
+union deliberately does **not** widen. 29 assertions, taking the file to
+133.*
 
 *WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
 webhook). They are not RLS assertions, but they belong to the same "what
@@ -199,6 +219,24 @@ Also tested alongside it:
 - **Admin edit vs. stale PDF (ADR-014(e))**: an admin may PATCH a published report's narrative/grades but `publish-report` returns 403 for admin, so the stored PDF keeps the pre-edit text until the authoring tutor re-publishes. Asserted live against `netlify dev`: edit → fetch the signed URL → the object does *not* contain the new text → tutor re-publishes → the same object now does, with `published_at` preserved and still exactly one object in the bucket. The UI counterpart (publish button hidden for admin, "the PDF will not update until *[tutor]* re-publishes" notice shown) is covered in the §5 click-through
 
 *Implemented in `tests/unit/reports.test.ts`. Two notes for anyone extending these: the publish ordering is tested through `publishReportFlow`'s injected dependencies (a `renderPdf`/`uploadPdf` that throws must leave `markPublished` uncalled), which is why that ordering lives in its own module rather than inline in the Function; and the smoke test renders with `compress: false` and decodes pdfkit's hex `TJ` runs, since a plain substring search over a normal (FlateDecode) PDF finds only the `/Info` metadata.*
+
+### 4.5 Capability derivation (TAD ADR-019)
+
+Implemented in `tests/unit/capabilities.test.ts`, against
+`src/lib/capabilities.ts`. Half of these test the *queries* rather than
+their results, using a faked supabase client that records what was
+asked, because the defect ADR-019 fixes was a query that asked a wider
+question than the screen meant — a result-only test would have passed on
+the broken version.
+
+- [x] `familyLinkFilter` asks for **both** family links (`parent_id.eq` and `user_id.eq`). The second is a 16+ self-login student's only link to their own record, and dropping it empties every screen they have
+- [x] …and refuses anything that is not a UUID. PostgREST's `or=` takes a filter *expression* as a string, so a value containing a comma would add a disjunct rather than be compared against
+- [x] `deriveCapabilities` for each single-role person — a parent of two, a tutor of one class, a 16+ student (whose own row's `parent_id` is their parent's id, so appearing in a `students` row must not read as parenthood) — and for an admin, with and without a child of their own
+- [x] …for the dual-role person: the union of both capabilities, from a `users.role` of `parent`, exactly as RLS-28 does it
+- [x] …and a `role='tutor'` account an admin has not yet put in a class is **not** a tutor of any class. This is the case that makes swapping the existing role checks for capabilities a behaviour change rather than a refactor
+- [x] `fetchFamilyLinks` applies the relationship filter, selects both link columns, and rethrows a Postgrest error instead of reporting an empty family (a swallowed error here is indistinguishable on screen from "you have no children")
+- [x] `fetchTutorClassCount` asks whether the caller is in `tutor_ids`, counting without fetching rows — not "how many classes RLS returns", which for a parent is their children's classes and for an admin is all of them
+- [x] `fetchTaughtClasses` filters on `tutor_ids` for a tutor and returns **every** class for an admin, who is in no `tutor_ids` array and would otherwise get an empty picker on every recording screen
 
 ## 5. E2E flows (Playwright)
 

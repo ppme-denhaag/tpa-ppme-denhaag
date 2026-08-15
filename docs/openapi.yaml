@@ -43,7 +43,13 @@ tags:
   - name: functions
     description: Custom Netlify Functions
   - name: admin
-    description: Enrollment/setup only — never operational (attendance/progress) data, see TAD ADR-012
+    description: >-
+      Full read and write access to every feature on every class (TAD ADR-014,
+      which reverses ADR-012's "enrollment/setup only" scope — that restriction
+      was always application-layer, never in RLS). Admin is the one grant here
+      that comes from `users.role` rather than from a relationship; every other
+      rule below is relationship-based, so one person may hold several at once
+      (ADR-019).
 
 paths:
   # ───────────────────────── PostgREST ─────────────────────────
@@ -54,8 +60,24 @@ paths:
       description: |
         RLS: Parent sees own children only; Tutor sees students in assigned classes;
         Student (16+ self-login) sees only their own record; Admin sees all.
+
+        Those are four separate permissive policies and Postgres ORs them, so an
+        **unfiltered** call returns the union of every one that applies to the
+        caller — for a person who is both a tutor and a parent that is their whole
+        class alongside their own child, and for an admin it is the entire TPA.
+        A client that means "my children" must say so: filter
+        `or=(parent_id.eq.{uuid},user_id.eq.{uuid})`, keeping `user_id` in it
+        because a 16+ self-login student has no `parent_id` row of their own.
+        See TAD ADR-019.
       parameters:
         - $ref: '#/components/parameters/select'
+        - name: or
+          in: query
+          schema: { type: string }
+          description: >-
+            PostgREST disjunction, e.g. `(parent_id.eq.{uuid},user_id.eq.{uuid})`
+            for "the students I am family to". Note this is a filter *expression*,
+            not a bound parameter — never interpolate anything a user typed.
         - name: parent_id
           in: query
           schema: { type: string }
@@ -72,6 +94,39 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Student' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /classes:
+    get:
+      tags: [students]
+      summary: List classes visible to the caller
+      description: |
+        RLS (`classes_read`, one policy with four OR-ed branches): a class is
+        visible to its tutors, to an admin, to the parents of the children in it,
+        and to a 16+ student enrolled in it.
+
+        The same union caveat as `/students` applies, and bites the same person:
+        a tutor whose own child attends another class sees that class here too.
+        A client that means "classes I may record against" must filter
+        `tutor_ids=cs.{uuid}` — an admin is the exception, being in no class's
+        `tutor_ids` and entitled to all of them (TAD ADR-014, ADR-019).
+      parameters:
+        - $ref: '#/components/parameters/select'
+        - name: tutor_ids
+          in: query
+          schema: { type: string }
+          description: >-
+            PostgREST array containment, e.g. `cs.{uuid}` — the same test
+            `fn_my_classes()` makes with `auth.uid() = any (tutor_ids)`, and it
+            uses the GIN index on the column.
+      responses:
+        '200':
+          description: Filtered list of classes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Class' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /attendance:
@@ -1351,6 +1406,21 @@ components:
     ReportGrade:
       type: string
       enum: [mumtaz, jayyid_jiddan, jayyid, maqbul, perlu_bimbingan]
+
+    Class:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        schedule: { type: string, nullable: true }
+        tutor_ids:
+          type: array
+          items: { type: string, format: uuid }
+          description: >-
+            The tutors assigned to this class. This array is the tutor
+            relationship — `fn_my_classes()` is `auth.uid() = any (tutor_ids)`,
+            and no policy consults `users.role` to decide it (TAD ADR-019).
+        created_at: { type: string, format: date-time }
 
     Student:
       type: object

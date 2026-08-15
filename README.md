@@ -69,7 +69,8 @@ local Docker stack, which is disposable and per-machine.
 
 `supabase/dev-fixture.sql` seeds a small realistic dataset (2 tutors — one
 assigned to both classes, one to Kelas B only — plus admin, 2 parents,
-2 classes, 4 students, 1 pending/unregistered sign-in) into a local stack — load it after migrations are applied:
+2 dual-role accounts, 2 classes, 6 students, 1 pending/unregistered sign-in)
+into a local stack — load it after migrations are applied:
 
 ```bash
 supabase migration up --local
@@ -83,6 +84,17 @@ With `.env` pointed at the local stack, `npm run dev` then shows a
 sign-in screen — pick any fixture identity to get a real authenticated
 session against the local stack without configuring Google OAuth
 (`supabase/config.toml` has no `[auth.external.google]` section locally).
+
+The last two identities in that panel are **dual-role** (TAD ADR-019):
+Ustadzah Aminah teaches Kelas A and her own son is in Kelas B, Bapak
+Hasan teaches Kelas B and his own daughter is in Kelas A. They are the
+fixture's only way to click through the case where one person holds two
+relationships at once, and they land on opposite halves of the app
+because that is still decided by `users.role` — Aminah on the tutor
+views, Hasan on the family ones. Worth using whenever a change touches
+"my children" or "my classes": each of them has a child in a class they
+do **not** teach, which is exactly the shape that made an unfiltered
+`select` look correct in testing.
 
 **Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
 already does this correctly): PostgREST/RLS never look at `instance_id` or
@@ -105,10 +117,10 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
-`supabase/tests/database/rls.test.sql` implements all 27 cases from
-test-plan.md §3 (RLS-01…RLS-27), plus WH-01…WH-12 for the notification
+`supabase/tests/database/rls.test.sql` implements all 33 cases from
+test-plan.md §3 (RLS-01…RLS-33), plus WH-01…WH-12 for the notification
 webhooks in migrations 009 and 010, plus NC-01…NC-11 for the notification
-centre in migration 012 — 104 pgTAP assertions, using the standard
+centre in migration 012 — 133 pgTAP assertions, using the standard
 fixture set from §2. The NC cases assert that only the addressee reads a
 notification, that **no client role can create or delete one at all**,
 that a recipient may write `read_at` and nothing else (a column-level
@@ -125,7 +137,14 @@ the whole thing rolls back with everything else and never makes a real
 request. RLS-22…RLS-27 cover the super-admin change (TAD
 ADR-014): that an admin INSERT/UPDATE lands on every operational table, and
 — the half that matters more — that those rows widen nobody else's
-visibility. It runs entirely inside a transaction that's rolled
+visibility. RLS-28…RLS-33 cover dual-role people (ADR-019): that someone
+who is both a tutor of one class and the parent of a child in another
+gets the union of both grants and nothing more, identically whichever
+value their `users.role` holds, and that the union is not a promotion —
+they cannot record progress for their own child, cannot confirm home
+practice for a student they teach, and cannot see their own child's
+draft report. Like the RLS-22 block, these cases add rows of their own
+and so are placed after the assertions that count exact fixture rows. It runs entirely inside a transaction that's rolled
 back at the end, so it never leaves data behind. CI runs it against a
 fresh local Postgres (Docker, via the Supabase CLI) built from
 `supabase/migrations` — see the `rls` job in `.github/workflows/test.yml`.

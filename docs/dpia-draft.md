@@ -44,6 +44,17 @@ organization warrants a documented assessment.
   TPA.** That was always true of the database policies; since TAD ADR-014 it is also
   true of the application, which previously hid those screens from admin.
 
+  **One person may hold more than one of these positions** — a tutor whose own child
+  attends, an administrator who also teaches — and the access that results is the
+  union of what each position grants, never more (TAD ADR-019). This is not a new
+  state of affairs: the policies have always been written against the relationship a
+  person holds (parent of this child, tutor of this class) rather than against a
+  role label, so nothing about it depends on the application asking the right
+  question. It is now asserted directly in the test suite (test-plan.md §3,
+  RLS-28…RLS-33), including that each half keeps its own limits — a tutor-parent
+  cannot record progress for their own child, and cannot see their own child's
+  unpublished report merely because they teach someone else's.
+
   This is assessed as proportionate for a ~200-student community programme with a
   handful of volunteer administrators: someone has to be able to cover a session for
   an absent tutor, correct a mis-recorded absence, and finish a year-end report at

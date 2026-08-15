@@ -31,6 +31,19 @@ export const FIXTURE_USERS: FixtureUser[] = [
   { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 1 child)' },
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
   { id: 'c1000000-0000-0000-0000-000000000001', label: 'Admin Dev (Admin)' },
+  // Dual-role (TAD ADR-019) — one person, two relationships. Listed
+  // last because they are the awkward cases, not the common ones: the
+  // label spells out both halves because which screens they land on is
+  // decided by `users.role`, and that is exactly what makes them worth
+  // clicking through.
+  {
+    id: 'd1000000-0000-0000-0000-000000000001',
+    label: 'Ustadzah Aminah (Tutor Kelas A + parent of Yusuf in Kelas B)',
+  },
+  {
+    id: 'd1000000-0000-0000-0000-000000000002',
+    label: 'Bapak Hasan (Parent of Khadijah in Kelas A + tutor of Kelas B)',
+  },
 ]
 
 function base64UrlFromBytes(bytes: ArrayBuffer): string {

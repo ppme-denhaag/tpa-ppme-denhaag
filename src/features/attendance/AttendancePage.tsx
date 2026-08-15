@@ -11,13 +11,21 @@ export function AttendancePage() {
   // halves of that matter:
   //
   //   - tutor shape: class picker → roster → record. `useMyClasses`
-  //     already returns every class for admin (`classes_read` has an
-  //     `fn_is_admin()` branch), so this needs no admin-specific query.
-  //   - never the family shape: `FamilyAttendanceView`'s "my children"
-  //     query would return *every* student for admin, since
-  //     `students_admin_all` has no `parent_id` predicate — a ChildPicker
-  //     listing ~200 students as though they were the admin's own
-  //     children.
+  //     returns every class for an admin, which is where its own
+  //     admin branch comes from (ADR-019) — an admin is normally in no
+  //     class's `tutor_ids`, so the tutor query alone would leave them
+  //     with an empty picker.
+  //   - the family shape is the wrong *job* for an admin, which is now
+  //     the only reason left to route away from it. It used to be a
+  //     safety measure too: `FamilyAttendanceView`'s "my children" query
+  //     ran unfiltered and `students_admin_all` has no `parent_id`
+  //     predicate, so it would have returned every student in the school
+  //     — a ChildPicker listing ~200 children as the admin's own. ADR-019
+  //     closed that at the query (`useMyStudents` now filters on
+  //     `parent_id`/`user_id` explicitly), so an admin who reached this
+  //     view would correctly see only their own children, or none.
+  //     Routing is no longer what stands between an admin and the whole
+  //     school.
   const isManager = profile?.role === 'tutor' || profile?.role === 'admin'
 
   return (
