@@ -14,13 +14,34 @@ type Locale = Database['public']['Enums']['locale']
  *
  * ── Role first, then locale, and why both ───────────────────────────
  * Recipient locale comes from `users.locale` and the role from
- * `users.role`, the same two columns the push payload builder already
- * reads (`lib/notifications.ts`). Role matters because the invitation is
- * a genuinely different message four times over: a parent is invited to
- * follow their child, a 16+ student to follow their own progress, a
- * tutor to record a class's work, an admin to run the platform.
- * Translating one sentence into four contexts would produce copy that
- * fits none of them.
+ * `users.role`. Role matters because the invitation is a genuinely
+ * different message four times over: a parent is invited to follow their
+ * child, a 16+ student to follow their own progress, a tutor to record a
+ * class's work, an admin to run the platform. Translating one sentence
+ * into four contexts would produce copy that fits none of them.
+ *
+ * ── Why a role key is right *here* and wrong for an event ────────────
+ * ADR-022 took the role out of deciding who receives a notification,
+ * because a role cannot express a relationship to a child. That reasoning
+ * does not reach this file, and the reason is the moment it runs:
+ * `invite-user` sends this letter as the `public.users` row is created,
+ * when the person holds **no relationships at all**. No student row can
+ * name them as `parent_id` yet — that row would not have had a user to
+ * point at — and linking one is a separate admin action afterwards. So
+ * `users.role` here is not a stand-in for a relationship; it is the
+ * admin's statement of *why* this person is being invited, which is what
+ * the letter is about. A tutor-parent is invited once, in whichever
+ * capacity brought them in, and their notifications are decided later by
+ * their relationships.
+ *
+ * **The rule for the templates that follow.** Event-specific email
+ * (absence, milestone, report-ready, reminder) is addressed to a person
+ * *about a child*, which is exactly the question ADR-022 answers. Those
+ * templates must be selected the way the push payload is — from the
+ * child's row through `notifyStudents`, in the recipient's locale — and
+ * **not** from `users.role`. Keying them by role would reintroduce the
+ * ADR-022 bug in a second channel: a tutor whose own child is absent
+ * would receive the tutor letter, or nothing at all.
  *
  * ── Register ────────────────────────────────────────────────────────
  * The Indonesian copy follows the conventions PPME's own

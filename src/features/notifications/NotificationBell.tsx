@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
-import { canReceiveNotifications } from '../../lib/notificationRoles'
+import { useCapabilities } from '../../hooks/useCapabilities'
+import { canReceiveNotifications } from '../../lib/notificationRecipients'
 import { fetchUnreadCount } from './api'
 
 /**
@@ -12,10 +12,19 @@ import { fetchUnreadCount } from './api'
  * notifications table there was nothing behind it to read, which is why
  * it waited for part 3 rather than shipping with the push pipeline.
  *
- * **Not rendered for tutors or admin.** They receive no notifications
- * (ADR-015(a)) and cannot read anyone else's (ADR-017), so a bell would
- * be a permanently empty control — and, worse, would suggest an admin
- * inbox of every family's messages exists somewhere.
+ * **Not rendered for an account no child's row points at.** Such an
+ * account receives no notification (ADR-022) and can read nobody else's
+ * (ADR-017), so a bell would be a permanently empty control — and, for
+ * an admin, would suggest an inbox of every family's messages exists
+ * somewhere. That is a question about relationships, not about the role
+ * column: a tutor whose own child attends the TPA *does* get a bell, and
+ * what is behind it is their own child and nothing from their class.
+ *
+ * `useCapabilities` rather than `profile.role` since ADR-022, and the
+ * same predicate the settings screen and `push-subscribe` use. While it
+ * loads, `NO_CAPABILITIES` hides the bell — a control that appears a
+ * moment late is the right way round for one whose whole content is
+ * "something is waiting".
  *
  * The count refreshes on navigation rather than on a timer or a
  * realtime subscription. A notification arriving is not urgent enough
@@ -25,11 +34,11 @@ import { fetchUnreadCount } from './api'
  */
 export function NotificationBell() {
   const { t } = useTranslation()
-  const { profile } = useAuth()
+  const { capabilities } = useCapabilities()
   const location = useLocation()
   const [unread, setUnread] = useState(0)
 
-  const isRecipient = profile ? canReceiveNotifications(profile.role) : false
+  const isRecipient = canReceiveNotifications(capabilities)
 
   useEffect(() => {
     if (!isRecipient) return

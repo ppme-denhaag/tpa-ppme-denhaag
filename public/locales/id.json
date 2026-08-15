@@ -220,7 +220,7 @@
       "unsupported": "Peramban ini tidak mendukung notifikasi push.",
       "iosInstallTitle": "Tambahkan ke Layar Utama dulu",
       "iosInstallBody": "Di iPhone dan iPad, notifikasi hanya berfungsi setelah aplikasi ditambahkan ke Layar Utama. Buka menu Bagikan di Safari, pilih \"Tambahkan ke Layar Utama\", lalu buka aplikasi dari ikon tersebut dan kembali ke halaman ini.",
-      "notARecipient": "Notifikasi TPA ditujukan untuk orang tua dan santri. Sebagai {{role}} Anda tidak menerima notifikasi, sehingga mengaktifkannya di sini tidak mengirimkan apa pun.",
+      "notLinkedToAStudent": "Notifikasi TPA selalu mengenai seorang santri: Anda menerimanya untuk anak Anda sendiri, atau untuk diri Anda sendiri bila Anda santri dengan akun sendiri. Akun ini belum terhubung dengan santri mana pun, sehingga mengaktifkan notifikasi di sini tidak mengirimkan apa pun. Catatan kelas yang Anda ampu tidak dikirim sebagai notifikasi kepada siapa pun.",
       "pushServiceUnreachable": "Layanan notifikasi peramban tidak merespons. Periksa koneksi internet Anda, lalu coba lagi.",
       "error": "Gagal memperbarui pengaturan notifikasi. Coba lagi."
     }
