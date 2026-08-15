@@ -3,12 +3,12 @@
  *
  * ── Why not Supabase's built-in email ───────────────────────────────
  * Supabase Auth's SMTP is rate-limited and documented as unsuitable for
- * production transactional volume. It is still in use for exactly one
- * thing — `inviteUserByEmail` in `invite-user.mts`, which sends GoTrue's
- * own magic-link invite as a side effect of creating the `auth.users`
- * row. That is an *auth* mechanism, not a notification channel, and it
- * is deliberately left alone here; see ADR-018 for why removing it is a
- * separate decision from adding this.
+ * production transactional volume. It was in use for one thing —
+ * `inviteUserByEmail` in `invite-user.mts`, which sent GoTrue's own
+ * magic-link invite as a side effect of creating the `auth.users` row —
+ * until ADR-026 replaced that call with `auth.admin.createUser()`, which
+ * creates the same row and sends nothing. GoTrue's mailer is unused by
+ * this app now.
  *
  * ── Why email at all, when Web Push exists ──────────────────────────
  * Push is not a channel every family actually has. On iOS, Web Push

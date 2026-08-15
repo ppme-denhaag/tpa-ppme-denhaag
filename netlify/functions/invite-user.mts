@@ -16,13 +16,13 @@ function jsonError(message: string, status: number): Response {
 
 /**
  * Admin-only. Invites a new user by email (creates their auth.users row
- * via GoTrue and emails them a sign-in link) and immediately creates
- * their public.users profile with the given name/role — collapsing the
- * previous two-step flow ("they sign in once unprompted, then an admin
- * notices and registers them" via RegistrationsPage) into one admin
- * action. Uses the service-role key, which bypasses RLS entirely — the
- * caller's admin-ness is therefore verified here, in code, rather than
- * relied on from the client.
+ * via GoTrue, confirmed, and sends no email of its own — see ADR-026)
+ * and immediately creates their public.users profile with the given
+ * name/role — collapsing the previous two-step flow ("they sign in once
+ * unprompted, then an admin notices and registers them" via
+ * RegistrationsPage) into one admin action. Uses the service-role key,
+ * which bypasses RLS entirely — the caller's admin-ness is therefore
+ * verified here, in code, rather than relied on from the client.
  *
  * No `config.path` export here — see health.mts's comment: it's already
  * served at the default `/.netlify/functions/invite-user`, and declaring
@@ -83,20 +83,25 @@ export default async (req: Request) => {
     return jsonError(`role must be one of: ${VALID_ROLES.join(', ')}`, 400)
   }
 
-  // Without an explicit redirectTo, GoTrue falls back to the Supabase
-  // project's dashboard-configured "Site URL" — which defaults to
-  // http://localhost:3000 and is easy to forget to update after project
-  // creation (confirmed: that's exactly what was happening in
-  // production). `URL` is a Netlify build-in env var set automatically
-  // to this deploy's canonical URL (production or a given deploy
-  // preview) — more reliable than depending on a dashboard setting
-  // someone has to remember to keep in sync, and correct in every
-  // context without extra config.
-  const { data: invited, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-    redirectTo: process.env.URL,
+  // Creates the auth.users row without GoTrue's own invite email (ADR-018(b)
+  // resolved this deliberately — see ADR-026). `email_confirm: true` is set
+  // because this address was just typed by an admin, not claimed by the
+  // person signing up; the subsequent Google OAuth sign-in links to this row
+  // by matching `email`, exactly as it did when the row came from
+  // `inviteUserByEmail`.
+  const { data: invited, error: inviteError } = await adminClient.auth.admin.createUser({
+    email,
+    email_confirm: true,
   })
   if (inviteError || !invited.user) {
-    return jsonError(inviteError?.message ?? 'Failed to send invite', 400)
+    // Unlike inviteUserByEmail (idempotent — it returned the existing
+    // user), createUser errors outright on an already-registered email,
+    // with this code. Caught here rather than left to surface as a
+    // generic 400, so the response is unchanged from before this change.
+    if (inviteError?.code === 'email_exists') {
+      return jsonError('This email is already registered.', 409)
+    }
+    return jsonError(inviteError?.message ?? 'Failed to create user', 400)
   }
 
   const { error: insertError } = await adminClient.from('users').insert({
@@ -107,14 +112,12 @@ export default async (req: Request) => {
     locale: 'id',
   })
   if (insertError) {
-    // inviteUserByEmail is idempotent for an already-registered email —
-    // it returns the existing user rather than erroring — so a unique
-    // violation here means "already registered", not a partial failure.
-    if (insertError.code === '23505') {
-      return jsonError('This email is already registered.', 409)
-    }
+    // A unique violation here is a partial failure, not a duplicate
+    // invite — createUser above already rejects an already-registered
+    // email, so a fresh auth.users row landing on a taken email/id can
+    // only mean a race with another request.
     return jsonError(
-      `Invite sent, but creating the profile failed (${insertError.message}). ` +
+      `User created, but creating the profile failed (${insertError.message}). ` +
         'They will appear under pending registrations to finish manually.',
       500,
     )
