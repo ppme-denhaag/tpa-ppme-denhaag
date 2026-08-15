@@ -94,6 +94,23 @@ describe('deriveCapabilities — relationships in, capabilities out (ADR-019)', 
     ).toEqual({ ...NO_CAPABILITIES, isParentOfAnyone: true, isTutorOfAnyClass: true })
   })
 
+  it('gives a student assistant both the self and tutor capabilities', () => {
+    // A 16+ student who also helps teach a class (ADR-020). `role` says
+    // student and the tutor capability comes from the class
+    // relationship, exactly as RLS-35 has it — and being a student
+    // never implied read-only in the first place, since no policy in the
+    // schema consults the role column except `fn_is_admin()`.
+    expect(
+      deriveCapabilities({
+        ...base,
+        userId: STUDENT16,
+        role: 'student',
+        familyLinks: [link({ parent_id: OTHER, user_id: STUDENT16 })],
+        tutorClassCount: 1,
+      }),
+    ).toEqual({ ...NO_CAPABILITIES, isSelfStudent: true, isTutorOfAnyClass: true })
+  })
+
   it('does not call a tutor with no class assigned a tutor', () => {
     // A newly invited tutor before an admin puts them in a class. The
     // role column says tutor; the relationship does not exist yet, and

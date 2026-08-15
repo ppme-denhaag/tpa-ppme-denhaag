@@ -28,7 +28,7 @@ export const FIXTURE_USERS: FixtureUser[] = [
   // with a minted JWT.
   { id: 'b1000000-0000-0000-0000-000000000001', label: 'Ustadz Baru (Tutor — Kelas B only)' },
   { id: 'a2000000-0000-0000-0000-000000000001', label: 'Ibu Siti (Parent — 3 children)' },
-  { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 1 child)' },
+  { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 2 children)' },
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
   { id: 'c1000000-0000-0000-0000-000000000001', label: 'Admin Dev (Admin)' },
   // Dual-role (TAD ADR-019) — one person, two relationships. Listed
@@ -51,6 +51,14 @@ export const FIXTURE_USERS: FixtureUser[] = [
   {
     id: 'd1000000-0000-0000-0000-000000000003',
     label: 'Ustadzah Laila (Admin + tutor of Kelas A + parent of Salma in Kelas B)',
+  },
+  // The student assistant (TAD ADR-020). Her `users.role` is 'student',
+  // so every page routes her to the family views today — the tutor
+  // screens she is entitled to are unreachable until role switching
+  // lands. Signing in as her is how that gap stays visible.
+  {
+    id: 'd1000000-0000-0000-0000-000000000004',
+    label: 'Aisyah (Santri 16+ in Kelas A + assists in Kelas B)',
   },
 ]
 

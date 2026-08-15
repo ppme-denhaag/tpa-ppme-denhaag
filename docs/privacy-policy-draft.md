@@ -91,8 +91,10 @@ De meeste leerlingen zijn jonger dan 16 jaar. Voor hen geldt:
 - De ouder/verzorger geeft bij inschrijving toestemming voor de verwerking van de gegevens van het kind.
 
 Leerlingen van 16 jaar en ouder kunnen — met medeweten van de ouder — een eigen
-account koppelen met alleen-lezen toegang tot hun eigen gegevens. De koppeling met
-het ouderaccount blijft altijd bestaan.
+account koppelen met toegang tot hun eigen gegevens, die zij zelf niet kunnen
+wijzigen. De koppeling met het ouderaccount blijft altijd bestaan. Helpt een leerling
+van 16+ daarnaast mee met een klas, dan gelden voor díe klas dezelfde rechten als
+voor elke andere begeleider — voor de eigen gegevens verandert er niets.
 
 ### 5. Wie binnen PPME kan welke gegevens zien?
 
@@ -103,7 +105,7 @@ afgedwongen in de database zelf — niet alleen in het scherm:
 |---|---|
 | Ouder/verzorger | Uitsluitend de gegevens van de eigen kinderen |
 | Docent (ustadz) | Uitsluitend de leerlingen van de eigen klas(sen) |
-| Leerling van 16+ | Uitsluitend de eigen gegevens, alleen-lezen |
+| Leerling van 16+ | Uitsluitend de eigen gegevens, die hij of zij niet zelf kan wijzigen |
 | Beheerder | Alle leerlingen en alle gegevens — ook wijzigen |
 
 Beheerders zijn vrijwilligers van de TPA-commissie. Zij hebben deze bredere toegang
@@ -247,7 +249,9 @@ Sebagian besar santri berusia di bawah 16 tahun. Bagi mereka:
 - Orang tua/wali memberikan persetujuan saat pendaftaran untuk pemrosesan data anak.
 
 Santri berusia 16 tahun ke atas dapat — dengan sepengetahuan orang tua — menautkan
-akun sendiri dengan akses baca-saja ke data mereka sendiri. Tautan dengan akun orang
+akun sendiri untuk melihat data mereka sendiri, tanpa dapat mengubahnya. Bila santri
+16+ juga membantu mengajar sebuah kelas, untuk kelas itu berlaku hak yang sama seperti
+pengajar lain; untuk datanya sendiri tidak ada yang berubah. Tautan dengan akun orang
 tua tetap ada.
 
 ### 5. Siapa saja di dalam PPME yang dapat melihat data apa?
@@ -259,7 +263,7 @@ di dalam basis data — bukan hanya di tampilan aplikasi:
 |---|---|
 | Orang tua/wali | Hanya data anak sendiri |
 | Ustadz | Hanya santri di kelas yang diampu |
-| Santri 16+ | Hanya data diri sendiri, baca-saja |
+| Santri 16+ | Hanya data diri sendiri, dan tidak dapat mengubahnya |
 | Admin | Seluruh santri dan seluruh data — termasuk mengubahnya |
 
 Admin adalah relawan pengurus TPA. Mereka memiliki akses yang lebih luas karena

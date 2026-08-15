@@ -1547,6 +1547,159 @@ insert into _tap_log(line) select is(
   'RLS-34: anon still sees 0 students after the triple-role rows exist');
 reset role;
 
+-- ======================================================================
+-- RLS-35 — the student assistant: a 16+ self-login student who also
+--          tutors a class
+--
+-- Every other document in this project said "a 16+ student is
+-- read-only", and RLS-07 asserts it. What RLS-07 actually tests is a
+-- student who holds *no other relationship*: `fn_current_role()` is
+-- consulted in exactly one place in the whole schema — inside
+-- `fn_is_admin()` — so nothing anywhere refuses a write because the
+-- caller's role column says `student`. Being read-only was a
+-- consequence of holding no write-granting relationship, never a
+-- property of the role, and the two are indistinguishable until
+-- somebody holds both.
+--
+-- PPME's decision is that a student assistant **should** be able to
+-- record for the class they teach (ADR-020). So this case is not a
+-- guard against an accident; it pins behaviour that is now wanted, and
+-- pins the boundary that comes with it — the tutor grant reaches their
+-- class and stops there, and it does not reach back to their own record,
+-- which stays as read-only as any other student's.
+-- ======================================================================
+
+-- SA — users.role 'student', their own record in Class D (which they do
+-- not teach), and a tutor of Class C. The two halves are deliberately
+-- disjoint, so no assertion below can pass by accident through the other
+-- grant.
+insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, is_sso_user, is_anonymous, created_at, updated_at)
+values ('b0000000-0000-0000-0000-000000000005', 'authenticated', 'authenticated', 'sa@test.local', '', now(), '{}', '{}', false, false, now(), now());
+
+insert into public.users (id, email, full_name, role, locale)
+values ('b0000000-0000-0000-0000-000000000005', 'sa@test.local', 'Student Assistant (role=student)', 'student', 'id');
+
+-- The hybrid account model holds: a student record is always linked to a
+-- parent (P4 here) even when the student has their own login.
+insert into public.students (id, parent_id, user_id, full_name, class_id, date_of_birth)
+values ('d0000000-0000-0000-0000-00000000000a', 'b0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000005', 'SA Own Record', 'c0000000-0000-0000-0000-00000000000d', '2008-04-01');
+
+update public.classes
+   set tutor_ids = tutor_ids || 'b0000000-0000-0000-0000-000000000005'::uuid
+ where id = 'c0000000-0000-0000-0000-00000000000c';
+
+set local role authenticated;
+set local request.jwt.claim.role to 'authenticated';
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000005';
+
+-- ---- ground truth: a student and a tutor at the same time.
+insert into _tap_log(line) select is(
+  (select public.fn_current_role())::text, 'student',
+  'RLS-35: the student assistant''s users.role really is ''student'''
+);
+insert into _tap_log(line) select is(
+  public.fn_my_student_id(), 'd0000000-0000-0000-0000-00000000000a'::uuid,
+  'RLS-35: …with their own student record, the 16+ self-login link'
+);
+insert into _tap_log(line) select set_eq(
+  'select public.fn_my_classes()',
+  array['c0000000-0000-0000-0000-00000000000c']::uuid[],
+  'RLS-35: …and a tutor of Class C, which is a relationship and owes nothing to the role column'
+);
+insert into _tap_log(line) select is(
+  public.fn_is_admin(), false,
+  'RLS-35: …and not an admin — none of what follows comes from the one policy that reads role'
+);
+
+-- ---- reads: their own record plus the class they teach, and no more.
+insert into _tap_log(line) select set_eq(
+  'select id from public.students',
+  array[
+    'd0000000-0000-0000-0000-000000000005',   -- C Kid — via the tutor grant
+    'd0000000-0000-0000-0000-00000000000a'    -- their own record — via students_self_read
+  ]::uuid[],
+  'RLS-35: they see exactly their own record and the roster of the class they teach'
+);
+-- The sharp negative: they sit in Class D as a student, and that buys
+-- them nothing. `students_self_read` is `user_id = auth.uid()`, not
+-- "my classmates" — being enrolled somewhere never was a grant.
+insert into _tap_log(line) select is(
+  (select count(*) from public.students
+   where class_id = 'c0000000-0000-0000-0000-00000000000d'
+     and id <> 'd0000000-0000-0000-0000-00000000000a'),
+  0::bigint,
+  'RLS-35: …and none of their own classmates in Class D, though they sit in that class every week'
+);
+
+-- ---- writes they SHOULD have (ADR-020), on the class they teach.
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+     values ('d0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000005', 1, 4, 'lancar') $$,
+  'RLS-35: they CAN record Yanbu''a for a student in the class they teach — read-only was never enforced by the role'
+);
+insert into _tap_log(line) select lives_ok(
+  $$ insert into public.murajaah_assignments (student_id, tutor_id, surah_num, ayah_from, ayah_to, frequency)
+     values ('d0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000005', 112, 1, 4, 'daily') $$,
+  'RLS-35: …and CAN set a murajaah target for that student'
+);
+-- Attendance is an UPDATE rather than an INSERT because the roster row
+-- already exists, and because RLS filters an UPDATE rather than
+-- refusing it: a policy failure here is silently zero rows, so the
+-- assertion has to read the value back.
+update public.attendance set status = 'late'
+ where student_id = 'd0000000-0000-0000-0000-000000000005';
+insert into _tap_log(line) select is(
+  (select status from public.attendance
+   where student_id = 'd0000000-0000-0000-0000-000000000005')::text,
+  'late',
+  'RLS-35: …and CAN correct the attendance of a student in their class'
+);
+
+-- ---- and the boundary that comes with it.
+insert into _tap_log(line) select throws_ok(
+  $$ insert into public.yanbua_progress (student_id, tutor_id, jilid, page, mastery)
+     values ('d0000000-0000-0000-0000-00000000000a', 'b0000000-0000-0000-0000-000000000005', 1, 4, 'lancar') $$,
+  '42501', null,
+  'RLS-35: …but CANNOT record progress for their OWN record — teaching one class does not let a student grade themselves'
+);
+-- The same statement aimed at a class they do not teach. RLS filters an
+-- UPDATE rather than refusing it, so this raises nothing and matches
+-- nothing; it cannot even be read back from inside this session, which
+-- is itself the first half of the assertion.
+update public.attendance set status = 'late'
+ where student_id = 'd0000000-0000-0000-0000-000000000008';    -- D Kid
+insert into _tap_log(line) select is(
+  (select count(*) from public.attendance
+   where student_id = 'd0000000-0000-0000-0000-000000000008'),
+  0::bigint,
+  'RLS-35: …and cannot even see the attendance of a student in a class they do not teach, so the update above matched nothing'
+);
+
+-- ---- they widen nobody, and nobody widens them.
+set local request.jwt.claim.sub to 'b0000000-0000-0000-0000-000000000001';   -- TP
+insert into _tap_log(line) select is(
+  (select count(*) from public.students where id = 'd0000000-0000-0000-0000-00000000000a'),
+  0::bigint,
+  'RLS-35: TP cannot see the student assistant''s own record — sharing Class C as co-tutors grants nothing about each other'
+);
+set local role anon;
+set local request.jwt.claim.sub to '';
+set local request.jwt.claim.role to 'anon';
+insert into _tap_log(line) select is(
+  (select count(*) from public.students), 0::bigint,
+  'RLS-35: anon still sees 0 students after the student-assistant rows exist');
+reset role;
+
+-- …and confirmed from outside any policy: the row the student assistant
+-- aimed at is untouched. Read as the table owner, because the point of
+-- the previous assertion is that they cannot read it themselves.
+insert into _tap_log(line) select is(
+  (select status from public.attendance
+   where student_id = 'd0000000-0000-0000-0000-000000000008')::text,
+  'present',
+  'RLS-35: …and the row really is unchanged, seen from outside RLS — a filtered UPDATE is silent, so this is the half that proves it did nothing'
+);
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();

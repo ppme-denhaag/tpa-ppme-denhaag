@@ -31,7 +31,7 @@ Out of scope for MVP testing: load/performance (200 users on Supabase free tier 
 - 2 classes: Class A (tutor T1), Class B (tutor T2)
 - P1 has 2 children in Class A; P2 has 1 child in Class B; P3 has 1 child (16+, user_id set) in Class B
 - Sessions, attendance, assignments, and progress rows for each child
-- **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach. TAP (`users.role = 'admin'`) is the same shape again with a third relationship on top — admin *and* tutor of Class C *and* parent of a child in Class D — used by RLS-34
+- **Two dual-role people** (added with ADR-019, used by RLS-28…RLS-33): TP (`users.role = 'parent'`) and TT (`users.role = 'tutor'`) are each a tutor of Class C *and* the parent of a child in Class D. The two role values are deliberately opposite, because the point of the cases is that the column has no bearing on what they can reach. Each one's own child sits in the class the *other* teaches, so neither can reach their own child through their tutor grant — the union of the two grants is the only way either of them sees everything they are entitled to. A fourth parent P4 has children in both classes, to give each of them a classmate they must **not** be able to reach. TAP (`users.role = 'admin'`) is the same shape again with a third relationship on top — admin *and* tutor of Class C *and* parent of a child in Class D — used by RLS-34. SA (`users.role = 'student'`) is a 16+ self-login student enrolled in Class D who tutors Class C, used by RLS-35; the two halves are deliberately disjoint classes, so no assertion about one can pass through the other
 - These rows are created inside the RLS suite itself, after RLS-14 and the NC cases, because those assert exact fixture row counts. `supabase/dev-fixture.sql` seeds the browser-facing equivalents (Ustadzah Aminah, Bapak Hasan, and the triple-role Ustadzah Laila) for manual walkthroughs
 
 ## 3. RLS test suite (highest priority)
@@ -46,7 +46,7 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-04 | T1 INSERT attendance for Class B student → rejected |
 | RLS-05 | T1 INSERT yanbua_progress with tutor_id ≠ auth.uid() → rejected |
 | RLS-06 | S16 SELECT own attendance/progress → rows returned; sibling/classmate rows → 0 |
-| RLS-07 | S16 INSERT/UPDATE on any table → rejected (read-only role) |
+| RLS-07 | S16 INSERT/UPDATE on any table → rejected. Note since ADR-020: this persona holds no relationship that grants a write, which is *why* they are refused — no policy tests for the `student` role. See RLS-35 for the same role with a tutor relationship added |
 | RLS-08 | P1 INSERT murajaah_log for own child's assignment → allowed; for P2's child → rejected |
 | RLS-09 | P1 INSERT murajaah_log with confirmed_by ≠ auth.uid() → rejected |
 | RLS-10 | Any non-admin UPDATE users.role (own or others) → rejected |
@@ -73,6 +73,7 @@ Run as SQL scripts with `set role authenticated; set request.jwt.claims` per per
 | RLS-31 | **The union is not a promotion.** TP records Yanbu'a for a student in the class they teach → allowed; for their own child → rejected (the parent half is read-only). TP confirms home practice for their own child → allowed; for a student in their class → rejected (teaching does not grant a parent's confirmation) |
 | RLS-32 | `year_end_reports`, the sharpest form of the same rule: TP sees the draft for a student they teach, still cannot see the draft for their **own** child, does see their own child's published report, and sees none of the classmate's at any status |
 | RLS-33 | The dual-role rows widen nobody: TP sees none of the four original fixture students, P1 and T1 see none of the dual-role students, S16 still sees exactly one student row (their own), anon still sees 0 |
+| RLS-35 | **The student assistant** — `users.role = 'student'`, their own 16+ record in Class D, a tutor of Class C (ADR-020). Ground truth: role really is `student`, `fn_my_student_id()` set, `fn_my_classes()` exactly Class C, not an admin. They see their own record plus the roster they teach — and **none of their own classmates in Class D**, since being enrolled somewhere was never a grant. They **can** record Yanbu'a, set a murajaah target and correct attendance for the class they teach, which is the decision this case pins; they **cannot** record progress for their own record, nor touch a class they do not teach (a filtered UPDATE is silent, so that one is asserted both from inside the session and from outside RLS) |
 | RLS-34 | **The triple-role person** — `users.role = 'admin'`, tutor of one class, parent of a child in another. All four capabilities are derived independently and none excludes another: `fn_is_admin()` true, `fn_my_classes()` exactly the one class they are named in, `fn_my_children()` exactly their own child, `fn_my_student_id()` null. **And the one boundary the rest of the block does not have:** with `admin` in the union, RLS-28's "nothing more" and RLS-31/RLS-32's "not a promotion" stop holding — they see all four original fixture students, *can* record Yanbu'a for their own child, *can* confirm home practice for a student they teach, and *do* see their own child's draft report, each one the mirror of a refusal above. What keeps an admin out of the parent-only actions is application-layer (ADR-014(c), RLS-25). They still widen nobody: TP cannot see their child, anon still sees 0 |
 
 **Gate: all RLS tests green in CI is a merge requirement for any migration change, and a launch requirement before real data entry (DPIA risk R1).**
@@ -93,8 +94,12 @@ answer "is this dual-role only, or n-ary?" — the derivation is four
 independent booleans and nothing caps the count at two, but that was an
 inference from the absence of a constraint until this case asserted it.
 It is also the one place in the block where the union is *not* bounded
-by the relationships held, and it says so. 39 assertions, taking the
-file to 143.*
+by the relationships held, and it says so. RLS-35 came last and is the
+only one of these cases prompted by a product decision rather than a
+proof obligation: PPME decided a student assistant should be able to
+record (ADR-020), and it turned out the database had always allowed it,
+because "16+ students are read-only" described a relationship nobody had
+combined with another. 53 assertions, taking the file to 157.*
 
 *WH-01…WH-06 were added with TAD ADR-015 (migration 009's absence
 webhook). They are not RLS assertions, but they belong to the same "what
@@ -239,6 +244,7 @@ the broken version.
 - [x] …and refuses anything that is not a UUID. PostgREST's `or=` takes a filter *expression* as a string, so a value containing a comma would add a disjunct rather than be compared against
 - [x] `deriveCapabilities` for each single-role person — a parent of two, a tutor of one class, a 16+ student (whose own row's `parent_id` is their parent's id, so appearing in a `students` row must not read as parenthood) — and for an admin, with and without a child of their own
 - [x] …for the dual-role person: the union of both capabilities, from a `users.role` of `parent`, exactly as RLS-28 does it
+- [x] …for the student assistant: a `role='student'` account that also tutors gets the self *and* tutor capabilities, neither implying the other (ADR-020)
 - [x] …and a `role='tutor'` account an admin has not yet put in a class is **not** a tutor of any class. This is the case that makes swapping the existing role checks for capabilities a behaviour change rather than a refactor
 - [x] `fetchFamilyLinks` applies the relationship filter, selects both link columns, and rethrows a Postgrest error instead of reporting an empty family (a swallowed error here is indistinguishable on screen from "you have no children")
 - [x] `fetchTutorClassCount` asks whether the caller is in `tutor_ids`, counting without fetching rows — not "how many classes RLS returns", which for a parent is their children's classes and for an admin is all of them

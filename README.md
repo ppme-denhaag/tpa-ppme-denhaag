@@ -69,7 +69,7 @@ local Docker stack, which is disposable and per-machine.
 
 `supabase/dev-fixture.sql` seeds a small realistic dataset (2 tutors — one
 assigned to both classes, one to Kelas B only — plus admin, 2 parents,
-3 multi-role accounts, 2 classes, 7 students, 1 pending/unregistered sign-in)
+4 multi-role accounts, 2 classes, 8 students, 1 pending/unregistered sign-in)
 into a local stack — load it after migrations are applied:
 
 ```bash
@@ -97,7 +97,11 @@ in a class they do **not** teach, which is exactly the shape that made an
 unfiltered `select` look correct in testing. Laila is the one to use when
 a query grows an admin branch, since for her the admin grant and the
 tutor relationship disagree — `useMyClasses` hands her every class while
-`fn_my_classes()` holds only Kelas A.
+`fn_my_classes()` holds only Kelas A. Aisyah is the fourth: a 16+ santri
+in Kelas A who assists in Kelas B (ADR-020). She is entitled to record
+for Kelas B and cannot reach a screen that would let her, because
+routing still follows `users.role` — signing in as her is how that gap
+stays visible until role switching lands.
 
 **Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
 already does this correctly): PostgREST/RLS never look at `instance_id` or
@@ -120,10 +124,10 @@ plain `supabase db reset --local` (no fixture) before `supabase test db`.
 
 ## RLS automated test suite
 
-`supabase/tests/database/rls.test.sql` implements all 34 cases from
-test-plan.md §3 (RLS-01…RLS-34), plus WH-01…WH-12 for the notification
+`supabase/tests/database/rls.test.sql` implements all 35 cases from
+test-plan.md §3 (RLS-01…RLS-35), plus WH-01…WH-12 for the notification
 webhooks in migrations 009 and 010, plus NC-01…NC-11 for the notification
-centre in migration 012 — 143 pgTAP assertions, using the standard
+centre in migration 012 — 157 pgTAP assertions, using the standard
 fixture set from §2. The NC cases assert that only the addressee reads a
 notification, that **no client role can create or delete one at all**,
 that a recipient may write `read_at` and nothing else (a column-level
@@ -150,7 +154,11 @@ draft report. RLS-34 adds a third relationship on top (admin + tutor +
 parent) to show the model is n-ary rather than merely dual, and to mark
 where the pattern stops: `fn_is_admin()` is an unconditional `ALL`, so
 once admin is in the union the "nothing more" property no longer holds
-and each of RLS-31/RLS-32's refusals becomes an allowance. Like the
+and each of RLS-31/RLS-32's refusals becomes an allowance. RLS-35 covers
+the student assistant (ADR-020): a 16+ student who also tutors may
+record for the class they teach, and still not for their own record —
+no policy tests for the `student` role anywhere, so "students are
+read-only" only ever described a student who taught nothing. Like the
 RLS-22 block, these cases add rows of their own and so are placed after
 the assertions that count exact fixture rows. It runs entirely inside a transaction that's rolled
 back at the end, so it never leaves data behind. CI runs it against a
@@ -518,7 +526,7 @@ holds, so a recipient cannot rewrite an event on their own row.
 |---|---|
 | `tutor` | Their assigned classes only: record attendance, homework and verdicts, Yanbu'a/Quran progress, Murajaah targets; author, edit and **publish** year-end reports for their own students |
 | `parent` | Their own children only, read-only — except confirming Murajaah home practice, which only a parent can do |
-| `student` (16+) | Their own record only, strictly read-only |
+| `student` (16+) | Their own record only, and read-only — unless they also tutor a class, in which case that class's tutor grants apply as they would to anyone (ADR-020). No policy keys on the `student` role; read-only is what holding no write-granting relationship looks like |
 | `admin` | **Everything a tutor can do, on every class** (TAD ADR-014), plus the enrollment screens behind "Kelola". Two deliberate exceptions: it cannot confirm Murajaah home practice (`confirmed_by` means "the parent who watched the child recite"), and it cannot publish a year-end report (that stays with the authoring tutor) |
 
 Admin's access has always been granted at the database layer — every table
