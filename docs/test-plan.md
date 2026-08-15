@@ -317,7 +317,7 @@ them before the first real invitation.
 
 Also tested alongside it:
 
-- `tests/unit/push.test.ts` (10) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter
+- `tests/unit/push.test.ts` (13) — subscription validation (rejects non-HTTPS endpoints, missing keys, oversized values, junk), the normalization that keeps client-supplied extras out of the `jsonb` column, and the `push-subscribe` rate limiter. The key pair is now checked by **decoded length** — 65 bytes for the P-256 point, 16 for the auth secret, the two RFC 8291 fixes — because a wrong-length key is refused by `web-push` *locally*, before any request and with no status code, which `sendPush` can only record as `failed` and never as `gone`: nothing clears it, and the account pays a doomed send on every notification it is ever owed. Both base64 alphabets are accepted, padded or not, since browsers and client libraries differ there and the difference says nothing about the key; base64 that only *starts* valid is rejected by a round-trip, because Node's decoder stops at the first bad character rather than throwing. The same predicate runs over every **stored** value in `buildAudiences`, so a malformed row written before this check existed stops being pushed to rather than failing forever
 - `tests/unit/pushServiceWorker.test.ts` (8) — `public/push-sw.js` loaded into a VM and driven with the browser's own event shapes: it renders the payload, never re-alerts on a replaced notification, still shows *something* when the payload is missing or unparseable (otherwise Android substitutes its own "site updated in the background" notice), and routes a click to an already-open tab rather than opening a second one
 - `tests/unit/pushCapability.test.ts` (13) — platform detection, including the iOS branch this project cannot verify on hardware (see §6)
 - `tests/unit/notificationRecipients.test.ts` (20) — the recipient rule on its own (ADR-022): the predicate, the derivation from a set of student rows, and the query `push-subscribe` asks. A tutor with no child of their own is not a recipient even when the children they teach are among the rows they can read; a 16+ santri is a recipient through their own record and is not thereby a parent of themselves; and a failed lookup throws rather than reporting "not a recipient", because a swallowed error there 403s a real parent and looks exactly like the rule working
@@ -502,8 +502,9 @@ drives real Chromium profiles (a parent with two children in one class, a
 second family in the same class, a 16+ student with their own account, and —
 since ADR-022 — a tutor whose own child attends and an admin whose own child
 attends) against a real push service, and asserts on what each browser
-displayed. 217 checks (63 before part 2b, 104 before part 3, 130 before
-ADR-022, 158 before ADR-025, 191 before the child-picker fix).
+displayed. 218 checks (63 before part 2b, 104 before part 3, 130 before
+ADR-022, 158 before ADR-025, 191 before the child-picker fix, 217 before
+the subscription-key check).
 
 **Section 9 is ADR-025's, and it is here rather than in Playwright for
 the reason section 7 is:** a scope switch that renders for the wrong
@@ -564,11 +565,25 @@ harness side: the Functions gain no test hook, and production still
 signs with the ordinary default — which is the property the top of
 `invoke-scheduled.mjs` exists to protect.
 
-**Last run: the VAPID clock fix, 217/217.** One run in four has been
-seen to lose §4m's two `tutor-parent` delivery assertions to a genuine
-FCM flake — a real Chromium registering with a real push service, which
-the section's own comment already treats as a shared resource. Re-run
-before reading anything into it.
+**Last run: the subscription-key check, 217/218** — the single failure
+being §9's own date assertion, fixed in the same change (it compared a
+row the browser writes with `todayLocalDate()` in Amsterdam against
+Postgres's `current_date` in UTC, so it failed for two hours after local
+midnight while the register had written every row correctly, one day
+further on).
+
+**Live push delivery is genuinely unreliable when the suite is run
+repeatedly**, and it is worth knowing what that looks like before
+reading a red run as a defect. Across a dozen runs in one evening the
+failures moved between sections — §2's absence push, §4b/§4c's
+milestones, §4m's tutor-parent, §4h's homework — rather than settling on
+one, and no check failed twice for the same reason. The clearest single
+piece of evidence is inside §4h, where a first 08:00 run reported
+`{"sent":3,"failed":2}` and the immediately following identical run
+reported `{"sent":5,"failed":0}`: the same five subscriptions, the same
+code, one retry apart. **A delivery failure that moves is the push
+service; one that stays is the code.** Re-run before diagnosing, and
+prefer a first run of the day.
 
 **Previous run: ADR-025, 191/191** (158 + 33 new).
 **And before that: after ADR-024 (`main` at the dev-fixture overlap personas),

@@ -1217,7 +1217,19 @@ const asUser = (user, body) => ({
   headers: { 'content-type': 'application/json', authorization: `Bearer ${mintJwt(user.id)}` },
   body: JSON.stringify(body),
 })
-const VALID_SUB = { endpoint: 'https://fcm.googleapis.com/fcm/send/x', keys: { p256dh: 'a', auth: 'b' } }
+// A real 65-byte P-256 point and 16-byte auth secret. It used to be
+// `{ p256dh: 'a', auth: 'b' }`, which `push-subscribe` happily stored —
+// and which `web-push` then refused locally, with no status code, on
+// every notification those three accounts were owed from that point on.
+// The endpoint is still a dummy: this section is about who may store a
+// subscription, and nothing here is ever delivered to.
+const VALID_SUB = {
+  endpoint: 'https://fcm.googleapis.com/fcm/send/x',
+  keys: {
+    p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM=',
+    auth: 'tBHItJI5svbpez7KI4CCXg==',
+  },
+}
 
 // The gate is the relationship, so the same two roles appear on both
 // sides of it: refused when no student row points at the account,
@@ -1229,6 +1241,14 @@ check('push-subscribe accepts an admin whose own child attends', (await post('pu
 check('push-subscribe accepts a 16+ santri, through their own record', (await post('push-subscribe', asUser(FATIMAH_USER, VALID_SUB))).status === 201)
 check('push-subscribe rejects a non-HTTPS endpoint', (await post('push-subscribe', asUser(RUDI, { ...VALID_SUB, endpoint: 'http://evil.example/x' }))).status === 400)
 check('push-subscribe rejects junk', (await post('push-subscribe', asUser(RUDI, { nope: true }))).status === 400)
+// A subscription that cannot be sent to must be refused at the door
+// rather than stored: `web-push` rejects a wrong-length key locally with
+// no status code, which `sendPush` can only record as `failed` and never
+// as `gone`, so nothing would ever clear it.
+check(
+  'push-subscribe rejects a key pair that could never be sent to',
+  (await post('push-subscribe', asUser(RUDI, { ...VALID_SUB, keys: { p256dh: 'a', auth: 'b' } }))).status === 400,
+)
 check('push-subscribe requires a session', (await post('push-subscribe', { method: 'POST', body: '{}' })).status === 401)
 check('notify-absence rejects a missing webhook secret', (await post('notify-absence', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"record":{"id":"x"}}' })).status === 401)
 check('notify-absence rejects a wrong webhook secret', (await post('notify-absence', { method: 'POST', headers: { 'content-type': 'application/json', 'x-webhook-secret': 'wrong' }, body: '{"record":{"id":"x"}}' })).status === 401)
@@ -1333,7 +1353,18 @@ console.log('\n9. view scope (ADR-025)')
   // upsert must leave her own row out while writing every classmate's.
   // Asserted by taking the register for real and reading the table,
   // because the whole failure mode is a payload that looks right.
-  const before = sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${AISYAH}'`)
+  //
+  // The date is the browser's, not Postgres's. `submitAttendance` writes
+  // `todayLocalDate()` — Europe/Amsterdam — while `current_date` in the
+  // container is UTC, and between local midnight and 02:00 CEST those
+  // are different days. Comparing against `current_date` made this
+  // section fail after midnight while the register had in fact written
+  // every row correctly, one day further on. The suite already knows
+  // this hazard: it is the same skew the weekly digest narrows for
+  // (test-plan §4.6, "00:30 Monday in Amsterdam is 23:30 Sunday in
+  // UTC").
+  const LOCAL_DATE = "(now() at time zone 'Europe/Amsterdam')::date"
+  const before = sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=${LOCAL_DATE} and a.student_id='${AISYAH}'`)
   const ctx = await openAs(AISYAH_USER)
   try {
     await ctx.page.goto(`${ORIGIN}/attendance`, { waitUntil: 'networkidle' })
@@ -1349,11 +1380,11 @@ console.log('\n9. view scope (ADR-025)')
     check('assistant: the register saves rather than failing the whole class', true)
     check(
       'assistant: her own attendance row is not written',
-      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${AISYAH}'`) === before,
+      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=${LOCAL_DATE} and a.student_id='${AISYAH}'`) === before,
     )
     check(
       'assistant: every classmate is written, including a tutor-parent’s own child (ADR-024)',
-      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=current_date and a.student_id='${KHADIJAH}'`) === '1',
+      sql(`select count(*) from public.attendance a join public.sessions s on s.id=a.session_id where s.class_id='${KELAS_A}' and s.date=${LOCAL_DATE} and a.student_id='${KHADIJAH}'`) === '1',
     )
     check('assistant: no failed requests taking the register', ctx.failedRequests.length === 0, ctx.failedRequests.join(' | '))
 

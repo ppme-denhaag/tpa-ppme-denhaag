@@ -13,7 +13,14 @@ import type { SendResult } from '../../netlify/functions/lib/webPush'
 
 const SUB = (id: string) => ({
   endpoint: `https://fcm.googleapis.com/fcm/send/${id}`,
-  keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+  // A real 65-byte P-256 point and 16-byte auth secret: since
+  // `isValidSubscription` checks the decoded lengths, a placeholder
+  // string here would make every recipient below unreachable and
+  // quietly turn these into tests of the empty case.
+  keys: {
+    p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM=',
+    auth: 'tBHItJI5svbpez7KI4CCXg==',
+  },
 })
 
 /**
