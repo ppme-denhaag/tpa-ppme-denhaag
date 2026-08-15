@@ -104,6 +104,21 @@ for Kelas B and cannot reach a screen that would let her, because
 routing still follows `users.role` — signing in as her is how that gap
 stays visible until role switching lands.
 
+**Two of them also teach the class their own record is in** (ADR-023),
+which is the case every other fixture in this project deliberately avoids
+and the likeliest arrangement at a real TPA. Aisyah assists Kelas A, where
+she is herself enrolled: her class picker offers both classes, the Kelas A
+roster contains her own name, and recording progress against that row is
+refused while any classmate succeeds — her attendance row is the
+documented exception (ADR-023(c)). Bapak Hasan teaches Kelas A too, where
+his daughter Khadijah is enrolled: his overlap is **not** closed, so he can
+record her progress and read her draft year-end report through the tutor
+grant. That is behaviour nobody has decided rather than a defect (RLS-36),
+and he is the account to sign in as when PPME wants to look at it. Neither
+persona added a row to the fixture — both are an existing account named in
+an existing class's `tutor_ids`, so every roster size and fan-out count
+`scripts/verify-push.mjs` asserts is unchanged.
+
 **Gotcha if you ever hand-write `auth.users` rows yourself** (dev-fixture.sql
 already does this correctly): PostgREST/RLS never look at `instance_id` or
 the `*_token`/`*_change` columns — they only validate the JWT signature and
