@@ -10,7 +10,7 @@ Priority order reflects risk, not feature order:
 2. **Core flows** (attendance, progress recording — daily-use correctness)
 3. **Streak & milestone logic** (edge-case-heavy)
 4. **Notifications** (cross-platform quirks, silent failures)
-5. **Offline/PWA behavior** (deferred if offline-writes descoped from MVP)
+5. **Offline/PWA behavior** — offline writes are in scope and built (TAD ADR-029): §6's rows below are no longer conditional, and the manual devtools-offline click-through is the one outstanding case, alongside the rest of §6's real-device matrix
 6. **i18n completeness**
 
 Out of scope for MVP testing: load/performance (200 users on Supabase free tier is trivial), penetration testing (basic OWASP checklist only).
@@ -499,7 +499,7 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
 | **Installed** PWA: notification is attributed to "TPA PPME Den Haag", not to Chrome | ☐ | ☐ | n/a |
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
-| Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
+| Offline write-queue (ADR-029, in scope and built): attendance/murajaah recorded offline queues, shows "will sync", and replays once online; a genuine rejection (not a network failure) still surfaces immediately rather than queuing | ☐ | ☐ | ☐ |
 
 **Two Android rows are now ticked, from a real device.** A reviewer with an
 Android phone ran the permission prompt, subscribed, and received a real

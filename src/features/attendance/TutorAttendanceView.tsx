@@ -6,6 +6,8 @@ import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import type { Database, TablesInsert } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
+import { isNetworkError } from '../../lib/network'
+import { offlineQueue } from '../../lib/offlineQueue'
 import { isRecordableStudent, recordableStudents } from '../../lib/roster'
 import {
   fetchAttendanceForSession,
@@ -69,6 +71,7 @@ export function TutorAttendanceView() {
   const [submitting, setSubmitting] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [queued, setQueued] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -81,6 +84,7 @@ export function TutorAttendanceView() {
     setLoading(true)
     setError(null)
     setSubmitted(false)
+    setQueued(false)
 
     async function load() {
       try {
@@ -139,6 +143,7 @@ export function TutorAttendanceView() {
 
   function setStatus(studentId: string, status: AttendanceStatus) {
     setSubmitted(false)
+    setQueued(false)
     setRows((prev) => ({
       ...prev,
       [studentId]: { status, reason: status === 'absent' ? prev[studentId]?.reason ?? '' : '' },
@@ -147,6 +152,7 @@ export function TutorAttendanceView() {
 
   function setReason(studentId: string, reason: string) {
     setSubmitted(false)
+    setQueued(false)
     setRows((prev) => ({ ...prev, [studentId]: { ...prev[studentId], reason } }))
   }
 
@@ -154,18 +160,30 @@ export function TutorAttendanceView() {
     if (!sessionId) return
     setSubmitting(true)
     setError(null)
+    setQueued(false)
+    const payload: TablesInsert<'attendance'>[] = submittable.map((student) => ({
+      session_id: sessionId,
+      student_id: student.id,
+      status: rows[student.id]?.status ?? 'present',
+      reason: rows[student.id]?.status === 'absent' ? rows[student.id]?.reason || null : null,
+    }))
     try {
-      const payload: TablesInsert<'attendance'>[] = submittable.map((student) => ({
-        session_id: sessionId,
-        student_id: student.id,
-        status: rows[student.id]?.status ?? 'present',
-        reason: rows[student.id]?.status === 'absent' ? rows[student.id]?.reason || null : null,
-      }))
       await submitAttendance(payload)
       setSubmitted(true)
       setConfirming(false)
     } catch (err) {
-      setError(getErrorMessage(err))
+      // A network failure means the register never left the device —
+      // upsert on (session_id, student_id) makes it safe to queue and
+      // replay whole, unlike a real rejection (a validation error, an
+      // RLS denial), which must reach the tutor now rather than sit in
+      // a queue pretending to have been handled.
+      if (isNetworkError(err)) {
+        await offlineQueue.enqueue('attendance', payload)
+        setQueued(true)
+        setConfirming(false)
+      } else {
+        setError(getErrorMessage(err))
+      }
     } finally {
       setSubmitting(false)
     }
@@ -291,6 +309,11 @@ export function TutorAttendanceView() {
           {submitted && (
             <p className="rounded-lg bg-ppme-success/10 p-3 text-sm text-ppme-success">
               {t('attendance.submitted')}
+            </p>
+          )}
+          {queued && (
+            <p className="rounded-lg bg-ppme-primary/10 p-3 text-sm text-ppme-primary">
+              {t('common.offline')}
             </p>
           )}
           {confirming ? (

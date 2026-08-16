@@ -589,6 +589,49 @@ The client's only write is `read_at`, and that is a column-level GRANT
 rather than a convention — `update (read_at)` is all `authenticated`
 holds, so a recipient cannot rewrite an event on their own row.
 
+## Offline writes
+
+Attendance submission and murajaah confirmation are queued and replayed
+from the **app**, not the service worker (TAD ADR-029) — a deliberate
+departure from ADR-005's original plan to use Workbox's Background Sync
+API, made because that API doesn't exist on Safari/iOS at all and has no
+hook to refresh an expired Supabase session before replaying a queued
+request.
+
+- `src/lib/offlineQueue.ts` — an IndexedDB-backed queue. `createOfflineQueue`
+  holds the logic (entry shape, oldest-first ordering, retry bookkeeping)
+  over an injected `QueueStore`, unit-tested against a plain in-memory
+  fake; `indexedDbStore()` is the real adapter and is not unit-tested,
+  since jsdom (this project's test environment) has no IndexedDB
+  implementation.
+- `src/lib/offlineReplay.ts` — `replayQueue()` refreshes the Supabase
+  session first (a queue left overnight can outlive the access token),
+  then replays oldest-first, reusing `submitAttendance`/`confirmPractice`
+  unmodified so there is exactly one implementation of each write, online
+  or queued. A murajaah replay that lands after its insert already
+  succeeded (response lost, not the write) hits `murajaah_log`'s
+  `unique (assignment_id, date)` constraint and is treated as delivered
+  rather than an error — the same reasoning `getOrCreateTodaySession`
+  already applies to its own race (`src/features/attendance/api.ts`).
+- `src/hooks/useOnlineStatus.ts` — triggers replay on the `online` event
+  and once on app load; mounted once near the top of `App.tsx`.
+- A network failure (`src/lib/network.ts#isNetworkError`) is what queues
+  a write. A real rejection — an RLS denial, a validation error — still
+  surfaces immediately; the queue must never swallow one.
+
+**Scope, stated deliberately rather than discovered as a gap later:**
+this is safe, idempotent replay, not a conflict-merge UI. Attendance's
+`upsert` on `(session_id, student_id)` is already last-write-wins at the
+database layer, true online today and unchanged by this work — offline
+support widens the window during which two devices could overwrite each
+other's mark, it does not introduce a new failure mode. No
+optimistic-concurrency/version-check merge logic exists.
+
+**Not verified from this machine**: the manual devtools-offline
+click-through (mark attendance/confirm murajaah with the network panel
+offline, confirm it queues and replays on reconnect) needs a real
+browser, per this project's standing "verify against a real stack" bar.
+
 ## Roles
 
 | Role | What it can do |
@@ -707,8 +750,10 @@ this is a manual runbook, not a feature.
   built.** Every route in `src/App.tsx` now points at a real feature — the
   `FeaturePlaceholder` page was deleted with the last one. See the
   checklist's suggested build order for what's next — notifications (§4)
-  are largely done (below), and offline/PWA sync polish (§5) is the
-  remaining piece deliberately deferred from Milestone 1. Of the feature
+  are largely done (below), and offline sync for attendance/murajaah
+  writes is now built (`src/lib/offlineQueue.ts`, `offlineReplay.ts`,
+  `useOnlineStatus.ts`; TAD ADR-029, which supersedes ADR-005's
+  original service-worker-level Background Sync plan). Of the feature
   FRs that were waiting on notification infrastructure, the milestone
   celebrations and the year-end report's FR-007 are now built; Homework's
   FR-005 (due-date reminders) and Murajaah's FR-006 (daily practice

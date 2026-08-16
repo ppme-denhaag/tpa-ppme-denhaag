@@ -8,7 +8,9 @@ import { ChildPicker } from '../../components/ChildPicker'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
 import { computeBestStreak, computeStreak, isStreakCurrent } from '../../lib/murajaah'
-import type { Database } from '../../lib/database.types'
+import { isNetworkError } from '../../lib/network'
+import { offlineQueue } from '../../lib/offlineQueue'
+import type { Database, TablesInsert } from '../../lib/database.types'
 import {
   confirmPractice,
   fetchAllLogsForAssignments,
@@ -37,6 +39,7 @@ export function FamilyMurajaahView() {
   const [logs, setLogs] = useState<MurajaahLog[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [queued, setQueued] = useState(false)
   const [quality, setQuality] = useState<MurajaahQuality>('hafal_lancar')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
@@ -124,16 +127,36 @@ export function FamilyMurajaahView() {
     if (!profile) return
     setConfirmingId(assignment.id)
     setError(null)
+    setQueued(false)
+    const row: TablesInsert<'murajaah_log'> = {
+      assignment_id: assignment.id,
+      confirmed_by: profile.id,
+      quality,
+      date: today,
+    }
     try {
-      const created = await confirmPractice({
-        assignment_id: assignment.id,
-        confirmed_by: profile.id,
-        quality,
-        date: today,
-      })
+      const created = await confirmPractice(row)
       setLogs((prev) => [created, ...prev])
     } catch (err) {
-      setError(getErrorMessage(err))
+      if (isNetworkError(err)) {
+        await offlineQueue.enqueue('murajaah', row)
+        // No server-generated row to prepend, so a local stand-in is
+        // shown instead — streaks are computed at read time from the
+        // log (`computeStreak`), so this needs nothing beyond what the
+        // insert itself would have returned.
+        const optimistic: MurajaahLog = {
+          id: crypto.randomUUID(),
+          created_at: new Date().toISOString(),
+          assignment_id: row.assignment_id,
+          confirmed_by: row.confirmed_by,
+          quality: row.quality,
+          date: row.date ?? today,
+        }
+        setLogs((prev) => [optimistic, ...prev])
+        setQueued(true)
+      } else {
+        setError(getErrorMessage(err))
+      }
     } finally {
       setConfirmingId(null)
     }
@@ -158,6 +181,9 @@ export function FamilyMurajaahView() {
       <ChildPicker students={students} value={studentId} onChange={setStudentId} />
 
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}
+      {queued && (
+        <p className="rounded-lg bg-ppme-primary/10 p-3 text-sm text-ppme-primary">{t('common.offline')}</p>
+      )}
 
       {loading ? (
         <p className="text-ppme-text/60">{t('common.loading')}</p>
