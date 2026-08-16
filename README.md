@@ -809,8 +809,13 @@ this is a manual runbook, not a feature.
   register them from the resulting pending-registrations list
   (`fn_pending_registrations()`, migration 008). These screens sit behind the
   single "Kelola" entry point (dashboard tile + a sixth desktop tab) and are
-  still admin-only (`RequireAdmin.tsx`). Still missing: no "tutor management"
-  view beyond assigning tutors on the class form, no way to remove/deactivate
-  an enrolled student, no CSV export.
+  still admin-only (`RequireAdmin.tsx`). A student's own account can now be
+  linked to their enrollment record either at creation or **later** — an
+  "Ubah" action on `/admin/students` opens the same form pre-filled and
+  offers the same self-login picker (TAD ADR-032), which is what the
+  ordinary September-enrollment/January-Google-account case actually needs;
+  before this it only worked at the moment a student was first added. Still
+  missing: no "tutor management" view beyond assigning tutors on the class
+  form, no way to remove/deactivate an enrolled student, no CSV export.
 - Bundle isn't code-split yet (single ~500KB JS chunk) — fine at this size, revisit
   once feature modules grow.
