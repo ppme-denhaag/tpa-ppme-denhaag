@@ -49,7 +49,7 @@ Still open (non-blocking, can resolve in parallel): WhatsApp integration + budge
 
 - [ ] Repo scaffolded: React + Vite (or Next.js static export) + TypeScript + Tailwind
 - [ ] Tailwind theme tokens set to the confirmed brand palette (§0)
-- [ ] Netlify deploy contexts: Preview (per-PR) and Production (main branch); branch protection rules set
+- [ ] Netlify deploy contexts: Preview (per-PR) and Production (main branch); branch protection rules set. **Production builds are currently stopped deliberately**, to conserve build credits while the project is still being built out — deploy previews still build per PR, but `ppme-tpa.netlify.app` does not track `main` and is published by hand when builds are re-enabled (TAD, Deployment). A merged change is therefore expected not to be live, and the first release after re-enabling will carry every undeployed commit at once
 - [ ] Environment variables documented (`.env.example`): Supabase URL/anon key, VAPID keys, (later) WhatsApp API keys — separate values per environment
 - [ ] Local dev setup via Supabase CLI (local Postgres + Auth emulation), so devs aren't hitting Frankfurt prod DB
 - [ ] `react-i18next` scaffolded with `id`/`nl` locale files; Islamic/Arabic terms (Murajaah, Yanbu'a, Surah, Ayah, etc.) marked as untranslated in both
