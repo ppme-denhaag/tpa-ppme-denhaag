@@ -708,9 +708,9 @@ was measured taking **32 seconds** — so a family on a slow day was shown
 
 ## 7. i18n completeness (automated)
 
-- CI script asserts `id.json` and `nl.json` have identical key sets (already scripted)
-- No hardcoded UI strings: lint rule / grep for literal Indonesian or Dutch text in components
-- Pseudo-locale render test: no truncation at 44px tap targets with longer Dutch strings
+- [x] CI script asserts `id.json` and `nl.json` have identical key sets (`tests/unit/i18n-parity.test.ts`)
+- [x] No hardcoded UI strings: `tests/unit/i18nHardcodedStrings.test.ts` parses every `src/**/*.tsx`/`.ts` file (via `@babel/parser`, `src/dev/**` exempt as a local-only, deliberately unlocalized fixture switcher) and flags any JSX text or string literal that exactly matches a translated leaf value from either locale file — the case where a string was pasted in place of `t(...)`. Matching against real locale content rather than a keyword list means it needs no maintenance as strings are added or changed
+- [x] Pseudo-locale render test: `e2e/pseudo-locale.spec.ts` builds a synthetic locale — for every key, whichever of the two real shipped translations is longer, padded ~35% further — and asserts no clipping (`scrollWidth`/`scrollHeight` vs `clientWidth`/`clientHeight`) and no shrinkage below the 44px tap-target minimum, at 390px viewport width. **Scoped to the sign-in screen only**, the one screen reachable without a mocked Supabase session — the same limitation `e2e/sign-in.spec.ts` documents. Extending this to the family/tutor/admin screens waits on the same fixture-auth wiring the rest of the E2E-01…E2E-14 suite needs
 
 ## 8. Compliance verification (pre-launch gate)
 
