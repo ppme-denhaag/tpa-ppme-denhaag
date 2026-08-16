@@ -26,6 +26,50 @@ export type SendResult =
   | { status: 'gone' }
   | { status: 'failed'; statusCode?: number; message: string }
 
+/**
+ * The two key lengths RFC 8291 fixes, in bytes once decoded.
+ *
+ * `p256dh` is an uncompressed P-256 public key — one 0x04 tag byte and
+ * two 32-byte coordinates — and `auth` is a 16-byte secret. Every
+ * browser that can subscribe at all produces exactly these, so checking
+ * them costs nothing real and closes a hole that is otherwise permanent:
+ * `web-push` validates the key *locally*, before any request, and throws
+ * "The subscription p256dh value should be 65 bytes long." with **no
+ * status code**. `sendPush` maps a status-less error to `failed` rather
+ * than `gone` — correctly, since a network error looks the same and
+ * deleting a good subscription on one is worse — so a subscription that
+ * can never work is never cleared either. It burns a send attempt on
+ * every notification that account is ever owed, forever.
+ *
+ * Checking here fixes both ends at once. `push-subscribe` refuses to
+ * store one, and `buildAudiences` runs every *stored* value through this
+ * same predicate, so a malformed row written before this existed stops
+ * being pushed to and becomes what it always really was: a recipient
+ * reached in the app rather than on their lock screen.
+ */
+const P256DH_BYTES = 65
+const AUTH_BYTES = 16
+
+/**
+ * The decoded byte length of a base64url value, or `null` if it is not
+ * base64 at all.
+ *
+ * The round-trip is the point. Node's decoder is lenient — it stops at
+ * the first character it cannot read rather than throwing — so
+ * `Buffer.from('a!!!!', 'base64url')` yields a buffer rather than an
+ * error, and a plain length check on the result would pass junk. Both
+ * alphabets are accepted because browsers and the odd client library
+ * differ on padding and on `-_` versus `+/`, and neither difference says
+ * anything about whether the key is real.
+ */
+function decodedByteLength(value: string): number | null {
+  const normalized = value.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+  if (!/^[A-Za-z0-9_-]+$/.test(normalized)) return null
+  const decoded = Buffer.from(normalized, 'base64url')
+  if (decoded.toString('base64url') !== normalized) return null
+  return decoded.length
+}
+
 export function isValidSubscription(value: unknown): value is StoredSubscription {
   if (!value || typeof value !== 'object') return false
   const sub = value as Record<string, unknown>
@@ -45,8 +89,13 @@ export function isValidSubscription(value: unknown): value is StoredSubscription
 
   const keys = sub.keys as Record<string, unknown> | undefined
   if (!keys || typeof keys !== 'object') return false
-  if (typeof keys.p256dh !== 'string' || keys.p256dh.length === 0 || keys.p256dh.length > 256) return false
-  if (typeof keys.auth !== 'string' || keys.auth.length === 0 || keys.auth.length > 256) return false
+  if (typeof keys.p256dh !== 'string' || typeof keys.auth !== 'string') return false
+  // Exact lengths rather than "non-empty and not absurd": see the note on
+  // P256DH_BYTES. A key of the wrong length is not a subscription that
+  // might work on a better day, it is one `web-push` refuses to send to
+  // before it opens a socket.
+  if (decodedByteLength(keys.p256dh) !== P256DH_BYTES) return false
+  if (decodedByteLength(keys.auth) !== AUTH_BYTES) return false
 
   return true
 }

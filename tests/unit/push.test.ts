@@ -34,6 +34,38 @@ describe('push subscription validation', () => {
     expect(isValidSubscription({ ...VALID, endpoint: 'not a url' })).toBe(false)
   })
 
+  it('rejects a key pair that is the wrong length to be a key pair', () => {
+    // The case this check exists for. Both of these are well-formed
+    // base64 and neither is a P-256 key, so `web-push` refuses them
+    // locally — before any request, with no status code — which
+    // `sendPush` can only record as `failed`, never as `gone`. Stored,
+    // they would cost that account a doomed send on every notification
+    // they are ever owed. `scripts/verify-push.mjs` §8 used exactly this
+    // shape until it was found doing it.
+    expect(isValidSubscription({ ...VALID, keys: { p256dh: 'a', auth: 'b' } })).toBe(false)
+    expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, auth: 'dBHItJI5svbpez7KI4CC' } })).toBe(false)
+    expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, p256dh: VALID.keys.auth } })).toBe(false)
+  })
+
+  it('accepts either base64 alphabet, padded or not', () => {
+    // A browser hands back base64url; some client libraries re-encode
+    // with `+/` and padding on the way through. Neither says anything
+    // about whether the key is real, so neither is rejected.
+    const standard = VALID.keys.p256dh.replace(/-/g, '+').replace(/_/g, '/')
+    expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, p256dh: standard } })).toBe(true)
+    expect(
+      isValidSubscription({ ...VALID, keys: { ...VALID.keys, auth: VALID.keys.auth.replace(/=+$/, '') } }),
+    ).toBe(true)
+  })
+
+  it('rejects base64 that is not really base64', () => {
+    // Node's decoder stops at the first unreadable character rather
+    // than throwing, so a length check on what it returns would pass
+    // junk that happens to start with enough valid characters.
+    expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, auth: 'tBHItJI5svbpez7KI4CC!!' } })).toBe(false)
+    expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, auth: 'tBHItJI5 svbpez7KI4CCXg' } })).toBe(false)
+  })
+
   it('rejects absurdly long values', () => {
     expect(isValidSubscription({ ...VALID, endpoint: `https://x.example/${'a'.repeat(1100)}` })).toBe(false)
     expect(isValidSubscription({ ...VALID, keys: { ...VALID.keys, auth: 'a'.repeat(300) } })).toBe(false)
