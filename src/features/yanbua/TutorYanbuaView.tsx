@@ -5,8 +5,10 @@ import { useMyClasses } from '../../hooks/useMyClasses'
 import { ClassPicker } from '../../components/ClassPicker'
 import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
 import { useViewScope } from '../../context/ViewScopeContext'
-import type { Database } from '../../lib/database.types'
+import type { Database, TablesInsert } from '../../lib/database.types'
 import { getErrorMessage } from '../../lib/errors'
+import { isNetworkError } from '../../lib/network'
+import { offlineQueue } from '../../lib/offlineQueue'
 import { isJilidComplete, nextJilid, type JilidRef } from '../../lib/yanbua'
 import { fetchYanbuaHistory, fetchYanbuaJilidRef, insertYanbuaProgress, type YanbuaProgress } from './api'
 import { CurrentLevelCard } from './CurrentLevelCard'
@@ -42,6 +44,7 @@ export function TutorYanbuaView() {
   const [saving, setSaving] = useState(false)
   const [banner, setBanner] = useState<{ text: string; celebrate: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [queued, setQueued] = useState(false)
 
   useEffect(() => {
     fetchYanbuaJilidRef()
@@ -81,6 +84,7 @@ export function TutorYanbuaView() {
     setSelectedStudent(student)
     setBanner(null)
     setError(null)
+    setQueued(false)
     setHistoryLoading(true)
     fetchYanbuaHistory(student.id)
       .then((data) => {
@@ -99,33 +103,62 @@ export function TutorYanbuaView() {
     if (!selectedStudent || !profile) return
     setSaving(true)
     setError(null)
-    try {
-      const created = await insertYanbuaProgress({
-        student_id: selectedStudent.id,
-        tutor_id: profile.id,
-        jilid,
-        page,
-        mastery,
-        notes: notes || null,
-      })
-      setHistory((prev) => [created, ...prev])
-
-      if (isJilidComplete(jilid, page, mastery, jilidRefs)) {
-        setBanner({ text: t('yanbua.jilidComplete', { number: jilid }), celebrate: true })
-        const next = nextJilid(jilid)
-        if (next) {
-          setJilid(next)
-          setPage(1)
-        }
-      } else {
-        setBanner({ text: t('yanbua.savedMessage'), celebrate: false })
-      }
-      setNotes('')
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setSaving(false)
+    setQueued(false)
+    // A fresh client-generated key, reused both as the offline queue
+    // payload's idempotency key (migration 015's `client_ref` unique
+    // constraint) and as the optimistic history row's `id` below —
+    // one uuid rather than a second one just for display.
+    const clientRef = crypto.randomUUID()
+    const row: TablesInsert<'yanbua_progress'> = {
+      student_id: selectedStudent.id,
+      tutor_id: profile.id,
+      jilid,
+      page,
+      mastery,
+      notes: notes || null,
+      client_ref: clientRef,
     }
+    try {
+      const created = await insertYanbuaProgress(row)
+      setHistory((prev) => [created, ...prev])
+    } catch (err) {
+      if (!isNetworkError(err)) {
+        setError(getErrorMessage(err))
+        setSaving(false)
+        return
+      }
+      await offlineQueue.enqueue('yanbua', row)
+      // No server-returned row to prepend, so a local stand-in is shown
+      // instead. The jilid-complete banner below runs entirely off
+      // local state (jilid/page/mastery/jilidRefs), so it needs nothing
+      // beyond what the insert itself would have returned.
+      const optimistic: YanbuaProgress = {
+        id: clientRef,
+        client_ref: clientRef,
+        recorded_at: new Date().toISOString(),
+        student_id: row.student_id,
+        tutor_id: row.tutor_id,
+        jilid: row.jilid,
+        page: row.page,
+        mastery: row.mastery,
+        notes: row.notes ?? null,
+      }
+      setHistory((prev) => [optimistic, ...prev])
+      setQueued(true)
+    }
+
+    if (isJilidComplete(jilid, page, mastery, jilidRefs)) {
+      setBanner({ text: t('yanbua.jilidComplete', { number: jilid }), celebrate: true })
+      const next = nextJilid(jilid)
+      if (next) {
+        setJilid(next)
+        setPage(1)
+      }
+    } else {
+      setBanner({ text: t('yanbua.savedMessage'), celebrate: false })
+    }
+    setNotes('')
+    setSaving(false)
   }
 
   if (classesLoading) return <p className="text-ppme-text/60">{t('common.loading')}</p>
@@ -176,6 +209,9 @@ export function TutorYanbuaView() {
       <h2 className="text-base font-semibold text-ppme-text">{selectedStudent.full_name}</h2>
 
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}
+      {queued && (
+        <p className="rounded-lg bg-ppme-primary/10 p-3 text-sm text-ppme-primary">{t('common.offline')}</p>
+      )}
 
       {historyLoading ? (
         <p className="text-ppme-text/60">{t('common.loading')}</p>

@@ -2,6 +2,8 @@ import { supabase } from './supabase'
 import { offlineQueue, type QueueEntry } from './offlineQueue'
 import { submitAttendance } from '../features/attendance/api'
 import { confirmPractice } from '../features/murajaah/api'
+import { insertYanbuaProgress } from '../features/yanbua/api'
+import { insertQuranProgress } from '../features/quran/api'
 import type { TablesInsert } from './database.types'
 
 const POSTGRES_UNIQUE_VIOLATION = '23505'
@@ -28,8 +30,35 @@ async function replayEntry(entry: QueueEntry): Promise<void> {
   // That is success, not a new failure: the same reasoning
   // `getOrCreateTodaySession` already applies to its own race
   // (attendance/api.ts).
+  if (entry.kind === 'murajaah') {
+    try {
+      await confirmPractice(entry.payload as TablesInsert<'murajaah_log'>)
+    } catch (err) {
+      if (isUniqueViolation(err)) return
+      throw err
+    }
+    return
+  }
+
+  // yanbua_progress/quran_progress have no natural unique key at all
+  // (unlike attendance's (session_id, student_id) or murajaah_log's
+  // (assignment_id, date)), so the payload carries a client-generated
+  // `client_ref` (the queue entry's own id) that migration 015 gave
+  // both tables a unique constraint on. Same reasoning as murajaah: a
+  // 23505 here means this entry's insert already landed on an earlier
+  // attempt and only the response was lost, not a new failure.
+  if (entry.kind === 'yanbua') {
+    try {
+      await insertYanbuaProgress(entry.payload as TablesInsert<'yanbua_progress'>)
+    } catch (err) {
+      if (isUniqueViolation(err)) return
+      throw err
+    }
+    return
+  }
+
   try {
-    await confirmPractice(entry.payload as TablesInsert<'murajaah_log'>)
+    await insertQuranProgress(entry.payload as TablesInsert<'quran_progress'>)
   } catch (err) {
     if (isUniqueViolation(err)) return
     throw err

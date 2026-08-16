@@ -113,7 +113,7 @@ function draw(doc: PDFKit.PDFDocument, input: ReportPdfInput, logo: Buffer | nul
 
   doc.moveDown(1)
   keyValue(doc, left, width, 'Nama Santri / Naam leerling', input.student_name)
-  keyValue(doc, left, width, 'Kelas / Klas', input.class_name ?? '—')
+  keyValue(doc, left, width, 'Grup / Groep', input.class_name ?? '—')
 
   // ---- attendance ---------------------------------------------------
   sectionTitle(doc, left, 'Ringkasan Kehadiran / Aanwezigheidsoverzicht')

@@ -22,11 +22,11 @@ export interface FixtureUser {
 // Matches supabase/dev-fixture.sql — see README "Local Postgres" for how
 // to load it into a local `supabase start` stack.
 export const FIXTURE_USERS: FixtureUser[] = [
-  { id: 'a1000000-0000-0000-0000-000000000001', label: 'Ustadz Ahmad (Tutor — Kelas A + B)' },
-  // Second tutor, assigned to Kelas B only — the fixture's one way to
+  { id: 'a1000000-0000-0000-0000-000000000001', label: 'Ustadz Ahmad (Tutor — Grup A + B)' },
+  // Second tutor, assigned to Grup B only — the fixture's one way to
   // check a tutor's class scoping from the browser rather than by hand
   // with a minted JWT.
-  { id: 'b1000000-0000-0000-0000-000000000001', label: 'Ustadz Baru (Tutor — Kelas B only)' },
+  { id: 'b1000000-0000-0000-0000-000000000001', label: 'Ustadz Baru (Tutor — Grup B only)' },
   { id: 'a2000000-0000-0000-0000-000000000001', label: 'Ibu Siti (Parent — 3 children)' },
   { id: 'a2000000-0000-0000-0000-000000000002', label: 'Bapak Rudi (Parent — 2 children)' },
   { id: 'a3000000-0000-0000-0000-000000000001', label: 'Fatimah (Santri, 16+ self-login)' },
@@ -39,11 +39,11 @@ export const FIXTURE_USERS: FixtureUser[] = [
   // returns exactly their own child, never their class.
   {
     id: 'd1000000-0000-0000-0000-000000000001',
-    label: 'Ustadzah Aminah (Tutor Kelas A + parent of Yusuf in Kelas B)',
+    label: 'Ustadzah Aminah (Tutor Grup A + parent of Yusuf in Grup B)',
   },
   {
     id: 'd1000000-0000-0000-0000-000000000002',
-    label: 'Bapak Hasan (Parent of Khadijah in Kelas A + tutor of Kelas B)',
+    label: 'Bapak Hasan (Parent of Khadijah in Grup A + tutor of Grup B)',
   },
   // Three relationships at once. Worth clicking through whenever a query
   // grows an admin branch: for her the admin grant and the tutor
@@ -51,7 +51,7 @@ export const FIXTURE_USERS: FixtureUser[] = [
   // a given screen.
   {
     id: 'd1000000-0000-0000-0000-000000000003',
-    label: 'Ustadzah Laila (Admin + tutor of Kelas A + parent of Salma in Kelas B)',
+    label: 'Ustadzah Laila (Admin + tutor of Grup A + parent of Salma in Grup B)',
   },
   // The student assistant (TAD ADR-020, ADR-023). Her `users.role` is
   // 'student' and she now lands on the *class* scope regardless, which
@@ -61,7 +61,7 @@ export const FIXTURE_USERS: FixtureUser[] = [
   // register it is shown but not submitted.
   {
     id: 'd1000000-0000-0000-0000-000000000004',
-    label: 'Aisyah (Santri 16+ in Kelas A + assists in Kelas B)',
+    label: 'Aisyah (Santri 16+ in Grup A + assists in Grup B)',
   },
 ]
 

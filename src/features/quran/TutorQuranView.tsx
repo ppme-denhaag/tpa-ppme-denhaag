@@ -7,12 +7,14 @@ import { fetchRecordableRoster, type RosterStudent } from '../../lib/roster'
 import { useViewScope } from '../../context/ViewScopeContext'
 import type { SurahRef } from '../../lib/quran'
 import { getErrorMessage } from '../../lib/errors'
+import { isNetworkError } from '../../lib/network'
+import { offlineQueue } from '../../lib/offlineQueue'
 import { fetchQuranHistory, fetchSurahs, insertQuranProgress, type QuranProgress } from './api'
 import { CurrentPositionCard } from './CurrentPositionCard'
 import { QuranTimeline } from './QuranTimeline'
 import { SurahSelect } from './SurahSelect'
 import { QUALITY_LABEL_KEY, QUALITY_OPTIONS } from './quality'
-import type { Database } from '../../lib/database.types'
+import type { Database, TablesInsert } from '../../lib/database.types'
 
 type QuranQuality = Database['public']['Enums']['quran_quality']
 
@@ -38,6 +40,7 @@ export function TutorQuranView() {
   const [tajweedNotes, setTajweedNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [queued, setQueued] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -75,6 +78,7 @@ export function TutorQuranView() {
     setSelectedStudent(student)
     setSaved(false)
     setError(null)
+    setQueued(false)
     setHistoryLoading(true)
     fetchQuranHistory(student.id)
       .then((data) => {
@@ -94,24 +98,50 @@ export function TutorQuranView() {
     if (!selectedStudent || !profile) return
     setSaving(true)
     setError(null)
+    setQueued(false)
+    // A fresh client-generated key, reused both as the offline queue
+    // payload's idempotency key (migration 015's `client_ref` unique
+    // constraint) and as the optimistic history row's `id` below — one
+    // uuid rather than a second one just for display.
+    const clientRef = crypto.randomUUID()
+    const row: TablesInsert<'quran_progress'> = {
+      student_id: selectedStudent.id,
+      tutor_id: profile.id,
+      surah_num: surahNum,
+      ayah_from: ayahFrom,
+      ayah_to: ayahTo,
+      quality,
+      tajweed_notes: tajweedNotes || null,
+      client_ref: clientRef,
+    }
     try {
-      const created = await insertQuranProgress({
-        student_id: selectedStudent.id,
-        tutor_id: profile.id,
-        surah_num: surahNum,
-        ayah_from: ayahFrom,
-        ayah_to: ayahTo,
-        quality,
-        tajweed_notes: tajweedNotes || null,
-      })
+      const created = await insertQuranProgress(row)
       setHistory((prev) => [created, ...prev])
       setSaved(true)
-      setTajweedNotes('')
     } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setSaving(false)
+      if (!isNetworkError(err)) {
+        setError(getErrorMessage(err))
+        setSaving(false)
+        return
+      }
+      await offlineQueue.enqueue('quran', row)
+      const optimistic: QuranProgress = {
+        id: clientRef,
+        client_ref: clientRef,
+        recorded_at: new Date().toISOString(),
+        student_id: row.student_id,
+        tutor_id: row.tutor_id,
+        surah_num: row.surah_num,
+        ayah_from: row.ayah_from,
+        ayah_to: row.ayah_to,
+        quality: row.quality,
+        tajweed_notes: row.tajweed_notes ?? null,
+      }
+      setHistory((prev) => [optimistic, ...prev])
+      setQueued(true)
     }
+    setTajweedNotes('')
+    setSaving(false)
   }
 
   if (classesLoading) return <p className="text-ppme-text/60">{t('common.loading')}</p>
@@ -162,6 +192,9 @@ export function TutorQuranView() {
       <h2 className="text-base font-semibold text-ppme-text">{selectedStudent.full_name}</h2>
 
       {error && <p className="rounded-lg bg-ppme-danger/10 p-3 text-sm text-ppme-danger">{error}</p>}
+      {queued && (
+        <p className="rounded-lg bg-ppme-primary/10 p-3 text-sm text-ppme-primary">{t('common.offline')}</p>
+      )}
 
       {historyLoading ? (
         <p className="text-ppme-text/60">{t('common.loading')}</p>
