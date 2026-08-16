@@ -2540,6 +2540,46 @@ insert into _tap_log(line) select is(
 );
 reset role;
 
+-- ---------- RLS-42 — schema privileges, not row privileges ----------
+--
+-- Everything above this line asks what a role may *see*. This asks what
+-- it may *make*. The two are separate gates in Postgres and only the
+-- first has 42 policies watching it: a schema grant nobody intended
+-- simply sits there, which is how `GRANT ALL ON SCHEMA public TO anon`
+-- survived in production from the day the project was provisioned until
+-- `supabase db diff --linked` was run against it (ADR-027, migration
+-- 014).
+--
+-- Both halves are asserted because they fail identically — with no rows
+-- and no error — in a migration that only revokes. "We revoked too
+-- much" would take PostgREST down for every signed-in parent; "we
+-- revoked nothing" would leave the grant exactly where it was found.
+insert into _tap_log(line) select ok(
+  not has_schema_privilege('anon', 'public', 'CREATE'),
+  'RLS-42: anon cannot create objects in the public schema — it is the role behind the key that ships in the app bundle'
+);
+insert into _tap_log(line) select ok(
+  not has_schema_privilege('authenticated', 'public', 'CREATE'),
+  'RLS-42: …nor can any signed-in account'
+);
+insert into _tap_log(line) select ok(
+  has_schema_privilege('anon', 'public', 'USAGE'),
+  'RLS-42: …and USAGE survives, which migration 007 grants and PostgREST needs to resolve any table at all'
+);
+insert into _tap_log(line) select ok(
+  has_schema_privilege('authenticated', 'public', 'USAGE'),
+  'RLS-42: …for both of them'
+);
+-- `service_role` is deliberately *not* asserted either way, and that is
+-- itself worth stating. Migration 014 does not touch it — its key never
+-- leaves the server, it already bypasses RLS, and CREATE adds nothing
+-- to an account that can read and write every row (ADR-027) — so
+-- whether it holds CREATE depends on which Supabase image provisioned
+-- the database rather than on anything in this repo. Frankfurt was
+-- provisioned by an older one and grants it; a fresh `supabase start`
+-- does not. An assertion here would pass in one and fail in the other
+-- while saying nothing about the migration under test.
+
 -- ---------- done ----------
 reset role;
 insert into _tap_log(line) select * from finish();
