@@ -193,7 +193,7 @@ function extractPdfText(pdf: Buffer): string {
 describe('renderReportPdf (test-plan §4.4 — PDF content smoke test)', () => {
   const input: ReportPdfInput = {
     student_name: 'Zainab Rahmawati',
-    class_name: 'Kelas A',
+    class_name: 'Grup A',
     academic_year: '2025/2026',
     tutor_name: 'Ustadz Ahmad',
     published_date: '2026-07-10',

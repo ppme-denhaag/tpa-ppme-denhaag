@@ -345,7 +345,7 @@ describe('dispatching to a fanned-out audience', () => {
 
     expect(sent.map((s) => s.body)).toEqual([
       'Ada tugas baru untuk Ali',
-      'Er is een nieuwe opdracht voor Ali',
+      'Er is nieuw huiswerk voor Ali',
     ])
     expect(sent.map((s) => s.tag)).toEqual([
       'newAssignment:parent-1:student-1:2026-03-10',

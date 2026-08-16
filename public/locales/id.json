@@ -11,7 +11,7 @@
     "murajaah": "Murajaah",
     "laporan": "Rapor",
     "pendaftaran": "Pendaftaran",
-    "kelas": "Kelas",
+    "kelas": "Grup",
     "santri": "Santri",
     "kelola": "Kelola"
   },
@@ -41,15 +41,15 @@
     "page": "Hal.",
     "ayah": "Ayat",
     "of": "dari",
-    "selectClass": "Pilih Kelas",
+    "selectClass": "Pilih Grup",
     "selectChild": "Pilih Anak",
     "selectStudent": "Pilih Santri",
     "empty": "Belum ada data",
     "from": "Dari",
     "to": "Sampai",
     "back": "Kembali",
-    "noClassesAssigned": "Anda belum ditugaskan ke kelas manapun",
-    "noStudentsInClass": "Belum ada santri di kelas ini"
+    "noClassesAssigned": "Anda belum ditugaskan ke grup manapun",
+    "noStudentsInClass": "Belum ada santri di grup ini"
   },
   "attendance": {
     "title": "Kehadiran",
@@ -176,7 +176,7 @@
     "portfolio": "Hafalan Selesai",
     "noActiveTarget": "Belum ada target murajaah aktif",
     "tabAssign": "Tetapkan Target",
-    "tabOverview": "Ringkasan Kelas",
+    "tabOverview": "Ringkasan Grup",
     "history": "Riwayat Konfirmasi"
   },
   "notifications": {
@@ -213,7 +213,7 @@
       "working": "Mohon tunggu…",
       "whatYouGet": "Yang akan Anda terima",
       "itemAbsence": "Pemberitahuan bila anak Anda tercatat tidak hadir",
-      "itemAssignment": "Pemberitahuan bila ada tugas baru untuk kelas anak Anda",
+      "itemAssignment": "Pemberitahuan bila ada tugas baru untuk grup anak Anda",
       "itemMilestone": "Kabar gembira bila anak Anda menyelesaikan satu jilid atau hafal surah baru",
       "itemReport": "Pemberitahuan bila rapor akhir tahun sudah siap",
       "privacyTitle": "Apa yang tampil di layar kunci",
@@ -222,7 +222,7 @@
       "unsupported": "Peramban ini tidak mendukung notifikasi push.",
       "iosInstallTitle": "Tambahkan ke Layar Utama dulu",
       "iosInstallBody": "Di iPhone dan iPad, notifikasi hanya berfungsi setelah aplikasi ditambahkan ke Layar Utama. Buka menu Bagikan di Safari, pilih \"Tambahkan ke Layar Utama\", lalu buka aplikasi dari ikon tersebut dan kembali ke halaman ini.",
-      "notLinkedToAStudent": "Notifikasi TPA selalu mengenai seorang santri: Anda menerimanya untuk anak Anda sendiri, atau untuk diri Anda sendiri bila Anda santri dengan akun sendiri. Akun ini belum terhubung dengan santri mana pun, sehingga mengaktifkan notifikasi di sini tidak mengirimkan apa pun. Catatan kelas yang Anda ampu tidak dikirim sebagai notifikasi kepada siapa pun.",
+      "notLinkedToAStudent": "Notifikasi TPA selalu mengenai seorang santri: Anda menerimanya untuk anak Anda sendiri, atau untuk diri Anda sendiri bila Anda santri dengan akun sendiri. Akun ini belum terhubung dengan santri mana pun, sehingga mengaktifkan notifikasi di sini tidak mengirimkan apa pun. Catatan grup yang Anda ampu tidak dikirim sebagai notifikasi kepada siapa pun.",
       "pushServiceUnreachable": "Layanan notifikasi peramban tidak merespons. Periksa koneksi internet Anda, lalu coba lagi.",
       "error": "Gagal memperbarui pengaturan notifikasi. Coba lagi."
     }
@@ -235,7 +235,7 @@
   },
   "scope": {
     "label": "Tampilan",
-    "myClass": "Kelas saya",
+    "myClass": "Grup saya",
     "myChild": "Anak saya",
     "myself": "Saya",
     "myFamily": "Keluarga saya"
@@ -282,10 +282,10 @@
     "notification": "Rapor akhir tahun {{name}} sudah siap",
     "academicYearLabel": "Tahun Ajaran",
     "academicYearInvalid": "Tahun ajaran harus dua tahun berurutan, mis. 2025/2026",
-    "classScope": "Kelas (opsional)",
-    "allClasses": "Semua Kelas",
+    "classScope": "Grup (opsional)",
+    "allClasses": "Semua Grup",
     "skippedExisting": "{{count}} dilewati (sudah punya rapor)",
-    "skippedNoTutor": "{{count}} dilewati (kelas tanpa ustadz pengampu)",
+    "skippedNoTutor": "{{count}} dilewati (grup tanpa ustadz pengampu)",
     "subjectYanbua": "Yanbu'a",
     "subjectQuran": "Al-Quran",
     "subjectMurajaah": "Murajaah",
@@ -293,7 +293,7 @@
     "notGraded": "Belum dinilai",
     "narrativeRequired": "Tulis catatan ustadz terlebih dahulu sebelum menerbitkan rapor.",
     "readOnlyOtherTutor": "Rapor ini ditulis oleh ustadz lain. Anda hanya dapat melihatnya.",
-    "noDraftsForClass": "Belum ada draf rapor untuk kelas ini. Draf dibuat oleh admin untuk satu tahun ajaran sekaligus.",
+    "noDraftsForClass": "Belum ada draf rapor untuk grup ini. Draf dibuat oleh admin untuk satu tahun ajaran sekaligus.",
     "republish": "Terbitkan Ulang & Perbarui PDF",
     "progressContext": "Ringkasan Perkembangan",
     "murajaahTargets": "{{active}} target aktif · {{total}} total",
@@ -320,22 +320,22 @@
     "assignRole": "Peran",
     "fullName": "Nama Lengkap",
     "register": "Daftarkan",
-    "classesTitle": "Manajemen Kelas",
-    "newClass": "Kelas Baru",
-    "className": "Nama Kelas",
+    "classesTitle": "Manajemen Grup",
+    "newClass": "Grup Baru",
+    "className": "Nama Grup",
     "classSchedule": "Jadwal",
     "assignTutors": "Ustadz Pengampu",
     "noTutors": "Belum ada ustadz terdaftar",
-    "noClasses": "Belum ada kelas",
+    "noClasses": "Belum ada grup",
     "studentsTitle": "Manajemen Santri",
     "newStudent": "Santri Baru",
-    "studentClass": "Kelas",
+    "studentClass": "Grup",
     "studentParent": "Orang Tua",
     "studentDob": "Tanggal Lahir",
     "hasOwnLogin": "Akun sendiri",
     "linkSelfLogin": "Tautkan Akun Login Mandiri",
     "linkSelfLoginNone": "Tidak ada",
     "noParents": "Belum ada orang tua terdaftar",
-    "hubSubtitle": "Pendaftaran pengguna, kelas, dan data santri"
+    "hubSubtitle": "Pendaftaran pengguna, grup, dan data santri"
   }
 }

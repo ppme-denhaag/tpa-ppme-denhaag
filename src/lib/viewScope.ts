@@ -29,7 +29,7 @@ type UserRole = Database['public']['Enums']['user_role']
  * which question a screen asks, never what comes back — RLS is
  * untouched, and a scope that said yes where a policy says no produces
  * an empty screen, exactly as ADR-019(b) says of capabilities. The
- * control is therefore labelled by *subject* ("Kelas saya" / "Anak
+ * control is therefore labelled by *subject* ("Grup saya" / "Anak
  * saya"), never by role, so nothing in the product claims a person can
  * choose what they are.
  *

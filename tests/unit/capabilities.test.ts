@@ -431,9 +431,9 @@ describe('fetchTutorClassCount', () => {
 })
 
 describe('fetchTaughtClasses — the tutor-side mirror of the same fix', () => {
-  const KELAS_A: TaughtClass = {
+  const GRUP_A: TaughtClass = {
     id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-    name: 'Kelas A',
+    name: 'Grup A',
     schedule: 'Sabtu 10:00-12:00',
   }
 
@@ -475,13 +475,13 @@ describe('fetchTaughtClasses — the tutor-side mirror of the same fix', () => {
     // so an unfiltered select offered a tutor-parent a class they cannot
     // record against — the roster comes back holding their own child
     // alone and the save fails on `fn_my_classes()`.
-    const { client, calls } = fakeClient([KELAS_A])
+    const { client, calls } = fakeClient([GRUP_A])
     return fetchTaughtClasses(client, TP, { isAdmin: false }).then((rows) => {
       expect(calls.table).toBe('classes')
       expect(calls.containsColumn).toBe('tutor_ids')
       expect(calls.containsValue).toEqual([TP])
       expect(calls.order).toBe('name')
-      expect(rows).toEqual([KELAS_A])
+      expect(rows).toEqual([GRUP_A])
     })
   })
 
@@ -489,11 +489,11 @@ describe('fetchTaughtClasses — the tutor-side mirror of the same fix', () => {
     // ADR-014: admin takes the tutor shape over the whole TPA. Filtering
     // on `tutor_ids` would hand them an empty picker on every recording
     // screen.
-    const { client, calls } = fakeClient([KELAS_A])
+    const { client, calls } = fakeClient([GRUP_A])
     return fetchTaughtClasses(client, OTHER, { isAdmin: true }).then((rows) => {
       expect(calls.containsColumn).toBeUndefined()
       expect(calls.order).toBe('name')
-      expect(rows).toEqual([KELAS_A])
+      expect(rows).toEqual([GRUP_A])
     })
   })
 

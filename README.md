@@ -69,7 +69,7 @@ local Docker stack, which is disposable and per-machine.
 #### Dev fixture + fixture sign-in (no real Google OAuth needed)
 
 `supabase/dev-fixture.sql` seeds a small realistic dataset (2 tutors — one
-assigned to both classes, one to Kelas B only — plus admin, 2 parents,
+assigned to both classes, one to Grup B only — plus admin, 2 parents,
 4 multi-role accounts, 2 classes, 8 students, 1 pending/unregistered sign-in)
 into a local stack — load it after migrations are applied:
 
@@ -87,10 +87,10 @@ session against the local stack without configuring Google OAuth
 (`supabase/config.toml` has no `[auth.external.google]` section locally).
 
 The last three identities in that panel hold **more than one
-relationship** (TAD ADR-019): Ustadzah Aminah teaches Kelas A and her own
-son is in Kelas B, Bapak Hasan teaches Kelas B and his own daughter is in
-Kelas A, and Ustadzah Laila is an admin who *also* teaches Kelas A and
-*also* has a daughter in Kelas B. The first two land on opposite halves
+relationship** (TAD ADR-019): Ustadzah Aminah teaches Grup A and her own
+son is in Grup B, Bapak Hasan teaches Grup B and his own daughter is in
+Grup A, and Ustadzah Laila is an admin who *also* teaches Grup A and
+*also* has a daughter in Grup B. The first two land on opposite halves
 of the app, because which half you see is still decided by `users.role` —
 Aminah on the tutor views, Hasan on the family ones. Worth using whenever
 a change touches "my children" or "my classes": each of them has a child
@@ -98,20 +98,20 @@ in a class they do **not** teach, which is exactly the shape that made an
 unfiltered `select` look correct in testing. Laila is the one to use when
 a query grows an admin branch, since for her the admin grant and the
 tutor relationship disagree — `useMyClasses` hands her every class while
-`fn_my_classes()` holds only Kelas A. Aisyah is the fourth: a 16+ santri
-in Kelas A who assists in Kelas B (ADR-020). She is entitled to record
-for Kelas B and cannot reach a screen that would let her, because
+`fn_my_classes()` holds only Grup A. Aisyah is the fourth: a 16+ santri
+in Grup A who assists in Grup B (ADR-020). She is entitled to record
+for Grup B and cannot reach a screen that would let her, because
 routing still follows `users.role` — signing in as her is how that gap
 stays visible until role switching lands.
 
 **Two of them also teach the class their own record is in** (ADR-023,
 ADR-024),
 which is the case every other fixture in this project deliberately avoids
-and the likeliest arrangement at a real TPA. Aisyah assists Kelas A, where
-she is herself enrolled: her class picker offers both classes, the Kelas A
+and the likeliest arrangement at a real TPA. Aisyah assists Grup A, where
+she is herself enrolled: her class picker offers both classes, the Grup A
 roster contains her own name, and recording progress against that row is
 refused while any classmate succeeds — her attendance row is the
-documented exception (ADR-023(c)). Bapak Hasan teaches Kelas A too, where
+documented exception (ADR-023(c)). Bapak Hasan teaches Grup A too, where
 his daughter Khadijah is enrolled: his overlap is **not** closed, so he can
 record her progress and write her year-end report, seeing it in draft,
 through the tutor grant. That is PPME's decision rather than an oversight
@@ -373,14 +373,19 @@ Set in Netlify:
 RESEND_API_KEY   # secret; never committed, never defaulted, only read via process.env
 ```
 
-**Two deployment prerequisites, both dashboard work rather than code:**
+**Two deployment prerequisites, both dashboard work rather than code —
+the first now resolved:**
 
-1. **Verify `tpa.ppmedenhaag.nl` in Resend.** Until it is verified,
-   Resend refuses to send from it and permits only
-   `onboarding@resend.dev`, to the account owner's own address. If mail
-   fails before this is done, that is why — `lib/email.ts` deliberately
-   keeps the real intended `from` address so a misconfigured deploy
-   fails loudly instead of quietly sending from a sandbox sender.
+1. **Resolved: `ppmedenhaag.nl` verified in Resend (ADR-031).** PPME's
+   Resend admin verified the bare domain directly rather than the
+   `tpa.` subdomain this originally assumed — `FROM_ADDRESS` in
+   `lib/email.ts` was updated to match, and a live send from the
+   production key confirmed it. Before a domain is verified, Resend
+   refuses to send from it and permits only `onboarding@resend.dev`, to
+   the account owner's own address; `lib/email.ts` deliberately keeps
+   the real intended `from` address so a misconfigured deploy fails
+   loudly instead of quietly sending from a sandbox sender nobody
+   recognises.
 2. **Select the EU region in Resend.** Supabase is Frankfurt and Netlify
    is EU by deliberate choice; mail carries a parent's address and a
    child's name, so the same residency reasoning applies — and it cannot
@@ -591,12 +596,12 @@ holds, so a recipient cannot rewrite an event on their own row.
 
 ## Offline writes
 
-Attendance submission and murajaah confirmation are queued and replayed
-from the **app**, not the service worker (TAD ADR-029) — a deliberate
-departure from ADR-005's original plan to use Workbox's Background Sync
-API, made because that API doesn't exist on Safari/iOS at all and has no
-hook to refresh an expired Supabase session before replaying a queued
-request.
+Attendance submission, murajaah confirmation, and Yanbu'a/Quran
+recitation recording are queued and replayed from the **app**, not the
+service worker (TAD ADR-029) — a deliberate departure from ADR-005's
+original plan to use Workbox's Background Sync API, made because that
+API doesn't exist on Safari/iOS at all and has no hook to refresh an
+expired Supabase session before replaying a queued request.
 
 - `src/lib/offlineQueue.ts` — an IndexedDB-backed queue. `createOfflineQueue`
   holds the logic (entry shape, oldest-first ordering, retry bookkeeping)
@@ -606,13 +611,18 @@ request.
   implementation.
 - `src/lib/offlineReplay.ts` — `replayQueue()` refreshes the Supabase
   session first (a queue left overnight can outlive the access token),
-  then replays oldest-first, reusing `submitAttendance`/`confirmPractice`
-  unmodified so there is exactly one implementation of each write, online
-  or queued. A murajaah replay that lands after its insert already
-  succeeded (response lost, not the write) hits `murajaah_log`'s
-  `unique (assignment_id, date)` constraint and is treated as delivered
-  rather than an error — the same reasoning `getOrCreateTodaySession`
-  already applies to its own race (`src/features/attendance/api.ts`).
+  then replays oldest-first, reusing `submitAttendance`/`confirmPractice`/
+  `insertYanbuaProgress`/`insertQuranProgress` unmodified so there is
+  exactly one implementation of each write, online or queued. A murajaah
+  replay that lands after its insert already succeeded (response lost,
+  not the write) hits `murajaah_log`'s `unique (assignment_id, date)`
+  constraint and is treated as delivered rather than an error — the same
+  reasoning `getOrCreateTodaySession` already applies to its own race
+  (`src/features/attendance/api.ts`). `yanbua_progress`/`quran_progress`
+  have no such natural unique key, so a `client_ref uuid unique`
+  column (migration 015, TAD ADR-030) gives them one: the queue entry's
+  client-generated key is sent with the insert, and a `23505` on it
+  during replay gets the same "already delivered" treatment.
 - `src/hooks/useOnlineStatus.ts` — triggers replay on the `online` event
   and once on app load; mounted once near the top of `App.tsx`.
 - A network failure (`src/lib/network.ts#isNetworkError`) is what queues
@@ -625,14 +635,31 @@ this is safe, idempotent replay, not a conflict-merge UI. Attendance's
 database layer, true online today and unchanged by this work — offline
 support widens the window during which two devices could overwrite each
 other's mark, it does not introduce a new failure mode. No
-optimistic-concurrency/version-check merge logic exists.
+optimistic-concurrency/version-check merge logic exists. Homework,
+murajaah target-setting, year-end reports, admin screens and
+notification settings stay out of scope — desk-based usage on reliable
+connectivity, and reports in particular go through a Netlify Function
+rather than plain PostgREST, a different replay problem.
 
 **Verified live** against the local Postgres stack and `npm run dev`
-(test-plan.md §6): attendance and murajaah both queue in IndexedDB and
-show the "will sync" banner with Chrome's Network panel set to
-"Offline", replay and clear the queue on reconnect with the rows landing
+(test-plan.md §6): attendance and murajaah queue in IndexedDB and show
+the "will sync" banner with Chrome's Network panel set to "Offline",
+replay and clear the queue on reconnect with the rows landing
 server-side, and a genuine same-day rejection while online still
-surfaces the red error banner rather than being queued.
+surfaces the red error banner rather than being queued (pre-existing
+verification, from the original ADR-029 work). Yanbu'a/Quran's
+`client_ref` idempotency was verified directly against the local
+Postgres+RLS stack at the REST layer (a fixture tutor's minted JWT):
+inserting with a fresh `client_ref` succeeds; re-submitting the
+identical `client_ref` — the response-lost/replay scenario the column
+exists for — returns `23505` and commits no duplicate row; and a
+genuine rejection (a `tutor_id` not matching the caller, or
+`ayah_to < ayah_from`) returns a real error rather than being
+swallowed. The Yanbu'a/Quran offline write queue's actual
+DevTools-Offline browser click-through (the "will sync" banner, replay
+on reconnect through the real UI) has **not** been driven in this
+session — no browser automation tool was available — and is still
+outstanding before test-plan.md §6 can be ticked for these two writes.
 
 ## Roles
 
@@ -651,7 +678,7 @@ one that reads the role column. One person routinely holds several of
 these rows at once: an ustadz whose own child attends, an admin who also
 teaches, a 16+ santri who assists a younger class. Since ADR-025 the
 interface follows suit — such a person gets a **scope switch** on the six
-two-shaped screens ("Kelas saya" / "Anak saya") offering only the
+two-shaped screens ("Grup saya" / "Anak saya") offering only the
 relationships they actually hold, and anyone who holds one sees no
 control at all. It is not a role picker: role is still derived from the
 authenticated user and never chosen (PRD §1).

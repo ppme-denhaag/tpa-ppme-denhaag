@@ -1,8 +1,8 @@
 /**
- * The offline write queue: attendance and murajaah submissions that
- * failed because the request never reached the server (`network.ts`'s
- * `isNetworkError`) are held here until `offlineReplay.ts` can retry
- * them.
+ * The offline write queue: attendance, murajaah, Yanbu'a and Quran
+ * recording submissions that failed because the request never reached
+ * the server (`network.ts`'s `isNetworkError`) are held here until
+ * `offlineReplay.ts` can retry them.
  *
  * Split in two on purpose. `createOfflineQueue` holds the only logic
  * worth testing — entry shape, oldest-first ordering, retry bookkeeping
@@ -15,7 +15,7 @@
  */
 import { getErrorMessage } from './errors'
 
-export type QueueKind = 'attendance' | 'murajaah'
+export type QueueKind = 'attendance' | 'murajaah' | 'yanbua' | 'quran'
 
 export interface QueueEntry<T = unknown> {
   id: string

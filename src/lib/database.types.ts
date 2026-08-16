@@ -344,6 +344,7 @@ export type Database = {
         Row: {
           ayah_from: number
           ayah_to: number
+          client_ref: string | null
           id: string
           quality: Database["public"]["Enums"]["quran_quality"]
           recorded_at: string
@@ -355,6 +356,7 @@ export type Database = {
         Insert: {
           ayah_from: number
           ayah_to: number
+          client_ref?: string | null
           id?: string
           quality: Database["public"]["Enums"]["quran_quality"]
           recorded_at?: string
@@ -366,6 +368,7 @@ export type Database = {
         Update: {
           ayah_from?: number
           ayah_to?: number
+          client_ref?: string | null
           id?: string
           quality?: Database["public"]["Enums"]["quran_quality"]
           recorded_at?: string
@@ -589,6 +592,7 @@ export type Database = {
       }
       yanbua_progress: {
         Row: {
+          client_ref: string | null
           id: string
           jilid: number
           mastery: Database["public"]["Enums"]["yanbuah_mastery"]
@@ -599,6 +603,7 @@ export type Database = {
           tutor_id: string
         }
         Insert: {
+          client_ref?: string | null
           id?: string
           jilid: number
           mastery: Database["public"]["Enums"]["yanbuah_mastery"]
@@ -609,6 +614,7 @@ export type Database = {
           tutor_id: string
         }
         Update: {
+          client_ref?: string | null
           id?: string
           jilid?: number
           mastery?: Database["public"]["Enums"]["yanbuah_mastery"]

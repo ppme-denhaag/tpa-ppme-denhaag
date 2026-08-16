@@ -77,22 +77,22 @@ values
   -- way to set it up yet. Both directions are seeded, because they land
   -- on opposite halves of the app:
   --
-  --   Ustadzah Aminah — role 'tutor', teaches Kelas A, her own son Yusuf
-  --     is in Kelas B. Since ADR-025 she lands on the *class* scope, as
+  --   Ustadzah Aminah — role 'tutor', teaches Grup A, her own son Yusuf
+  --     is in Grup B. Since ADR-025 she lands on the *class* scope, as
   --     before, and the switch is what gets her to Yusuf — a route she
   --     did not have at all until then. She is the account to sign in as
   --     when a change touches the family screens' "am I looking at my
   --     own record" question: her role column says `tutor` while
   --     `fn_my_children()` holds her son, so a gate written against the
   --     role would deny her the control to confirm his home practice.
-  --   Bapak Hasan — role 'parent', teaches Kelas B **and Kelas A**, and
-  --     his own daughter Khadijah is in Kelas A. Before ADR-025 every
+  --   Bapak Hasan — role 'parent', teaches Grup B **and Grup A**, and
+  --     his own daughter Khadijah is in Grup A. Before ADR-025 every
   --     page routed him to the *family* views on the strength of that
   --     role column — which is where the unfiltered "my children" query
-  --     used to hand him Kelas B's whole roster in the ChildPicker. He
+  --     used to hand him Grup B's whole roster in the ChildPicker. He
   --     now lands on the class scope like any other tutor and reaches
   --     the family views through the switch.
-  --     Kelas B is the disjoint half; Kelas A makes him the **overlap
+  --     Grup B is the disjoint half; Grup A makes him the **overlap
   --     tutor-parent** of RLS-36 — a tutor of the class his own child
   --     sits in. Unlike Aisyah's, his overlap is *not* closed by
   --     migration 013: he can record Khadijah's progress and write her
@@ -102,19 +102,19 @@ values
   --     to sign in as when a change touches the report editor or a
   --     "drafts are invisible to parents" assumption, because for him
   --     that assumption does not hold.
-  --   Ustadzah Laila — role 'admin', teaches Kelas A, her own daughter
-  --     Salma is in Kelas B: all three relationships at once, the shape
+  --   Ustadzah Laila — role 'admin', teaches Grup A, her own daughter
+  --     Salma is in Grup B: all three relationships at once, the shape
   --     RLS-34 asserts. She is the one to click through when a change
   --     touches the admin branch of a query, because for her the admin
   --     grant and the tutor relationship disagree — `useMyClasses`
   --     hands her every class (ADR-014) while `fn_my_classes()` holds
-  --     only Kelas A.
+  --     only Grup A.
   --   Aisyah — role 'student', a 16+ self-login santri enrolled in
-  --     Kelas A who *assists* in Kelas B **and in Kelas A** (ADR-020,
+  --     Grup A who *assists* in Grup B **and in Grup A** (ADR-020,
   --     ADR-023). The combination the phrase "students are read-only"
   --     was hiding: read-only is what you get when you hold no
-  --     write-granting relationship, and she holds one. Kelas B is the
-  --     disjoint half — a class she teaches and does not sit in. Kelas A
+  --     write-granting relationship, and she holds one. Grup B is the
+  --     disjoint half — a class she teaches and does not sit in. Grup A
   --     is the **overlap**, and the reason it was added: assisting the
   --     group you already attend is the likely arrangement, and it is
   --     the one that put her own record inside her own tutor grant.
@@ -144,18 +144,18 @@ values
 -- nothing the harness reads.
 insert into public.classes (id, name, schedule, tutor_ids)
 values
-  ('a4000000-0000-0000-0000-000000000001', 'Kelas A', 'Sabtu 10:00-12:00', array[
+  ('a4000000-0000-0000-0000-000000000001', 'Grup A', 'Sabtu 10:00-12:00', array[
     'a1000000-0000-0000-0000-000000000001',   -- Ustadz Ahmad
-    'd1000000-0000-0000-0000-000000000001',   -- Ustadzah Aminah (her own son is in Kelas B)
-    'd1000000-0000-0000-0000-000000000003',   -- Ustadzah Laila, admin (her own daughter is in Kelas B)
+    'd1000000-0000-0000-0000-000000000001',   -- Ustadzah Aminah (her own son is in Grup B)
+    'd1000000-0000-0000-0000-000000000003',   -- Ustadzah Laila, admin (her own daughter is in Grup B)
     'd1000000-0000-0000-0000-000000000002',   -- Bapak Hasan — OVERLAP: his own daughter Khadijah is in this class (RLS-36)
     'd1000000-0000-0000-0000-000000000004'    -- Aisyah — OVERLAP: her own 16+ record is in this class (RLS-37, ADR-023)
   ]::uuid[]),
-  ('a4000000-0000-0000-0000-000000000002', 'Kelas B', 'Minggu 09:00-11:00', array[
+  ('a4000000-0000-0000-0000-000000000002', 'Grup B', 'Minggu 09:00-11:00', array[
     'a1000000-0000-0000-0000-000000000001',   -- Ustadz Ahmad
     'b1000000-0000-0000-0000-000000000001',   -- Ustadz Baru
-    'd1000000-0000-0000-0000-000000000002',   -- Bapak Hasan (the disjoint half: he teaches here, his child is in Kelas A)
-    'd1000000-0000-0000-0000-000000000004'    -- Aisyah (the disjoint half: she teaches here, she sits in Kelas A)
+    'd1000000-0000-0000-0000-000000000002',   -- Bapak Hasan (the disjoint half: he teaches here, his child is in Grup A)
+    'd1000000-0000-0000-0000-000000000004'    -- Aisyah (the disjoint half: she teaches here, she sits in Grup A)
   ]::uuid[]);
 
 insert into public.students (id, parent_id, user_id, full_name, class_id, date_of_birth)
@@ -173,7 +173,7 @@ values
   -- The triple-role account's own child, likewise in the class she does
   -- not teach.
   ('a5000000-0000-0000-0000-000000000007', 'd1000000-0000-0000-0000-000000000003', null, 'Salma', 'a4000000-0000-0000-0000-000000000002', '2017-01-19'),
-  -- The student assistant's own record: a santri in Kelas A with her own
-  -- login, who assists in Kelas B. Still linked to a parent, as every
+  -- The student assistant's own record: a santri in Grup A with her own
+  -- login, who assists in Grup B. Still linked to a parent, as every
   -- student record is (the hybrid account model).
   ('a5000000-0000-0000-0000-000000000008', 'a2000000-0000-0000-0000-000000000002', 'd1000000-0000-0000-0000-000000000004', 'Aisyah', 'a4000000-0000-0000-0000-000000000001', '2008-06-12');
