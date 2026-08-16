@@ -181,6 +181,14 @@ export function TutorAttendanceView() {
 
   return (
     <div className="space-y-4">
+      {/*
+        The heading lives here rather than in `AttendancePage` because
+        the family view's has to name the child on screen, which the page
+        cannot know. The class side has no such problem, so it is simply
+        the screen's name.
+      */}
+      <h1 className="text-lg font-bold text-ppme-primary">{t('attendance.title')}</h1>
+
       <div className="rounded-lg bg-white p-4 shadow-sm">
         <ClassPicker classes={classes} value={classId} onChange={setClassId} />
         <p className="mt-2 text-sm font-medium capitalize text-ppme-text/70">{todayLabel}</p>

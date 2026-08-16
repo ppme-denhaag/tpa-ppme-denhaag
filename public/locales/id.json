@@ -54,6 +54,7 @@
   "attendance": {
     "title": "Kehadiran",
     "myTitle": "Kehadiranku",
+    "childTitle": "Kehadiran {{name}}",
     "history": "Riwayat Kehadiran",
     "present": "Hadir",
     "absent": "Absen",

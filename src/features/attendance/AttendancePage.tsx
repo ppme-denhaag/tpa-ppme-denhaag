@@ -1,10 +1,8 @@
-import { useTranslation } from 'react-i18next'
 import { useViewScope } from '../../context/ViewScopeContext'
 import { TutorAttendanceView } from './TutorAttendanceView'
 import { FamilyAttendanceView } from './FamilyAttendanceView'
 
 export function AttendancePage() {
-  const { t } = useTranslation()
   const { scope } = useViewScope()
 
   // Which shape renders is the scope, not the role column (ADR-025).
@@ -32,14 +30,16 @@ export function AttendancePage() {
   // else, because the query asks about `parent_id` and RLS answers the
   // same way. Routing has not stood between an admin and the whole
   // school since ADR-019, so there is nothing left for it to protect.
-  const isClassScope = scope === 'class'
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-bold text-ppme-primary">
-        {t(isClassScope ? 'attendance.title' : 'attendance.myTitle')}
-      </h1>
-      {isClassScope ? <TutorAttendanceView /> : <FamilyAttendanceView />}
-    </div>
-  )
+  //
+  // ── The heading moved into the two views ────────────────────────────
+  // It used to be rendered here, as `attendance.title` for the class
+  // scope and `attendance.myTitle` for the family one — and "my
+  // attendance" is wrong for a parent, who is looking at their child's.
+  // Ibu Siti opened this screen to read "Kehadiranku" above Ali's
+  // record. A page cannot fix that: which child is on screen is not
+  // known until one is picked, and it is picked inside the view. So
+  // this page now only chooses the shape, and each view names itself —
+  // the arrangement the other five two-shaped screens already use, and
+  // for exactly this reason (see `QuranPage`).
+  return scope === 'class' ? <TutorAttendanceView /> : <FamilyAttendanceView />
 }
