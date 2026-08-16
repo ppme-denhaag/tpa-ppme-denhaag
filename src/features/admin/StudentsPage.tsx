@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdminSectionNav } from '../../components/AdminSectionNav'
 import { getErrorMessage } from '../../lib/errors'
+import { PARENT_LINK_ROLES } from '../../lib/enrolmentLinks'
 import {
   createStudent,
   fetchAllClasses,
   fetchAllStudents,
   fetchUnlinkedStudentAccounts,
-  fetchUsersByRole,
+  fetchUsersForLink,
   type AdminClass,
   type AdminStudent,
   type DirectoryUser,
@@ -28,7 +29,16 @@ export function StudentsPage() {
   function load() {
     setLoading(true)
     setError(null)
-    Promise.all([fetchAllStudents(), fetchAllClasses(), fetchUsersByRole('parent'), fetchUnlinkedStudentAccounts()])
+    Promise.all([
+      fetchAllStudents(),
+      fetchAllClasses(),
+      // Not just `role = 'parent'`: a tutor or an admin may be a
+      // child's parent contact (ADR-024/ADR-028), and filtering them
+      // out is what made every multi-relationship account in this
+      // project something only SQL could create.
+      fetchUsersForLink(PARENT_LINK_ROLES),
+      fetchUnlinkedStudentAccounts(),
+    ])
       .then(([studentData, classData, parentData, unlinkedData]) => {
         setStudents(studentData)
         setClasses(classData)
