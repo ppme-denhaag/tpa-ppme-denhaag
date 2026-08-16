@@ -1,0 +1,4 @@
+# Force LF line endings for shell scripts regardless of the checkout
+# platform's core.autocrlf setting — a CRLF-converted .sh file fails on
+# Windows Git Bash/WSL with `$'\r': command not found`.
+*.sh text eol=lf
