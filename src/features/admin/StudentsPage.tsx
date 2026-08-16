@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdminSectionNav } from '../../components/AdminSectionNav'
 import { getErrorMessage } from '../../lib/errors'
-import { PARENT_LINK_ROLES } from '../../lib/enrolmentLinks'
+import { PARENT_LINK_ROLES, selfLoginAccountsToOffer } from '../../lib/enrolmentLinks'
 import {
   createStudent,
   fetchAllClasses,
@@ -98,21 +98,17 @@ export function StudentsPage() {
 
   /**
    * The pool for the "link self-login" picker, scoped to whichever
-   * student is being edited. `unlinked` (from `fetchUnlinkedStudentAccounts`)
-   * deliberately excludes every account already linked to *some* student
-   * — including this one, if it already has a self-login — so without
-   * adding it back the picker would have no option to render as
-   * currently selected. `student.user` carries exactly that account's
-   * name/email, already joined by `fetchAllStudents`, so no extra query
-   * is needed to restore it.
+   * student is being edited. `student.user` carries the currently-linked
+   * account's own name/email — already joined by `fetchAllStudents`, so
+   * no extra query is needed to restore it — and the merge logic itself
+   * lives in `src/lib/enrolmentLinks.ts` (`selfLoginAccountsToOffer`),
+   * tested there rather than here (coverage is scoped to `src/lib/**`).
    */
   function unlinkedFor(student: AdminStudent): DirectoryUser[] {
-    if (!student.user_id || !student.user) return unlinked
-    if (unlinked.some((u) => u.id === student.user_id)) return unlinked
-    return [
-      { id: student.user_id, full_name: student.user.full_name, email: student.user.email, role: 'student' },
-      ...unlinked,
-    ]
+    return selfLoginAccountsToOffer(
+      unlinked,
+      student.user_id && student.user ? { id: student.user_id, ...student.user } : null,
+    )
   }
 
   return (

@@ -4,6 +4,8 @@ import {
   TUTOR_LINK_ROLES,
   mayBeNamedAsParent,
   mayBeNamedAsTutor,
+  selfLoginAccountsToOffer,
+  type LinkableAccount,
 } from '../../src/lib/enrolmentLinks'
 import type { Database } from '../../src/lib/database.types'
 
@@ -86,5 +88,56 @@ describe('who an admin may be offered for an enrolment link (ADR-028)', () => {
       expect(TUTOR_LINK_ROLES, role).toContain(role)
     }
     expect(TUTOR_LINK_ROLES.length).toBeGreaterThan(PARENT_LINK_ROLES.length)
+  })
+})
+
+/**
+ * `selfLoginAccountsToOffer` (TAD ADR-032) — the edit-form counterpart
+ * to the create-form picker above: what to offer when a student being
+ * edited may already have a self-login linked, which the "unlinked"
+ * pool (by construction) excludes.
+ */
+describe('selfLoginAccountsToOffer (ADR-032 — editing a student’s self-login link)', () => {
+  const pending: LinkableAccount = {
+    id: 'user-pending',
+    full_name: 'Ali Rahman',
+    email: 'ali.new@dev.local',
+    role: 'student',
+  }
+
+  it('passes the pool through unchanged when the student has no self-login yet', () => {
+    expect(selfLoginAccountsToOffer([pending], null)).toEqual([pending])
+  })
+
+  it('passes the pool through unchanged when the current link is already in it', () => {
+    // Shouldn't happen given how `fetchUnlinkedStudentAccounts` is
+    // built (an account linked to *this* student is excluded from the
+    // pool precisely because it's linked), but the function must not
+    // duplicate the option if it ever does.
+    const already: LinkableAccount = {
+      id: 'user-already-present',
+      full_name: 'Zainab',
+      email: 'zainab@dev.local',
+      role: 'student',
+    }
+    expect(selfLoginAccountsToOffer([pending, already], already)).toEqual([pending, already])
+  })
+
+  it('restores the student’s own currently-linked account to the front of the pool', () => {
+    const current = { id: 'user-current', full_name: 'Fatimah', email: 'fatimah@dev.local' }
+    const result = selfLoginAccountsToOffer([pending], current)
+    expect(result).toEqual([{ ...current, role: 'student' }, pending])
+  })
+
+  it('offers exactly the restored account when nothing else is pending', () => {
+    const current = { id: 'user-current', full_name: 'Fatimah', email: 'fatimah@dev.local' }
+    expect(selfLoginAccountsToOffer([], current)).toEqual([{ ...current, role: 'student' }])
+  })
+
+  it('does not mutate the pool it was given', () => {
+    const pool = [pending]
+    const current = { id: 'user-current', full_name: 'Fatimah', email: 'fatimah@dev.local' }
+    selfLoginAccountsToOffer(pool, current)
+    expect(pool).toEqual([pending])
   })
 })

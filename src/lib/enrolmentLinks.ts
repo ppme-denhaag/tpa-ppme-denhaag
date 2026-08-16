@@ -59,3 +59,32 @@ export function mayBeNamedAsParent(role: UserRole): boolean {
 export function mayBeNamedAsTutor(role: UserRole): boolean {
   return TUTOR_LINK_ROLES.includes(role)
 }
+
+export interface LinkableAccount {
+  id: string
+  full_name: string
+  email: string
+  role: UserRole
+}
+
+/**
+ * The self-login picker's option list when *editing* a student who may
+ * already have one linked (TAD ADR-032), as opposed to creating a new
+ * student, where the pool needs no adjustment.
+ *
+ * `unlinked` — role=`student` accounts not yet linked to *any* student
+ * — deliberately excludes the account already linked to the row being
+ * edited: it is not *available* to link, it is already linked to this
+ * one. Without restoring it, the picker would have no option matching
+ * the row's current `user_id`, and saving would silently unlink it.
+ * `currentlyLinked` is `null` for a student with no self-login yet, in
+ * which case the pool passes through unchanged.
+ */
+export function selfLoginAccountsToOffer(
+  unlinked: readonly LinkableAccount[],
+  currentlyLinked: Pick<LinkableAccount, 'id' | 'full_name' | 'email'> | null,
+): LinkableAccount[] {
+  if (!currentlyLinked) return [...unlinked]
+  if (unlinked.some((u) => u.id === currentlyLinked.id)) return [...unlinked]
+  return [{ ...currentlyLinked, role: 'student' }, ...unlinked]
+}
