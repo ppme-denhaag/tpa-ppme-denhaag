@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AdminSectionNav } from '../../components/AdminSectionNav'
 import { getErrorMessage } from '../../lib/errors'
-import { PARENT_LINK_ROLES } from '../../lib/enrolmentLinks'
+import { PARENT_LINK_ROLES, selfLoginAccountsToOffer } from '../../lib/enrolmentLinks'
 import {
   createStudent,
   fetchAllClasses,
   fetchAllStudents,
   fetchUnlinkedStudentAccounts,
   fetchUsersForLink,
+  updateStudent,
   type AdminClass,
   type AdminStudent,
   type DirectoryUser,
@@ -25,6 +26,7 @@ export function StudentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   function load() {
     setLoading(true)
@@ -71,6 +73,44 @@ export function StudentsPage() {
     }
   }
 
+  async function handleUpdate(
+    id: string,
+    data: {
+      full_name: string
+      date_of_birth: string
+      class_id: string | null
+      parent_id: string
+      user_id: string | null
+    },
+  ) {
+    setSaving(true)
+    setError(null)
+    try {
+      await updateStudent(id, data)
+      setEditingId(null)
+      load()
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * The pool for the "link self-login" picker, scoped to whichever
+   * student is being edited. `student.user` carries the currently-linked
+   * account's own name/email — already joined by `fetchAllStudents`, so
+   * no extra query is needed to restore it — and the merge logic itself
+   * lives in `src/lib/enrolmentLinks.ts` (`selfLoginAccountsToOffer`),
+   * tested there rather than here (coverage is scoped to `src/lib/**`).
+   */
+  function unlinkedFor(student: AdminStudent): DirectoryUser[] {
+    return selfLoginAccountsToOffer(
+      unlinked,
+      student.user_id && student.user ? { id: student.user_id, ...student.user } : null,
+    )
+  }
+
   return (
     <div className="space-y-4">
       <AdminSectionNav />
@@ -86,11 +126,15 @@ export function StudentsPage() {
             unlinkedAccounts={unlinked}
             saving={saving}
             onSave={handleCreate}
+            onCancel={() => setCreating(false)}
           />
         ) : (
           <button
             type="button"
-            onClick={() => setCreating(true)}
+            onClick={() => {
+              setCreating(true)
+              setEditingId(null)
+            }}
             className="min-h-11 w-full rounded-lg border-2 border-dashed border-ppme-primary/30 px-4 font-semibold text-ppme-primary hover:bg-ppme-bg-alt"
           >
             + {t('admin.newStudent')}
@@ -106,28 +150,54 @@ export function StudentsPage() {
         <ul className="space-y-2">
           {students.map((s) => (
             <li key={s.id} className="rounded-lg bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium text-ppme-text">{s.full_name}</p>
-                {/*
-                  Says "has their own login", because that is the only
-                  thing `user_id` records. It read "16+" until ADR-021,
-                  which was a claim about the child's age that nothing
-                  ever checked — `date_of_birth` sits in the same row and
-                  is never consulted — so linking an account to a younger
-                  santri labelled them 16+ on the one screen where the
-                  enrolment decision is made. Who may hold a login is the
-                  identity provider's rule (ADR-021), and this badge is
-                  not the place to restate it.
-                */}
-                {s.user_id && (
-                  <span className="rounded-full bg-ppme-accent/15 px-2 py-0.5 text-xs font-semibold text-ppme-primary">
-                    {t('admin.hasOwnLogin')}
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-sm text-ppme-text/60">
-                {s.class?.name ?? '—'} · {s.parent?.full_name ?? '—'}
-              </p>
+              {editingId === s.id ? (
+                <StudentForm
+                  initial={s}
+                  classes={classes}
+                  parents={parents}
+                  unlinkedAccounts={unlinkedFor(s)}
+                  saving={saving}
+                  onSave={(data) => void handleUpdate(s.id, data)}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-ppme-text">{s.full_name}</p>
+                      {/*
+                        Says "has their own login", because that is the only
+                        thing `user_id` records. It read "16+" until ADR-021,
+                        which was a claim about the child's age that nothing
+                        ever checked — `date_of_birth` sits in the same row and
+                        is never consulted — so linking an account to a younger
+                        santri labelled them 16+ on the one screen where the
+                        enrolment decision is made. Who may hold a login is the
+                        identity provider's rule (ADR-021), and this badge is
+                        not the place to restate it.
+                      */}
+                      {s.user_id && (
+                        <span className="rounded-full bg-ppme-accent/15 px-2 py-0.5 text-xs font-semibold text-ppme-primary">
+                          {t('admin.hasOwnLogin')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-sm text-ppme-text/60">
+                      {s.class?.name ?? '—'} · {s.parent?.full_name ?? '—'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingId(s.id)
+                      setCreating(false)
+                    }}
+                    className="min-h-11 shrink-0 rounded-md px-3 text-sm font-medium text-ppme-primary hover:bg-ppme-bg-alt"
+                  >
+                    {t('common.edit')}
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>

@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ROLE_I18N_KEY } from '../../lib/roleLabels'
-import type { AdminClass, DirectoryUser } from './api'
+import type { AdminClass, AdminStudent, DirectoryUser } from './api'
 
 interface StudentFormProps {
+  initial?: AdminStudent
   classes: AdminClass[]
   parents: DirectoryUser[]
   unlinkedAccounts: DirectoryUser[]
@@ -15,17 +16,26 @@ interface StudentFormProps {
     parent_id: string
     user_id: string | null
   }) => void
+  onCancel?: () => void
 }
 
 const NONE = ''
 
-export function StudentForm({ classes, parents, unlinkedAccounts, saving, onSave }: StudentFormProps) {
+export function StudentForm({
+  initial,
+  classes,
+  parents,
+  unlinkedAccounts,
+  saving,
+  onSave,
+  onCancel,
+}: StudentFormProps) {
   const { t } = useTranslation()
-  const [fullName, setFullName] = useState('')
-  const [dob, setDob] = useState('')
-  const [classId, setClassId] = useState(NONE)
-  const [parentId, setParentId] = useState(NONE)
-  const [userId, setUserId] = useState(NONE)
+  const [fullName, setFullName] = useState(initial?.full_name ?? '')
+  const [dob, setDob] = useState(initial?.date_of_birth ?? '')
+  const [classId, setClassId] = useState(initial?.class_id ?? NONE)
+  const [parentId, setParentId] = useState(initial?.parent_id ?? NONE)
+  const [userId, setUserId] = useState(initial?.user_id ?? NONE)
 
   const canSave = fullName.trim() && dob && parentId
 
@@ -109,22 +119,33 @@ export function StudentForm({ classes, parents, unlinkedAccounts, saving, onSave
         </label>
       )}
 
-      <button
-        type="button"
-        disabled={saving || !canSave}
-        onClick={() =>
-          onSave({
-            full_name: fullName.trim(),
-            date_of_birth: dob,
-            class_id: classId || null,
-            parent_id: parentId,
-            user_id: userId || null,
-          })
-        }
-        className="min-h-11 w-full rounded-lg bg-ppme-primary px-4 font-semibold text-white shadow-sm hover:bg-ppme-primary-dark disabled:opacity-60"
-      >
-        {saving ? t('common.loading') : t('common.save')}
-      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={saving || !canSave}
+          onClick={() =>
+            onSave({
+              full_name: fullName.trim(),
+              date_of_birth: dob,
+              class_id: classId || null,
+              parent_id: parentId,
+              user_id: userId || null,
+            })
+          }
+          className="min-h-11 flex-1 rounded-lg bg-ppme-primary px-4 font-semibold text-white shadow-sm hover:bg-ppme-primary-dark disabled:opacity-60"
+        >
+          {saving ? t('common.loading') : t('common.save')}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 rounded-lg border border-black/10 px-4 font-semibold text-ppme-text"
+          >
+            {t('common.cancel')}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

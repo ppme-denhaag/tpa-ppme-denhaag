@@ -475,6 +475,7 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | E2E-11 | Admin opens each of the 6 feature tabs on a class it does not tutor → records attendance / progress / a homework verdict → the affected family sees the change in their own view, and no other family does (TAD ADR-014) | Admin → Parent |
 | E2E-12 | Admin opens a draft report, edits narrative + grades, saves; no publish button is offered and the "only *[tutor]* can publish this" notice is shown. On a *published* report the notice instead warns the PDF will not update until the authoring tutor re-publishes | Admin |
 | E2E-13 | Admin's bottom nav is the same five operational tabs as every other role (never the enrollment set), "Kelola" reaches `/admin/*`, and a non-admin visiting `/admin` or `/admin/classes` is redirected home | Admin, Tutor |
+| E2E-14 | Admin invites a new account by email with role Santri (or registers one from the pending-sign-ins list) → opens the *existing*, previously-unlinked student record on Kelola → Santri → Ubah → picks that account under "Tautkan Akun Login Mandiri" → saves → the row shows "Akun sendiri" → that account signs in and sees its own data across all 5 tabs, and nothing belonging to another student (TAD ADR-032) | Admin → Student |
 
 ## 6. Notification & PWA test matrix (manual, real devices)
 

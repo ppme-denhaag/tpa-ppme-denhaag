@@ -119,15 +119,28 @@ export interface AdminStudent {
   id: string
   full_name: string
   date_of_birth: string
+  class_id: string | null
   class: { name: string } | null
+  parent_id: string
   parent: { full_name: string } | null
   user_id: string | null
+  // The linked self-login account's own name/email, joined so the
+  // "link self-login" picker can show it as a selected option when
+  // editing this student — it is deliberately excluded from
+  // `fetchUnlinkedStudentAccounts` (that account is not *available* to
+  // link, it is already linked to this row), so without this join the
+  // edit form would have no way to render what is currently selected.
+  user: { full_name: string; email: string } | null
 }
 
 export async function fetchAllStudents(): Promise<AdminStudent[]> {
   const { data, error } = await supabase
     .from('students')
-    .select('id, full_name, date_of_birth, user_id, class:classes(name), parent:users!students_parent_id_fkey(full_name)')
+    .select(
+      'id, full_name, date_of_birth, class_id, parent_id, user_id, ' +
+        'class:classes(name), parent:users!students_parent_id_fkey(full_name), ' +
+        'user:users!students_user_id_fkey(full_name, email)',
+    )
     .order('full_name')
   if (error) throw error
   return (data ?? []) as unknown as AdminStudent[]
@@ -147,5 +160,25 @@ export async function fetchUnlinkedStudentAccounts(): Promise<DirectoryUser[]> {
 
 export async function createStudent(row: TablesInsert<'students'>): Promise<void> {
   const { error } = await supabase.from('students').insert(row)
+  if (error) throw error
+}
+
+/**
+ * The only way to link a self-login account to a student *after*
+ * enrollment — a santri who turns 16 (or simply creates a Google
+ * account) mid-year, months after their record was created without one.
+ * `createStudent` only ever sets `user_id` at the moment a student is
+ * first added, which left this case with no admin path at all even
+ * though `students_admin_all` (migration 003) already permits the
+ * update: the gap was this function's absence, not RLS.
+ */
+export async function updateStudent(
+  id: string,
+  patch: Pick<
+    TablesInsert<'students'>,
+    'full_name' | 'date_of_birth' | 'class_id' | 'parent_id' | 'user_id'
+  >,
+): Promise<void> {
+  const { error } = await supabase.from('students').update(patch).eq('id', id)
   if (error) throw error
 }
