@@ -94,12 +94,12 @@ describe('sendEmail', () => {
   it('reports an API error with Resend’s own message', async () => {
     const { impl } = fakeFetch({
       status: 403,
-      json: async () => ({ message: 'The tpa.ppmedenhaag.nl domain is not verified.' }),
+      json: async () => ({ message: 'The ppmedenhaag.nl domain is not verified.' }),
     })
     expect(await sendEmail({ to: 'a@b.invalid', subject: 'S', html: 'H' }, impl)).toEqual({
       status: 'failed',
       statusCode: 403,
-      message: 'The tpa.ppmedenhaag.nl domain is not verified.',
+      message: 'The ppmedenhaag.nl domain is not verified.',
     })
   })
 

@@ -155,7 +155,7 @@ organization warrants a documented assessment.
 ## 6. Consultation & sign-off
 
 - [ ] **[IT TEAM]** Review Supabase DPA and sub-processor list — record conclusion in §2
-- [ ] **[IT TEAM]** Resend: DPA in place, EU region confirmed selected, and `tpa.ppmedenhaag.nl` verified — all three before the first real invitation is sent (TAD ADR-018). The region in particular cannot be fixed after the fact for mail already delivered
+- [ ] **[IT TEAM]** Resend: DPA in place, EU region confirmed selected, and the sending domain verified — all three before the first real invitation is sent (TAD ADR-018). Domain verification is done (`ppmedenhaag.nl`, confirmed by a live send — ADR-031); DPA and EU region are still open. The region in particular cannot be fixed after the fact for mail already delivered
 - [ ] **[IT TEAM]** Chapter V transfer assessment for Web Push delivery via the browser's push service (Firebase Cloud Messaging for Chrome/Android) — see §2 "Transfers outside EU". Notifications are opt-in and off by default, and the payload is encrypted and content-limited, but the transfer is real and should be documented rather than assumed away
 - [ ] **[IT TEAM]** Confirm lawful basis (§3) and retention period (§2)
 - [ ] **[IT TEAM]** Confirm breach-response owner (§4 R3)

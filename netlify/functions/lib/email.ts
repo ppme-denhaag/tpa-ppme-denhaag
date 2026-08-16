@@ -20,11 +20,12 @@
  *
  * ── Deployment prerequisites (not code bugs) ────────────────────────
  * 1. **The sending domain must be verified in the Resend dashboard.**
- *    Until `tpa.ppmedenhaag.nl` is verified, Resend refuses to send
- *    from it and only allows `onboarding@resend.dev`, and then only to
- *    the account owner's own verified address. If email fails before
- *    that is done, this is why — it is a DNS/dashboard task, not
- *    something to debug in here.
+ *    `ppmedenhaag.nl` is verified as of ADR-031 (confirmed with a live
+ *    send from the production key); until a domain is verified, Resend
+ *    refuses to send from it and only allows `onboarding@resend.dev`,
+ *    to the account owner's own verified address. If email fails, that
+ *    prior state is worth ruling out first — it is a DNS/dashboard
+ *    task, not something to debug in here.
  * 2. **Select the EU region in Resend.** Supabase is in Frankfurt and
  *    Netlify is EU-region by deliberate choice (ADR-002/ADR-004); mail
  *    carries the same personal data — a parent's address, a child's
@@ -39,12 +40,14 @@
 const RESEND_ENDPOINT = 'https://api.resend.com/emails'
 
 /**
- * Placeholder until the domain is verified — see prerequisite 1 above.
- * Deliberately the real intended address rather than `resend.dev`, so
- * that a misconfigured deploy fails loudly against an unverified domain
- * instead of quietly succeeding from a sandbox sender nobody recognises.
+ * `ppmedenhaag.nl`, not the `tpa.` subdomain — PPME's Resend admin
+ * verified the bare domain directly (ADR-031) rather than the
+ * subdomain this address originally assumed. Deliberately the real
+ * intended address rather than `resend.dev`, so that a misconfigured
+ * deploy fails loudly against an unverified domain instead of quietly
+ * succeeding from a sandbox sender nobody recognises.
  */
-export const FROM_ADDRESS = 'TPA PPME Den Haag <notifications@tpa.ppmedenhaag.nl>'
+export const FROM_ADDRESS = 'TPA PPME Den Haag <tpa@ppmedenhaag.nl>'
 
 export interface EmailRequest {
   to: string
