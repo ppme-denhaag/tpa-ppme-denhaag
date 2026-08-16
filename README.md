@@ -627,10 +627,12 @@ support widens the window during which two devices could overwrite each
 other's mark, it does not introduce a new failure mode. No
 optimistic-concurrency/version-check merge logic exists.
 
-**Not verified from this machine**: the manual devtools-offline
-click-through (mark attendance/confirm murajaah with the network panel
-offline, confirm it queues and replays on reconnect) needs a real
-browser, per this project's standing "verify against a real stack" bar.
+**Verified live** against the local Postgres stack and `npm run dev`
+(test-plan.md §6): attendance and murajaah both queue in IndexedDB and
+show the "will sync" banner with Chrome's Network panel set to
+"Offline", replay and clear the queue on reconnect with the rows landing
+server-side, and a genuine same-day rejection while online still
+surfaces the red error banner rather than being queued.
 
 ## Roles
 
