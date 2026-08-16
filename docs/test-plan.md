@@ -10,7 +10,7 @@ Priority order reflects risk, not feature order:
 2. **Core flows** (attendance, progress recording — daily-use correctness)
 3. **Streak & milestone logic** (edge-case-heavy)
 4. **Notifications** (cross-platform quirks, silent failures)
-5. **Offline/PWA behavior** (deferred if offline-writes descoped from MVP)
+5. **Offline/PWA behavior** — offline writes are in scope and built (TAD ADR-029): §6's rows below are no longer conditional, and the manual devtools-offline click-through is the one outstanding case, alongside the rest of §6's real-device matrix
 6. **i18n completeness**
 
 Out of scope for MVP testing: load/performance (200 users on Supabase free tier is trivial), penetration testing (basic OWASP checklist only).
@@ -499,7 +499,9 @@ Run against Preview deploys with fixture data; auth mocked via Supabase test JWT
 | App installable (manifest valid, icons 192/512/maskable) | ☐ | ☐ | ☐ |
 | **Installed** PWA: notification is attributed to "TPA PPME Den Haag", not to Chrome | ☐ | ☐ | n/a |
 | Offline: app shell loads, cached data visible, clear offline banner | ☐ | ☐ | ☐ |
-| Offline write-queue (if in scope): attendance recorded offline syncs once online; double-submit on two devices resolves without data loss | ☐ | ☐ | — |
+| Offline write-queue (ADR-029, in scope and built): attendance/murajaah recorded offline queues, shows "will sync", and replays once online; a genuine rejection (not a network failure) still surfaces immediately rather than queuing | ☐ | ☐ | ☑ |
+
+**The offline write-queue's Desktop Chrome column is now ticked, verified live** against the local Postgres stack (`npx supabase start`, dev fixture loaded) and `npm run dev`, not just unit-tested. Signed in as Ustadz Ahmad (tutor), Chrome DevTools' Network throttling set to "Offline": marking attendance for Kelas A showed the queued "will sync" banner instead of an error, and the entry appeared in IndexedDB (`tpa-offline-queue`). Switching throttling back to "No throttling" fired the `online` event, the entry replayed and cleared from IndexedDB, and the rows appeared in `attendance` in Supabase Studio. Repeated as Ibu Siti (parent) confirming a murajaah target assigned for the test: same queued banner, same replay-and-clear on reconnect, row landed in `murajaah_log`. A second same-day confirmation attempt while online correctly surfaced the red rejection banner rather than being queued, confirming the network-vs-server-rejection distinction holds under real conditions, not just in the mocked unit tests. Android and iOS remain unticked below, for the same reason as the rest of the matrix — no device available.
 
 **Two Android rows are now ticked, from a real device.** A reviewer with an
 Android phone ran the permission prompt, subscribed, and received a real

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { SignIn } from './pages/SignIn'
 import { Unauthorized } from './pages/Unauthorized'
 import { Dashboard } from './pages/Dashboard'
@@ -19,6 +20,11 @@ import { RequireAdmin } from './components/RequireAdmin'
 
 function Gate() {
   const { session, profile, loading, unregistered } = useAuth()
+  // Mounted unconditionally (hooks can't follow the early returns below):
+  // replays the offline write queue on reconnect regardless of which
+  // screen is open when it happens. `replayQueue` itself no-ops without
+  // a session, so this is harmless before sign-in.
+  useOnlineStatus()
 
   if (loading) {
     return (
