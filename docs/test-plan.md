@@ -443,18 +443,35 @@ was at 9% of lines and `verifyWebhookSecret` at 35%, which is to say the
 two functions that decide who may operate the service-role key were the
 least tested code in the repository.
 
-| | Before | After ADR-019…ADR-024 | After ADR-025 |
-|---|---|---|---|
-| Statements | 67.6% | 97.3% | 97.5% |
-| Branches | 58.1% | 90.8% | 91.7% |
-| Lines | 71.0% | 98.9% | 99.0% |
-| Unit tests | 246 | 346 | 447 |
+| | Before | After ADR-019…ADR-024 | After ADR-025 | After ADR-029…ADR-032 |
+|---|---|---|---|---|
+| Statements | 67.6% | 97.3% | 97.5% | 93.0% |
+| Branches | 58.1% | 90.8% | 91.7% | 90.5% |
+| Lines | 71.0% | 98.9% | 99.0% | 94.6% |
+| Unit tests | 246 | 346 | 447 | 486 |
 
 ADR-025 moved coverage up rather than down, which is the point of
 putting the view-selection decision in `src/lib/viewScope.ts` instead of
 in the six components that used to make it: a rule written inside a
 `.tsx` would have left the gate reporting the same number about strictly
 more untested logic.
+
+**The last column's dip is one file, and it is deliberate rather than a
+regression.** `src/lib/offlineQueue.ts` (ADR-029, the offline write-queue)
+sits at 25.5% statements / 25% branches, and its own module comment says
+why: `createOfflineQueue`'s logic — enqueue, ordering, retry bookkeeping —
+is fully exercised in `tests/unit/offlineQueue.test.ts` against a fake
+in-memory `QueueStore`, but the real `indexedDbStore()`/`openDb()` adapter
+is excluded on purpose, the same call §4.6 already makes for
+`supabaseClient.test.ts`'s guard clause: jsdom has no IndexedDB, so that
+adapter is verified live (§6's offline write-queue rows) rather than faked
+in a unit test that would prove nothing about the real one. Pull that one
+file out and the rest of the suite is unchanged from the ADR-025 column.
+38 of the 39 new tests came with ADR-029…ADR-032's own feature work
+(offline queue, transactional email, self-login account linking); the
+39th is this section's own hardcoded-string check (§7). None of the 39
+add coverage to `offlineQueue.ts`'s IndexedDB adapter, which is why the
+unit-test count rose while the coverage percentage fell.
 
 ## 5. E2E flows (Playwright)
 
@@ -708,9 +725,9 @@ was measured taking **32 seconds** — so a family on a slow day was shown
 
 ## 7. i18n completeness (automated)
 
-- CI script asserts `id.json` and `nl.json` have identical key sets (already scripted)
-- No hardcoded UI strings: lint rule / grep for literal Indonesian or Dutch text in components
-- Pseudo-locale render test: no truncation at 44px tap targets with longer Dutch strings
+- [x] CI script asserts `id.json` and `nl.json` have identical key sets (`tests/unit/i18n-parity.test.ts`)
+- [x] No hardcoded UI strings: `tests/unit/i18nHardcodedStrings.test.ts` parses every `src/**/*.tsx`/`.ts` file (via `@babel/parser`, `src/dev/**` exempt as a local-only, deliberately unlocalized fixture switcher) and flags any JSX text or string literal that exactly matches a translated leaf value from either locale file — the case where a string was pasted in place of `t(...)`. Matching against real locale content rather than a keyword list means it needs no maintenance as strings are added or changed
+- [x] Pseudo-locale render test: `e2e/pseudo-locale.spec.ts` builds a synthetic locale — for every key, whichever of the two real shipped translations is longer, padded ~35% further — and asserts no clipping (`scrollWidth`/`scrollHeight` vs `clientWidth`/`clientHeight`) and no shrinkage below the 44px tap-target minimum, at 390px viewport width. **Scoped to the sign-in screen only**, the one screen reachable without a mocked Supabase session — the same limitation `e2e/sign-in.spec.ts` documents. Extending this to the family/tutor/admin screens waits on the same fixture-auth wiring the rest of the E2E-01…E2E-14 suite needs
 
 ## 8. Compliance verification (pre-launch gate)
 
